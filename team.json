@@ -1,0 +1,16 @@
+[
+  {"studentId": "56-29253", "name": "Paula Maged Michael", "githubUsername": "PaulaMaged", "service": "user-service"},
+  {"studentId": "55-24394", "name": "Mahmoud Ayman", "githubUsername": "TheSant0x", "service": "user-service"},
+  {"studentId": "49-17488", "name": "Ragaa Aly", "githubUsername": "ragaaaly", "service": "user-service"},
+  {"studentId": "55-24423", "name": "Abdelrahim Abdelazim", "githubUsername": "abdoo303", "service": "invoice-service"},
+  {"studentId": "55-6777", "name": "Ali Hossam Eldeen", "githubUsername": "Ali-Hosam", "service": "invoice-service"},
+  {"studentId": "55-8843", "name": "Ziad Sherif Ibrahim", "githubUsername": "zeyadalaaser", "service": "invoice-service"},
+  {"studentId": "68-1664", "name": "Abdelrahman Atef Saad", "githubUsername": "abdlrhman08", "service": "provider-service"},
+  {"studentId": "68-38171", "name": "Yaseen Ashraf", "githubUsername": "zoatel", "service": "provider-service"},
+  {"studentId": "68-38204","name": "Mohamed Youssef", "githubUsername": "M-aboelsafa","service": "provider-service"},
+  {"studentId": "55-11425", "name": "Ahmed Mohamed El-Gohary", "githubUsername": "AhmedEl-Gohary", "service": "booking-service"},
+  {"studentId": "55-24701", "name": "Rofaeil Samuel Fayez", "githubUsername": "Rofaeil478", "service": "booking-service"},
+  {"studentId": "55-23815", "name": "Ahmed Kamal", "githubUsername": "AhmedKamal18", "service": "booking-service"},
+  {"studentId": "55-24913", "name": "Ahmed Hussien Ali", "githubUsername": "ahmedhussein107", "service": "calendar-service"},
+  {"studentId": "55-8947", "name": "Ahmed Yasser Tawfik", "githubUsername": "AhmedYTawfik", "service": "calendar-service"}
+]
