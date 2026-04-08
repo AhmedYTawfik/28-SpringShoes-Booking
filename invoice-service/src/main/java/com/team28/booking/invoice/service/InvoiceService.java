@@ -5,15 +5,25 @@ import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
 import com.team28.booking.invoice.exception.BadRequestException;
 import com.team28.booking.invoice.exception.ResourceNotFoundException;
+import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
+import com.team28.booking.invoice.dto.RetryInvoiceRequest;
+import com.team28.booking.invoice.dto.RevenueReportDTO;
+import com.team28.booking.invoice.exception.BadRequestException;
+import com.team28.booking.invoice.exception.ResourceNotFoundException;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.repository.InvoiceRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Map;
 
 @Service
@@ -27,12 +37,15 @@ public class InvoiceService {
 
     // ── CRUD ────────────────────────────────────────────────────────────────
 
+    // ── CRUD ────────────────────────────────────────────────────────────────
+
     public Invoice createInvoice(Invoice invoice) {
         return invoiceRepository.save(invoice);
     }
 
     public Invoice getInvoiceById(Long id) {
         return invoiceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
     }
 
@@ -54,6 +67,7 @@ public class InvoiceService {
 
     public void deleteInvoice(Long id) {
         invoiceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
         invoiceRepository.deleteById(id);
     }
