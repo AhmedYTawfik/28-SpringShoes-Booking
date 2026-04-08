@@ -11,7 +11,6 @@ public class InvoiceService {
 
     private final InvoiceRepository invoiceRepository;
 
-    // Constructor injection
     public InvoiceService(InvoiceRepository invoiceRepository) {
         this.invoiceRepository = invoiceRepository;
     }
@@ -21,18 +20,15 @@ public class InvoiceService {
         return invoiceRepository.save(invoice);
     }
 
-    // Read by ID
     public Invoice getInvoiceById(Long id) {
         return invoiceRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
     }
 
-    // Read all
     public List<Invoice> getAllInvoices() {
         return invoiceRepository.findAll();
     }
 
-    // Update
     public Invoice updateInvoice(Long id, Invoice updatedInvoice) {
         Invoice existing = getInvoiceById(id);
         existing.setBookingId(updatedInvoice.getBookingId());
@@ -45,7 +41,6 @@ public class InvoiceService {
         return invoiceRepository.save(existing);
     }
 
-    // Delete
     public void deleteInvoice(Long id) {
         invoiceRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
