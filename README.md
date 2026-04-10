@@ -2,10 +2,10 @@
 
 ## Prerequisites
 
-| Tool                    | Version            |
-| ----------------------- | ------------------ |
-| Java (JDK)              | 25+                |
-| Maven                   | 3.9+               |
+| Tool | Version |
+|---|---|
+| Java (JDK) | 25+ |
+| Maven | 3.9+ |
 | Docker & Docker Compose | any recent version |
 
 ---
@@ -61,13 +61,13 @@ psql -h 127.0.0.1 -p 5432 -U <your-mac-username> -d postgres -c "CREATE DATABASE
 
 **Database connection details (same for both options):**
 
-| Property | Value       |
-| -------- | ----------- |
-| Host     | `localhost` |
-| Port     | `5432`      |
+| Property | Value |
+|---|---|
+| Host | `localhost` |
+| Port | `5432` |
 | Database | `bookingdb` |
-| Username | `postgres`  |
-| Password | `postgres`  |
+| Username | `postgres` |
+| Password | `postgres` |
 
 ---
 
@@ -104,50 +104,31 @@ cd calendar-service && mvn spring-boot:run
 
 > The database (Step 1) must be running before starting any service.
 
-### Running invoice-service with Docker
-
-Build the image:
-
-```bash
-cd invoice-service
-docker build -t invoice-service .
-```
-
-Run the container (replace `<db-host>` with your database host, e.g. `host.docker.internal` if the DB is running on your machine via Docker):
-
-```bash
-docker run -p 8083:8083 \
-  -e SPRING_DATASOURCE_URL=jdbc:postgresql://<db-host>:5432/bookingdb \
-  -e SPRING_DATASOURCE_USERNAME=postgres \
-  -e SPRING_DATASOURCE_PASSWORD=postgres \
-  invoice-service
-```
-
 ---
 
 ## Service Endpoints
 
 ### Health Checks
 
-| Service          | URL                                        |
-| ---------------- | ------------------------------------------ |
-| booking-service  | http://localhost:8080/api/bookings/health  |
-| user-service     | http://localhost:8081/api/users/health     |
+| Service | URL |
+|---|---|
+| booking-service | http://localhost:8080/api/bookings/health |
+| user-service | http://localhost:8081/api/users/health |
 | provider-service | http://localhost:8082/api/providers/health |
-| invoice-service  | http://localhost:8083/api/invoices/health  |
+| invoice-service | http://localhost:8083/api/invoices/health |
 | calendar-service | http://localhost:8084/api/timeslots/health |
 
 ### API Base URLs
 
-| Service                             | Base URL                                    |
-| ----------------------------------- | ------------------------------------------- |
-| booking-service                     | http://localhost:8080/api/bookings          |
-| user-service                        | http://localhost:8081/api/users             |
-| provider-service                    | http://localhost:8082/api/providers         |
-| invoice-service                     | http://localhost:8083/api/invoices          |
-| invoice-service (discounts)         | http://localhost:8083/api/discounts         |
+| Service | Base URL |
+|---|---|
+| booking-service | http://localhost:8080/api/bookings |
+| user-service | http://localhost:8081/api/users |
+| provider-service | http://localhost:8082/api/providers |
+| invoice-service | http://localhost:8083/api/invoices |
+| invoice-service (discounts) | http://localhost:8083/api/discounts |
 | invoice-service (invoice-discounts) | http://localhost:8083/api/invoice-discounts |
-| calendar-service                    | http://localhost:8084/api/timeslots         |
+| calendar-service | http://localhost:8084/api/timeslots |
 
 ---
 
@@ -207,21 +188,19 @@ docker ps | grep booking-db
 
 ## Team
 
-| Name                    | Service          | GitHub           |
-| ----------------------- | ---------------- | ---------------- |
-| Paula Maged Michael     | user-service     | @PaulaMaged      |
-| Mahmoud Ayman           | user-service     | @TheSant0x       |
-| Ragaa Aly               | user-service     | @ragaaaly        |
-| Abdelrahim Abdelazim    | invoice-service  | @abdoo303        |
-| Ali Hossam Eldeen       | invoice-service  | @Ali-Hosam       |
-| Ziad Sherif Ibrahim     | invoice-service  | @zeyadalaaser    |
-| Abdelrahman Atef Saad   | provider-service | @abdlrhman08     |
-| Yaseen Ashraf           | provider-service | @zoatel          |
-| Mohamed Youssef         | provider-service | @M-aboelsafa     |
-| Ahmed Mohamed El-Gohary | booking-service  | @AhmedEl-Gohary  |
-| Rofaeil Samuel Fayez    | booking-service  | @Rofaeil478      |
-| Ahmed Kamal             | booking-service  | @AhmedKamal18    |
-| Ahmed Hussien Ali       | calendar-service | @ahmedhussien107 |
-| Ahmed Yasser Tawfik     | calendar-service | @AhmedYTawfik    |
-
-branch naming convention: feat/<service>/<feature-name>/<studentId>
+| Name | Service | GitHub |
+|---|---|---|
+| Paula Maged Michael | user-service | @PaulaMaged |
+| Mahmoud Ayman | user-service | @TheSant0x |
+| Ragaa Aly | user-service | @ragaaaly |
+| Abdelrahim Abdelazim | invoice-service | @abdoo303 |
+| Ali Hossam Eldeen | invoice-service | @Ali-Hosam |
+| Ziad Sherif Ibrahim | invoice-service | @zeyadalaaser |
+| Abdelrahman Atef Saad | provider-service | @abdlrhman08 |
+| Yaseen Ashraf | provider-service | @zoatel |
+| Mohamed Youssef | provider-service | @M-aboelsafa |
+| Ahmed Mohamed El-Gohary | booking-service | @AhmedEl-Gohary |
+| Rofaeil Samuel Fayez | booking-service | @Rofaeil478 |
+| Ahmed Kamal | booking-service | @AhmedKamal18 |
+| Ahmed Hussien Ali | calendar-service | @ahmedhussien107 |
+| Ahmed Yasser Tawfik | calendar-service | @AhmedYTawfik |
