@@ -1,18 +1,20 @@
 package com.team28.booking.user.service;
 
 import com.team28.booking.user.dto.TopClientDTO;
+import com.team28.booking.user.dto.UserBookingSummaryDTO;
+import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Status;
+import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.List;
-
-
 import java.util.List;
 
 @Service
@@ -20,6 +22,9 @@ public class UserService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private SavedAddressRepository savedAddressRepository;
 
     public User save(User user) {
         return userRepository.save(user);
@@ -31,6 +36,69 @@ public class UserService {
 
     public User findById(Long id) {
         return userRepository.findById(id).orElse(null);
+    }
+
+    // S1-F7: Set one saved address as default for the user.
+    @Transactional
+    public User setDefaultSavedAddress(Long userId, Long addressId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        SavedAddress requestedAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (requestedAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+
+        if (requestedAddress.getUser() == null || !userId.equals(requestedAddress.getUser().getId())) {
+            throw new IllegalArgumentException("Address does not belong to this user");
+        }
+
+        SavedAddress targetAddress = null;
+        for (SavedAddress address : user.getSavedAddresses()) {
+            address.setIsDefault(false);
+            if (addressId.equals(address.getId())) {
+                targetAddress = address;
+            }
+        }
+
+        if (targetAddress == null) {
+            throw new IllegalArgumentException("Address does not belong to this user");
+        }
+
+        targetAddress.setIsDefault(true);
+        return userRepository.save(user);
+    }
+
+    public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        Object[] summaryRow = userRepository.findUserBookingSummary(userId);
+        if (summaryRow == null) {
+            return new UserBookingSummaryDTO(
+                    user.getId(),
+                    user.getName(),
+                    0L,
+                    0L,
+                    0L,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO
+            );
+        }
+
+        return new UserBookingSummaryDTO(
+                ((Number) summaryRow[0]).longValue(),
+                (String) summaryRow[1],
+                ((Number) summaryRow[2]).longValue(),
+                ((Number) summaryRow[3]).longValue(),
+                ((Number) summaryRow[4]).longValue(),
+                toBigDecimal(summaryRow[5]),
+                toBigDecimal(summaryRow[6])
+        );
     }
 
     // S1-F1: Search Users
@@ -105,6 +173,22 @@ public class UserService {
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd");
         }
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal;
+        }
+
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+
+        return new BigDecimal(value.toString());
     }
 
 }

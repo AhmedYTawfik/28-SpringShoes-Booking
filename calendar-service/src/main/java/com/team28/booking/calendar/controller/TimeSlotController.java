@@ -62,6 +62,14 @@ public class TimeSlotController {
         return timeSlotService.getLatestTimeSlot(providerId);
     }
 
+    @GetMapping("/metadata/search")
+    public List<TimeSlot> searchByMetadata(
+            @RequestParam String key,
+            @RequestParam String operator,
+            @RequestParam String value) {
+        return timeSlotService.searchByMetadata(key, operator, value);
+    }
+
     @PutMapping("/{id}")
     public TimeSlot update(@PathVariable Long id, @RequestBody TimeSlot timeSlot) {
         return timeSlotService.updateTimeSlot(id, timeSlot);
