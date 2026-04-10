@@ -2,8 +2,10 @@ package com.team28.booking.user.service;
 
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
+import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Status;
+import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,9 @@ public class UserService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private SavedAddressRepository savedAddressRepository;
+
     public User save(User user) {
         return userRepository.save(user);
     }
@@ -31,6 +36,39 @@ public class UserService {
 
     public User findById(Long id) {
         return userRepository.findById(id).orElse(null);
+    }
+
+    // S1-F7: Set one saved address as default for the user.
+    @Transactional
+    public User setDefaultSavedAddress(Long userId, Long addressId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        SavedAddress requestedAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (requestedAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+
+        if (requestedAddress.getUser() == null || !userId.equals(requestedAddress.getUser().getId())) {
+            throw new IllegalArgumentException("Address does not belong to this user");
+        }
+
+        SavedAddress targetAddress = null;
+        for (SavedAddress address : user.getSavedAddresses()) {
+            address.setIsDefault(false);
+            if (addressId.equals(address.getId())) {
+                targetAddress = address;
+            }
+        }
+
+        if (targetAddress == null) {
+            throw new IllegalArgumentException("Address does not belong to this user");
+        }
+
+        targetAddress.setIsDefault(true);
+        return userRepository.save(user);
     }
 
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
