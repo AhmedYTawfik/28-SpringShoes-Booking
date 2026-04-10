@@ -17,7 +17,10 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 public class BookingServiceTest {
@@ -50,7 +53,27 @@ public class BookingServiceTest {
         assertEquals(Booking.Status.COMPLETED, result.getStatus());
         assertNotNull(result.getCompletedAt());
         verify(bookingRepository).updateProviderStatusToAvailable(99L);
-        verify(bookingRepository).createInvoiceForBooking(eq(1L), eq(1L), eq(BigDecimal.valueOf(100)));
+        // Use a captor instead of eq() so the assertion is scale-insensitive (100 == 100.00)
+        ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(bookingRepository).createInvoiceForBooking(eq(1L), eq(1L), amountCaptor.capture());
+        assertEquals(0, BigDecimal.valueOf(100).compareTo(amountCaptor.getValue()));
+    }
+
+    @Test
+    void testCompleteBooking_NoProvider_InvoiceStillCreated() {
+        // When providerId is null, provider status update must be skipped but invoice must still be created.
+        booking.setProviderId(null);
+        booking.setStatus(Booking.Status.IN_PROGRESS);
+        booking.setUserId(1L);
+        booking.setTotalPrice(BigDecimal.valueOf(50));
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Booking result = bookingService.completeBooking(1L);
+
+        assertEquals(Booking.Status.COMPLETED, result.getStatus());
+        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository).createInvoiceForBooking(eq(1L), eq(1L), any(BigDecimal.class));
     }
 
     @Test
@@ -78,7 +101,10 @@ public class BookingServiceTest {
                 () -> bookingService.completeBooking(1L));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        // Nothing should be written when the guard rejects the request
         verify(bookingRepository, never()).save(any());
+        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).createInvoiceForBooking(any(), any(), any());
     }
 
     @Test
@@ -90,6 +116,9 @@ public class BookingServiceTest {
                 () -> bookingService.completeBooking(1L));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).save(any());
+        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).createInvoiceForBooking(any(), any(), any());
     }
 
     @Test
@@ -100,6 +129,9 @@ public class BookingServiceTest {
                 () -> bookingService.completeBooking(999L));
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        verify(bookingRepository, never()).save(any());
+        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).createInvoiceForBooking(any(), any(), any());
     }
 
     @Test
