@@ -183,15 +183,15 @@ public class BookingServiceTest {
                 () -> bookingService.searchByMetadata(null, "IN_PERSON"));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).findByMetadataKeyValue(any(), any());
     }
 
     @Test
-    void searchByMetadata_passesCorrectParamsToRepository() {
-        when(bookingRepository.findByMetadataKeyValue("priorityLevel", "EXPRESS"))
-                .thenReturn(List.of(booking));
+    void searchByMetadata_nullValue_throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchByMetadata("bookingType", null));
 
-        bookingService.searchByMetadata("priorityLevel", "EXPRESS");
-
-        verify(bookingRepository, times(1)).findByMetadataKeyValue("priorityLevel", "EXPRESS");
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).findByMetadataKeyValue(any(), any());
     }
 }
