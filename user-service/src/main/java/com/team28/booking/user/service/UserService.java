@@ -1,7 +1,9 @@
 package com.team28.booking.user.service;
 
+import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
+import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Status;
@@ -36,6 +38,35 @@ public class UserService {
 
     public User findById(Long id) {
         return userRepository.findById(id).orElse(null);
+    }
+
+    public UserProfileDTO getUserProfile(Long userId) {
+        User user = userRepository.findByIdWithSavedAddresses(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        List<SavedAddressDTO> addressDTOs = new ArrayList<>();
+        for (SavedAddress savedAddress : user.getSavedAddresses()) {
+            addressDTOs.add(new SavedAddressDTO(
+                    savedAddress.getLabel(),
+                    savedAddress.getAddress(),
+                    savedAddress.getLatitude(),
+                    savedAddress.getLongitude(),
+                    savedAddress.getIsDefault(),
+                    savedAddress.getMetadata()
+            ));
+        }
+
+        return new UserProfileDTO(
+                user.getId(),
+                user.getName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getPreferences(),
+                addressDTOs,
+                (long) addressDTOs.size()
+        );
     }
 
     // S1-F7: Set one saved address as default for the user.

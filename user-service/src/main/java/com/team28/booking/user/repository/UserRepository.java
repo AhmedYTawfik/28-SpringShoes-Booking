@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -62,5 +63,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
             "GROUP BY u.id, u.name",
             nativeQuery = true)
     Object[] findUserBookingSummary(@Param("userId") Long userId);
+
+    // S1-F8: Load user together with saved addresses for profile DTO construction.
+    @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.savedAddresses WHERE u.id = :userId")
+    Optional<User> findByIdWithSavedAddresses(@Param("userId") Long userId);
 
 }
