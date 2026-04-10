@@ -1,5 +1,6 @@
 package com.team28.booking.invoice.controller;
 
+import com.team28.booking.invoice.dto.UserInvoiceSummaryDTO;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.service.InvoiceService;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,7 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
 
+    // Constructor injection
     public InvoiceController(InvoiceService invoiceService) {
         this.invoiceService = invoiceService;
     }
@@ -46,5 +48,11 @@ public class InvoiceController {
     public ResponseEntity<Void> deleteInvoice(@PathVariable Long id) {
         invoiceService.deleteInvoice(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // Get User Invoice Summary
+    @GetMapping("/user/{userId}/summary")
+    public ResponseEntity<UserInvoiceSummaryDTO> getUserInvoiceSummary(@PathVariable Long userId) {
+        return ResponseEntity.ok(invoiceService.getUserInvoiceSummary(userId));
     }
 }
