@@ -74,7 +74,7 @@ public class ProviderService {
 
     public List<Provider> searchProviders(Provider.ProviderStatus status, Double minRating, Double maxRating) {
         if (minRating != null && maxRating != null && minRating > maxRating) {
-            throw new IllegalArgumentException("minRating cannot be greater than maxRating");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
         }
 
         return providerRepository.searchProviders(status, minRating, maxRating);
