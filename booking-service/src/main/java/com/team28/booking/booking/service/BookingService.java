@@ -115,12 +115,16 @@ public class BookingService {
         booking.setCompletedAt(LocalDateTime.now());
 
         if (booking.getTotalPrice() == null) {
+            // Safe to access the lazy collection here — this method is @Transactional so the
+            // Hibernate session remains open for the full duration of the call.
             BigDecimal total = booking.getBookingServices().stream()
                     .map(BookingItem::getPrice)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             booking.setTotalPrice(total);
         }
 
+        // Order: update provider → insert invoice → save booking.
+        // All three statements share this @Transactional scope; any failure rolls back all three atomically.
         if (booking.getProviderId() != null) {
             bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
         }
