@@ -93,6 +93,20 @@ public class UserController {
         }
     }
 
+    // S1-F9: Find Users by Language Preference with Minimum Bookings
+    @GetMapping("/preferences/language")
+    public ResponseEntity<List<User>> getUsersByLanguagePreference(
+            @RequestParam String lang,
+            @RequestParam long minBookings) {
+        try {
+            return ResponseEntity.ok(
+                    userService.findUsersByLanguagePreferenceWithMinimumBookings(lang, minBookings)
+            );
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
     // S1-F1: Search Users with Filters
     @GetMapping("/search")    // ← Maps to GET /api/users/search
     public ResponseEntity<List<User>> searchUsers(
