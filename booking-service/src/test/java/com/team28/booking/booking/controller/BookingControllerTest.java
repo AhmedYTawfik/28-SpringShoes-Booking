@@ -196,6 +196,22 @@ class BookingControllerTest {
     }
 
     @Test
+    void metadataSearch_missingKey_returns400() throws Exception {
+        // Spring rejects the request before the controller method is reached when a required
+        // @RequestParam is absent entirely — distinct from the blank-string case handled by the service.
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("value", "IN_PERSON"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void metadataSearch_missingValue_returns400() throws Exception {
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("key", "bookingType"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void estimate_returnsJsonContentType() throws Exception {
         when(bookingService.getEstimate(any())).thenReturn(
                 new BookingEstimateDTO(60, BigDecimal.valueOf(300.0), BigDecimal.valueOf(300.0), BigDecimal.valueOf(1.0)));
