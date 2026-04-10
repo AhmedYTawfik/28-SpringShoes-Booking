@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 @Entity
@@ -24,8 +25,8 @@ public class BookingItem {
     @Column(nullable = false)
     private Integer duration;
 
-    @Column(nullable = false)
-    private Double price;
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal price;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -57,8 +58,8 @@ public class BookingItem {
     public Integer getDuration() { return duration; }
     public void setDuration(Integer duration) { this.duration = duration; }
 
-    public Double getPrice() { return price; }
-    public void setPrice(Double price) { this.price = price; }
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
 
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
