@@ -46,11 +46,15 @@ public class ProviderController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<Provider>> searchProviders(
+    public ResponseEntity<?> searchProviders(
             @RequestParam(required = false) Provider.ProviderStatus status,
             @RequestParam(required = false) Double minRating,
             @RequestParam(required = false) Double maxRating) {
-        return ResponseEntity.ok(providerService.searchProviders(status, minRating, maxRating));
+        try {
+            return ResponseEntity.ok(providerService.searchProviders(status, minRating, maxRating));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @GetMapping("/pricing-tier")
