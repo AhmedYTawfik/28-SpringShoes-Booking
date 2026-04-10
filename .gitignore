@@ -39,3 +39,8 @@ build/
 .env
 
 *.class
+
+### Development files
+milestone_description.pdf
+calendar_service_report.txt
+implementation_plan.md
