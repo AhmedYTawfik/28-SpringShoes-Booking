@@ -24,6 +24,19 @@ public class TimeSlotService {
         return timeSlotRepository.save(timeSlot);
     }
 
+    public TimeSlot createTimeSlotForProvider(Long providerId, TimeSlot timeSlot) {
+        Long providerCount = timeSlotRepository.countProviderById(providerId);
+        if (providerCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        validateTimeRange(timeSlot);
+        timeSlot.setProviderId(providerId);
+        timeSlot.setAvailable(true);
+        timeSlot.setCreatedAt(LocalDateTime.now());
+        return timeSlotRepository.save(timeSlot);
+    }
+
     public List<TimeSlot> getAllTimeSlots() {
         return timeSlotRepository.findAll();
     }
@@ -32,6 +45,17 @@ public class TimeSlotService {
         return timeSlotRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "TimeSlot not found with id: " + id));
+    }
+
+    public TimeSlot getLatestTimeSlot(Long providerId) {
+        Long providerCount = timeSlotRepository.countProviderById(providerId);
+        if (providerCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No time slots found for provider"));
     }
 
     public TimeSlot updateTimeSlot(Long id, TimeSlot updated) {
@@ -61,5 +85,14 @@ public class TimeSlotService {
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Invalid operator: " + operator + ". Must be eq, gt, or lt");
         };
+    }
+
+    private void validateTimeRange(TimeSlot timeSlot) {
+        if (timeSlot.getStartTime() == null
+                || timeSlot.getEndTime() == null
+                || !timeSlot.getStartTime().isBefore(timeSlot.getEndTime())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "startTime must be before endTime");
+        }
     }
 }

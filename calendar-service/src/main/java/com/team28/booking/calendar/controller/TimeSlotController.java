@@ -32,6 +32,12 @@ public class TimeSlotController {
         return timeSlotService.createTimeSlot(timeSlot);
     }
 
+    @PostMapping("/provider/{providerId}")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TimeSlot createForProvider(@PathVariable Long providerId, @RequestBody TimeSlot timeSlot) {
+        return timeSlotService.createTimeSlotForProvider(providerId, timeSlot);
+    }
+
     @GetMapping
     public List<TimeSlot> getAll() {
         return timeSlotService.getAllTimeSlots();
@@ -40,6 +46,11 @@ public class TimeSlotController {
     @GetMapping("/{id}")
     public TimeSlot getById(@PathVariable Long id) {
         return timeSlotService.getTimeSlotById(id);
+    }
+
+    @GetMapping("/provider/{providerId}/latest")
+    public TimeSlot getLatestTimeSlot(@PathVariable Long providerId) {
+        return timeSlotService.getLatestTimeSlot(providerId);
     }
 
     @GetMapping("/metadata/search")
