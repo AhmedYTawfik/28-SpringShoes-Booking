@@ -104,6 +104,25 @@ cd calendar-service && mvn spring-boot:run
 
 > The database (Step 1) must be running before starting any service.
 
+### Running invoice-service with Docker
+
+Build the image:
+
+```bash
+cd invoice-service
+docker build -t invoice-service .
+```
+
+Run the container (replace `<db-host>` with your database host, e.g. `host.docker.internal` if the DB is running on your machine via Docker):
+
+```bash
+docker run -p 8083:8083 \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://<db-host>:5432/bookingdb \
+  -e SPRING_DATASOURCE_USERNAME=postgres \
+  -e SPRING_DATASOURCE_PASSWORD=postgres \
+  invoice-service
+```
+
 ---
 
 ## Service Endpoints
