@@ -21,6 +21,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(BookingController.class)
@@ -223,5 +224,37 @@ class BookingControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
+    }
+
+    // --- PUT /{id}/complete ---
+
+    @Test
+    void completeBooking_inProgress_returns200WithCompletedStatus() throws Exception {
+        Booking completed = new Booking();
+        completed.setId(1L);
+        completed.setStatus(Booking.Status.COMPLETED);
+        when(bookingService.completeBooking(1L)).thenReturn(completed);
+
+        mockMvc.perform(put("/api/bookings/1/complete"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
+    void completeBooking_notFound_returns404() throws Exception {
+        when(bookingService.completeBooking(999L))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: 999"));
+
+        mockMvc.perform(put("/api/bookings/999/complete"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void completeBooking_wrongStatus_returns400() throws Exception {
+        when(bookingService.completeBooking(1L))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be IN_PROGRESS to complete"));
+
+        mockMvc.perform(put("/api/bookings/1/complete"))
+                .andExpect(status().isBadRequest());
     }
 }
