@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/invoices")
@@ -13,6 +14,7 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
 
+    // Constructor injection
     public InvoiceController(InvoiceService invoiceService) {
         this.invoiceService = invoiceService;
     }
@@ -46,5 +48,15 @@ public class InvoiceController {
     public ResponseEntity<Void> deleteInvoice(@PathVariable Long id) {
         invoiceService.deleteInvoice(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // Process Refund
+    @PutMapping("/{id}/refund")
+    public ResponseEntity<Invoice> processRefund(
+        @PathVariable Long id,
+        @RequestBody Map<String, Object> refundRequest
+    ) {
+        String reason = (String) refundRequest.get("reason");
+        return ResponseEntity.ok(invoiceService.processRefund(id, reason));
     }
 }
