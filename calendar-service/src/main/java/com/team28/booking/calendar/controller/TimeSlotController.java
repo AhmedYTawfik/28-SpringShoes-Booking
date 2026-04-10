@@ -9,10 +9,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -50,6 +52,14 @@ public class TimeSlotController {
     @GetMapping("/provider/{providerId}/latest")
     public TimeSlot getLatestTimeSlot(@PathVariable Long providerId) {
         return timeSlotService.getLatestTimeSlot(providerId);
+    }
+
+    @GetMapping("/history")
+    public List<TimeSlot> getHistory(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate,
+            @RequestParam(required = false) Long providerId) {
+        return timeSlotService.getHistory(startDate, endDate, providerId);
     }
 
     @PutMapping("/{id}")
