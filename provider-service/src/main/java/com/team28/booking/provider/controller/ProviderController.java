@@ -45,6 +45,11 @@ public class ProviderController {
         return ResponseEntity.ok("Provider deleted successfully");
     }
 
+    @PutMapping ("/{id}/availability")
+    public ResponseEntity<Provider> toggleAvailability(@PathVariable Long id) {
+        return ResponseEntity.ok(providerService.toggleAvailability(id));
+    }
+
     @GetMapping("/pricing-tier")
     public List<Provider> filterByPricingTier(
             @RequestParam String tier,

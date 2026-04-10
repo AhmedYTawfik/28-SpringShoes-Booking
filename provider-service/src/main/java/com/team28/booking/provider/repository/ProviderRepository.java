@@ -23,4 +23,12 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
             @Param("status") String status
     );
 
+    @Query(value = """
+    SELECT COUNT(*)
+    FROM bookings b
+    WHERE b.provider_id = :providerId
+      AND b.status NOT IN ('COMPLETED', 'CANCELLED')
+    """, nativeQuery = true)
+    Long countActiveBookings(@Param("providerId") Long providerId);
+
 }

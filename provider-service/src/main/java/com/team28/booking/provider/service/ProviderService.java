@@ -72,6 +72,28 @@ public class ProviderService {
         providerRepository.delete(provider);
     }
 
+    @Transactional
+    public Provider toggleAvailability(Long providerId) {
+        Provider provider = getProviderById(providerId);
+        if (provider.getStatus() == Provider.ProviderStatus.AVAILABLE) {
+            Long activeBookings = providerRepository.countActiveBookings(providerId);
+            if (activeBookings != null && activeBookings > 0) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Cannot set provider to OFFLINE while having active bookings"
+                );
+            }
+            provider.setStatus(Provider.ProviderStatus.OFFLINE);
+        } else if (provider.getStatus() == Provider.ProviderStatus.OFFLINE) {
+            provider.setStatus(Provider.ProviderStatus.AVAILABLE);
+        } else {
+            //assumed if busy will treat it as available
+            provider.setStatus(Provider.ProviderStatus.AVAILABLE);
+        }
+
+        return providerRepository.save(provider);
+    }
+
     // I am only writing once, but whatever
     @Transactional
     public Provider verifyCertificate(Long providerId, Long certificationId, VerifiedBy verifiedBy) {
