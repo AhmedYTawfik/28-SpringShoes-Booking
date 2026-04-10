@@ -23,4 +23,18 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
             @Param("status") String status
     );
 
+    //could have done it without jpql but will not be the best if status is null
+    @Query("""
+        SELECT p
+        FROM Provider p
+        WHERE (:status IS NULL OR p.status = :status)
+          AND (:minRating IS NULL OR p.rating >= :minRating)
+          AND (:maxRating IS NULL OR p.rating <= :maxRating)
+        ORDER BY p.rating DESC
+    """)
+    List<Provider> searchProviders(
+            @Param("status") Provider.ProviderStatus status,
+            @Param("minRating") Double minRating,
+            @Param("maxRating") Double maxRating
+    );
 }
