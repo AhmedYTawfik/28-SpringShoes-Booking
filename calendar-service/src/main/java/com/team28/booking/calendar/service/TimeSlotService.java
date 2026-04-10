@@ -35,13 +35,11 @@ public class TimeSlotService {
     }
 
     public TimeSlot updateTimeSlot(Long id, TimeSlot updated) {
-        if (!id.equals(updated.getId())) {
+        TimeSlot existing = getTimeSlotById(id);
+        if (updated.getId() != null && !id.equals(updated.getId())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "TimeSlot ID in request body must match path ID");
         }
-
-        TimeSlot existing = getTimeSlotById(id);
-        existing.setProviderId(updated.getProviderId());
         existing.setDate(updated.getDate());
         existing.setStartTime(updated.getStartTime());
         existing.setEndTime(updated.getEndTime());
