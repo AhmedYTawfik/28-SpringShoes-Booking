@@ -50,14 +50,14 @@ class RevenueReportServiceTest {
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
-        assertThat(dto.getStartDate()).isEqualTo(START);
-        assertThat(dto.getEndDate()).isEqualTo(END);
-        assertThat(dto.getTotalRevenue()).isEqualTo(600.0);
-        assertThat(dto.getTotalInvoices()).isEqualTo(4L);
-        assertThat(dto.getCompletedInvoices()).isEqualTo(3L);
-        assertThat(dto.getRefundedAmount()).isEqualTo(100.0);
-        assertThat(dto.getNetRevenue()).isEqualTo(500.0);          // 600 - 100
-        assertThat(dto.getAverageInvoiceAmount()).isEqualTo(150.0);
+        assertThat(dto.startDate()).isEqualTo(START);
+        assertThat(dto.endDate()).isEqualTo(END);
+        assertThat(dto.totalRevenue()).isEqualTo(600.0);
+        assertThat(dto.totalInvoices()).isEqualTo(4L);
+        assertThat(dto.completedInvoices()).isEqualTo(3L);
+        assertThat(dto.refundedAmount()).isEqualTo(100.0);
+        assertThat(dto.netRevenue()).isEqualTo(500.0);          // 600 - 100
+        assertThat(dto.averageInvoiceAmount()).isEqualTo(150.0);
     }
 
     @Test
@@ -67,12 +67,12 @@ class RevenueReportServiceTest {
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
-        assertThat(dto.getTotalRevenue()).isZero();
-        assertThat(dto.getTotalInvoices()).isZero();
-        assertThat(dto.getCompletedInvoices()).isZero();
-        assertThat(dto.getRefundedAmount()).isZero();
-        assertThat(dto.getNetRevenue()).isZero();
-        assertThat(dto.getAverageInvoiceAmount()).isZero();
+        assertThat(dto.totalRevenue()).isZero();
+        assertThat(dto.totalInvoices()).isZero();
+        assertThat(dto.completedInvoices()).isZero();
+        assertThat(dto.refundedAmount()).isZero();
+        assertThat(dto.netRevenue()).isZero();
+        assertThat(dto.averageInvoiceAmount()).isZero();
     }
 
     @Test
@@ -82,7 +82,7 @@ class RevenueReportServiceTest {
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
-        assertThat(dto.getNetRevenue()).isEqualTo(750.0);
+        assertThat(dto.netRevenue()).isEqualTo(750.0);
     }
 
     @Test
@@ -93,7 +93,7 @@ class RevenueReportServiceTest {
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(sameDay, sameDay);
 
-        assertThat(dto.getTotalRevenue()).isEqualTo(100.0);
+        assertThat(dto.totalRevenue()).isEqualTo(100.0);
     }
 
     // ── null values from DB ───────────────────────────────────────────────────
@@ -105,10 +105,10 @@ class RevenueReportServiceTest {
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
-        assertThat(dto.getTotalRevenue()).isZero();
-        assertThat(dto.getTotalInvoices()).isZero();
-        assertThat(dto.getRefundedAmount()).isZero();
-        assertThat(dto.getAverageInvoiceAmount()).isZero();
+        assertThat(dto.totalRevenue()).isZero();
+        assertThat(dto.totalInvoices()).isZero();
+        assertThat(dto.refundedAmount()).isZero();
+        assertThat(dto.averageInvoiceAmount()).isZero();
     }
 
     // ── invalid date range ────────────────────────────────────────────────────
