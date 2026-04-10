@@ -90,6 +90,7 @@ public class BookingService {
         return new BookingEstimateDTO(totalDuration, basePrice, estimatedPrice, demandMultiplier);
     }
   
+    @Transactional(readOnly = true)
     public List<Booking> searchByMetadata(String key, String value) {
         if (key == null || key.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Metadata key must not be blank");
