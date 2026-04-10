@@ -33,6 +33,17 @@ public class TimeSlotService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "TimeSlot not found with id: " + id));
     }
+    //todo: check if this function is written correctly
+    public TimeSlot getLatestTimeSlot(Long providerId) {
+        Long providerCount = timeSlotRepository.countProviderById(providerId);
+        if (providerCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No time slots found for provider"));
+    }
 
     public TimeSlot updateTimeSlot(Long id, TimeSlot updated) {
         TimeSlot existing = getTimeSlotById(id);
