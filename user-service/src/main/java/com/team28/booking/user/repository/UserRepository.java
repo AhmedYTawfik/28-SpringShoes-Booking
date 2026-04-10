@@ -68,4 +68,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.savedAddresses WHERE u.id = :userId")
     Optional<User> findByIdWithSavedAddresses(@Param("userId") Long userId);
 
+    // S1-F9: Filter users by language preference and minimum completed bookings.
+    @Query(value = "SELECT u.* " +
+            "FROM users u " +
+            "LEFT JOIN bookings b ON u.id = b.user_id AND b.status = 'COMPLETED' " +
+            "WHERE LOWER(CAST(u.preferences ->> 'language' AS TEXT)) = LOWER(:language) " +
+            "GROUP BY u.id " +
+            "HAVING COUNT(b.id) >= :minBookings " +
+            "ORDER BY u.id",
+            nativeQuery = true)
+    List<User> findUsersByLanguagePreferenceAndMinimumCompletedBookings(
+            @Param("language") String language,
+            @Param("minBookings") long minBookings
+    );
+
 }
