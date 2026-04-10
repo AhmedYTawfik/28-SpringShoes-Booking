@@ -1,9 +1,12 @@
 package com.team28.booking.user.service;
 
 import com.team28.booking.user.model.User;
+import com.team28.booking.user.model.User.Status;
 import com.team28.booking.user.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 
 import java.util.List;
 
@@ -33,4 +36,27 @@ public class UserService {
 
         return userRepository.searchUsers(searchName, searchEmail, searchRole);
     }
+
+    // S1-F4: Deactivate User Account (Transactional)
+    @Transactional
+    public User deactivateUser(Long userId) {
+        // 1. Find user - throw 404 if not found
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found"); // Will be caught and converted to 404
+        }
+
+        // 2. Check no active bookings exist - throw 400 if active bookings found
+        Long activeBookings = userRepository.countActiveBookings(userId);
+        if (activeBookings != null && activeBookings > 0) {
+            throw new IllegalStateException("User has active bookings");
+        }
+
+        // 3. Set status to DEACTIVATED
+        user.setStatus(Status.DEACTIVATED);
+
+        // 4. Save and return updated user
+        return userRepository.save(user);
+    }
+
 }
