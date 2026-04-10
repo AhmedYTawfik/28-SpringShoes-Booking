@@ -43,4 +43,12 @@ public class ProviderController {
         providerService.deleteProvider(id);
         return ResponseEntity.ok("Provider deleted successfully");
     }
+
+    @GetMapping("/pricing-tier")
+    public List<Provider> filterByPricingTier(
+            @RequestParam String tier,
+            @RequestParam(required = false) Provider.ProviderStatus status
+    ) {
+        return providerService.filterByPricingTier(tier, status);
+    }
 }
