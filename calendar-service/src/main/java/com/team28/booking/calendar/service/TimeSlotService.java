@@ -9,6 +9,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class TimeSlotService {
@@ -85,6 +86,16 @@ public class TimeSlotService {
     public void deleteTimeSlot(Long id) {
         TimeSlot existing = getTimeSlotById(id);
         timeSlotRepository.delete(existing);
+    }
+
+    public List<TimeSlot> searchByMetadata(String key, String operator, String value) {
+        return switch (operator.toLowerCase(Locale.ROOT)) {
+            case "eq" -> timeSlotRepository.findByMetadataEquals(key, value);
+            case "gt" -> timeSlotRepository.findByMetadataGreaterThan(key, value);
+            case "lt" -> timeSlotRepository.findByMetadataLessThan(key, value);
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid operator: " + operator + ". Must be eq, gt, or lt");
+        };
     }
 
     private void validateTimeRange(TimeSlot timeSlot) {

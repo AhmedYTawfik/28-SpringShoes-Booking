@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -47,6 +48,38 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("startDate") String startDate,
             @Param("endDate") String endDate,
             @Param("limit") int limit
+    );
+
+    // S1-F3: User booking summary aggregated from the shared bookings table.
+    @Query(value = "SELECT u.id AS user_id, u.name, " +
+            "COUNT(b.id) AS total_bookings, " +
+            "SUM(CASE WHEN b.status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed_bookings, " +
+            "SUM(CASE WHEN b.status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancelled_bookings, " +
+            "COALESCE(SUM(CASE WHEN b.status = 'COMPLETED' THEN b.total_price ELSE 0 END), 0) AS total_spent, " +
+            "COALESCE(ROUND(AVG(CASE WHEN b.status = 'COMPLETED' THEN b.total_price END), 2), 0) AS average_booking_price " +
+            "FROM users u " +
+            "LEFT JOIN bookings b ON u.id = b.user_id " +
+            "WHERE u.id = :userId " +
+            "GROUP BY u.id, u.name",
+            nativeQuery = true)
+    Object[] findUserBookingSummary(@Param("userId") Long userId);
+
+    // S1-F8: Load user together with saved addresses for profile DTO construction.
+    @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.savedAddresses WHERE u.id = :userId")
+    Optional<User> findByIdWithSavedAddresses(@Param("userId") Long userId);
+
+    // S1-F9: Filter users by language preference and minimum completed bookings.
+    @Query(value = "SELECT u.* " +
+            "FROM users u " +
+            "LEFT JOIN bookings b ON u.id = b.user_id AND b.status = 'COMPLETED' " +
+            "WHERE LOWER(CAST(u.preferences ->> 'language' AS TEXT)) = LOWER(:language) " +
+            "GROUP BY u.id " +
+            "HAVING COUNT(b.id) >= :minBookings " +
+            "ORDER BY u.id",
+            nativeQuery = true)
+    List<User> findUsersByLanguagePreferenceAndMinimumCompletedBookings(
+            @Param("language") String language,
+            @Param("minBookings") long minBookings
     );
 
 }

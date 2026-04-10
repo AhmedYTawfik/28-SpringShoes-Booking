@@ -4,6 +4,7 @@ import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.repository.BookingRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -50,5 +51,22 @@ public class BookingService {
     public void deleteBooking(Long id) {
         Booking booking = getBookingById(id);
         bookingRepository.delete(booking);
+    }
+
+    @Transactional
+    public Booking cancelBooking(Long id) {
+        Booking booking = getBookingById(id);
+
+        if (booking.getStatus() != Booking.Status.REQUESTED && booking.getStatus() != Booking.Status.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking can only be cancelled if it is REQUESTED or CONFIRMED");
+        }
+
+        booking.setStatus(Booking.Status.CANCELLED);
+
+        if (booking.getProviderId() != null) {
+            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
+        }
+
+        return bookingRepository.save(booking);
     }
 }
