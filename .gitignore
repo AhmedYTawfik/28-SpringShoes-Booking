@@ -38,6 +38,11 @@ build/
 ### ENV file ###
 .env
 
+### Project-specific ###
+.claude/
+CLAUDE.md
+booking-milestone-1.pdf
+
 *.class
 
 ### Development files
