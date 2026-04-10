@@ -79,21 +79,23 @@ public class ProviderService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
         }
 
-        Object[] result = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
+        List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
 
         Long totalBookings = 0L;
         Double totalEarnings = 0.0;
         Double averageBookingPrice = 0.0;
 
-        if (result != null) {
-            if (result[0] != null) {
-                totalBookings = ((Number) result[0]).longValue();
+        if (!results.isEmpty()) {
+            Object[] row = results.get(0);
+
+            if (row[0] != null) {
+                totalBookings = ((Number) row[0]).longValue();
             }
-            if (result[1] != null) {
-                totalEarnings = ((Number) result[1]).doubleValue();
+            if (row[1] != null) {
+                totalEarnings = ((Number) row[1]).doubleValue();
             }
-            if (result[2] != null) {
-                averageBookingPrice = ((Number) result[2]).doubleValue();
+            if (row[2] != null) {
+                averageBookingPrice = ((Number) row[2]).doubleValue();
             }
         }
 
