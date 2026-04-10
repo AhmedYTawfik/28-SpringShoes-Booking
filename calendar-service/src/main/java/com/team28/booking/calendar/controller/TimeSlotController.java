@@ -41,6 +41,11 @@ public class TimeSlotController {
         return timeSlotService.getTimeSlotById(id);
     }
 
+    @GetMapping("/provider/{providerId}/latest")
+    public TimeSlot getLatestTimeSlot(@PathVariable Long providerId) {
+        return timeSlotService.getLatestTimeSlot(providerId);
+    }
+
     @PutMapping("/{id}")
     public TimeSlot update(@PathVariable Long id, @RequestBody TimeSlot timeSlot) {
         return timeSlotService.updateTimeSlot(id, timeSlot);
