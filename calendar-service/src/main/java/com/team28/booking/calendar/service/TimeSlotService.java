@@ -1,11 +1,13 @@
 package com.team28.booking.calendar.service;
 
+import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -21,7 +23,9 @@ public class TimeSlotService {
 
     public TimeSlot createTimeSlot(TimeSlot timeSlot) {
         timeSlot.setCreatedAt(LocalDateTime.now());
-        timeSlot.setAvailable(true);
+        if (timeSlot.getAvailable() == null) {
+            timeSlot.setAvailable(true);
+        }
         return timeSlotRepository.save(timeSlot);
     }
 
@@ -33,7 +37,9 @@ public class TimeSlotService {
 
         validateTimeRange(timeSlot);
         timeSlot.setProviderId(providerId);
-        timeSlot.setAvailable(true);
+        if (timeSlot.getAvailable() == null) {
+            timeSlot.setAvailable(true);
+        }
         timeSlot.setCreatedAt(LocalDateTime.now());
         return timeSlotRepository.save(timeSlot);
     }
@@ -86,6 +92,28 @@ public class TimeSlotService {
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Invalid operator: " + operator + ". Must be eq, gt, or lt");
         };
+    }
+
+    public ProviderUtilizationDTO getUtilization(Long providerId, LocalDate startDate, LocalDate endDate) {
+        Long count = timeSlotRepository.countProviderById(providerId);
+        if (count == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        Object[] stats = timeSlotRepository.getUtilizationStats(providerId, startDate, endDate);
+        Object[] row = (Object[]) stats[0];
+        Long totalSlots = ((Number) row[0]).longValue();
+        Long bookedSlots = ((Number) row[1]).longValue();
+        Long availableSlots = ((Number) row[2]).longValue();
+
+        Double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots * 100.0 : 0.0;
+
+        String peakDay = timeSlotRepository.findPeakDay(providerId, startDate, endDate);
+        if (peakDay != null) {
+            peakDay = peakDay.trim();
+        }
+
+        return new ProviderUtilizationDTO(providerId, totalSlots, bookedSlots, availableSlots, utilizationRate, peakDay);
     }
 
     private void validateTimeRange(TimeSlot timeSlot) {

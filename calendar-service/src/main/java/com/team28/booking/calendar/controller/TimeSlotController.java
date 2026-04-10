@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.controller;
 
+import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.service.TimeSlotService;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -59,6 +61,14 @@ public class TimeSlotController {
             @RequestParam String operator,
             @RequestParam String value) {
         return timeSlotService.searchByMetadata(key, operator, value);
+    }
+
+    @GetMapping("/provider/{providerId}/utilization")
+    public ProviderUtilizationDTO getUtilization(
+            @PathVariable Long providerId,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return timeSlotService.getUtilization(providerId, startDate, endDate);
     }
 
     @PutMapping("/{id}")
