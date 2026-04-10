@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -111,5 +112,86 @@ public class BookingServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
         verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
         verify(bookingRepository, never()).save(any(Booking.class));
+    }
+
+    // --- S3-F5: searchByMetadata ---
+
+    @Test
+    void searchByMetadata_validKeyValue_returnsList() {
+        Booking b1 = new Booking();
+        b1.setId(2L);
+        Booking b2 = new Booking();
+        b2.setId(3L);
+        when(bookingRepository.findByMetadataKeyValue("bookingType", "IN_PERSON"))
+                .thenReturn(List.of(b1, b2));
+
+        List<Booking> result = bookingService.searchByMetadata("bookingType", "IN_PERSON");
+
+        assertEquals(2, result.size());
+        verify(bookingRepository).findByMetadataKeyValue("bookingType", "IN_PERSON");
+    }
+
+    @Test
+    void searchByMetadata_noMatches_returnsEmptyList() {
+        when(bookingRepository.findByMetadataKeyValue("bookingType", "VIRTUAL"))
+                .thenReturn(List.of());
+
+        List<Booking> result = bookingService.searchByMetadata("bookingType", "VIRTUAL");
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void searchByMetadata_blankKey_throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchByMetadata("  ", "IN_PERSON"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).findByMetadataKeyValue(any(), any());
+    }
+
+    @Test
+    void searchByMetadata_emptyKey_throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchByMetadata("", "IN_PERSON"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).findByMetadataKeyValue(any(), any());
+    }
+
+    @Test
+    void searchByMetadata_blankValue_throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchByMetadata("bookingType", "  "));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).findByMetadataKeyValue(any(), any());
+    }
+
+    @Test
+    void searchByMetadata_emptyValue_throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchByMetadata("bookingType", ""));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).findByMetadataKeyValue(any(), any());
+    }
+
+    @Test
+    void searchByMetadata_nullKey_throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchByMetadata(null, "IN_PERSON"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+    }
+
+    @Test
+    void searchByMetadata_passesCorrectParamsToRepository() {
+        when(bookingRepository.findByMetadataKeyValue("priorityLevel", "EXPRESS"))
+                .thenReturn(List.of(booking));
+
+        bookingService.searchByMetadata("priorityLevel", "EXPRESS");
+
+        verify(bookingRepository, times(1)).findByMetadataKeyValue("priorityLevel", "EXPRESS");
     }
 }

@@ -90,6 +90,16 @@ public class BookingService {
         return new BookingEstimateDTO(totalDuration, basePrice, estimatedPrice, demandMultiplier);
     }
   
+    public List<Booking> searchByMetadata(String key, String value) {
+        if (key == null || key.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Metadata key must not be blank");
+        }
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Metadata value must not be blank");
+        }
+        return bookingRepository.findByMetadataKeyValue(key, value);
+    }
+
     @Transactional
     public Booking cancelBooking(Long id) {
         Booking booking = getBookingById(id);
