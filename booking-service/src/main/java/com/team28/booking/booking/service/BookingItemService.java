@@ -1,42 +1,43 @@
 package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.model.Booking;
-import com.team28.booking.booking.model.BookingService;
-import com.team28.booking.booking.repository.BookingServiceRepository;
+import com.team28.booking.booking.model.BookingItem;
+import com.team28.booking.booking.repository.BookingItemRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
 @Service
 public class BookingItemService {
 
-    private final BookingServiceRepository bookingServiceRepository;
-    private final com.team28.booking.booking.service.BookingService bookingService;
+    private final BookingItemRepository bookingItemRepository;
+    private final BookingService bookingService;
 
-    public BookingItemService(BookingServiceRepository bookingServiceRepository,
-                              com.team28.booking.booking.service.BookingService bookingService) {
-        this.bookingServiceRepository = bookingServiceRepository;
+    public BookingItemService(BookingItemRepository bookingItemRepository, BookingService bookingService) {
+        this.bookingItemRepository = bookingItemRepository;
         this.bookingService = bookingService;
     }
 
-    public BookingService createBookingService(Long bookingId, BookingService bookingServiceItem) {
+    public BookingItem createBookingItem(Long bookingId, BookingItem bookingItem) {
         Booking booking = bookingService.getBookingById(bookingId);
-        bookingServiceItem.setId(null);
-        bookingServiceItem.setBooking(booking);
-        return bookingServiceRepository.save(bookingServiceItem);
+        bookingItem.setId(null);
+        bookingItem.setBooking(booking);
+        return bookingItemRepository.save(bookingItem);
     }
 
-    public List<BookingService> getAllBookingServices() {
-        return bookingServiceRepository.findAll();
+    public List<BookingItem> getAllBookingItems() {
+        return bookingItemRepository.findAll();
     }
 
-    public BookingService getBookingServiceById(Long id) {
-        return bookingServiceRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("BookingService not found with id: " + id));
+    public BookingItem getBookingItemById(Long id) {
+        return bookingItemRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "BookingItem not found with id: " + id));
     }
 
-    public BookingService updateBookingService(Long id, BookingService updated) {
-        BookingService existing = getBookingServiceById(id);
+    public BookingItem updateBookingItem(Long id, BookingItem updated) {
+        BookingItem existing = getBookingItemById(id);
 
         if (updated.getServiceOrder() != null) existing.setServiceOrder(updated.getServiceOrder());
         if (updated.getServiceName() != null) existing.setServiceName(updated.getServiceName());
@@ -45,11 +46,11 @@ public class BookingItemService {
         if (updated.getStatus() != null) existing.setStatus(updated.getStatus());
         if (updated.getMetadata() != null) existing.setMetadata(updated.getMetadata());
 
-        return bookingServiceRepository.save(existing);
+        return bookingItemRepository.save(existing);
     }
 
-    public void deleteBookingService(Long id) {
-        BookingService item = getBookingServiceById(id);
-        bookingServiceRepository.delete(item);
+    public void deleteBookingItem(Long id) {
+        BookingItem item = getBookingItemById(id);
+        bookingItemRepository.delete(item);
     }
 }
