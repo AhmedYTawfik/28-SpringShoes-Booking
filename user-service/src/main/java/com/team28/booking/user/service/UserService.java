@@ -1,11 +1,16 @@
 package com.team28.booking.user.service;
 
+import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Status;
 import com.team28.booking.user.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 
 import java.util.List;
@@ -57,6 +62,49 @@ public class UserService {
 
         // 4. Save and return updated user
         return userRepository.save(user);
+    }
+
+
+    // S1-F6: Top Clients by Spending Report
+    public List<TopClientDTO> getTopClientsBySpending(String startDate, String endDate, int limit) {
+        // Validate dates
+        validateDateRange(startDate, endDate);
+
+        // Format dates for SQL (add time component)
+        String startDateTime = startDate + " 00:00:00";
+        String endDateTime = endDate + " 23:59:59";
+
+        // Execute native query
+        List<Object[]> results = userRepository.findTopClientsBySpending(
+                startDateTime, endDateTime, limit);
+
+        // Map Object[] results to DTOs
+        List<TopClientDTO> topClients = new ArrayList<>();
+        for (Object[] row : results) {
+            TopClientDTO dto = new TopClientDTO();
+            dto.setUserId(((Number) row[0]).longValue());
+            dto.setName((String) row[1]);
+            dto.setTotalSpent(((Number) row[2]).doubleValue());
+            dto.setBookingCount(((Number) row[3]).longValue());
+            topClients.add(dto);
+        }
+
+        return topClients;
+    }
+
+    private void validateDateRange(String startDate, String endDate) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+        try {
+            LocalDate start = LocalDate.parse(startDate, formatter);
+            LocalDate end = LocalDate.parse(endDate, formatter);
+
+            if (start.isAfter(end)) {
+                throw new IllegalArgumentException("Start date must be before or equal to end date");
+            }
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd");
+        }
     }
 
 }
