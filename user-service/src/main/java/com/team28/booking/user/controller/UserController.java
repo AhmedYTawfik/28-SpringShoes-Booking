@@ -1,12 +1,13 @@
 package com.team28.booking.user.controller;
 
-import com.team28.booking.user.model.User;
 import com.team28.booking.user.dto.TopClientDTO;
+import com.team28.booking.user.dto.UserBookingSummaryDTO;
+import com.team28.booking.user.model.User;
 import com.team28.booking.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -45,6 +46,19 @@ public class UserController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(user);
+    }
+
+    // S1-F3: Get User Booking Summary
+    @GetMapping("/{id}/booking-summary")
+    public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(userService.getUserBookingSummary(id));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+            }
+            throw e;
+        }
     }
 
     // S1-F1: Search Users with Filters
