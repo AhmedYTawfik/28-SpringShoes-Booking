@@ -21,4 +21,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("email") String email,
             @Param("role") String role
     );
+
+    // S1-F4: Check if user has active bookings (cross-service native SQL)
+    // Active bookings = status IN ('REQUESTED', 'CONFIRMED', 'IN_PROGRESS')
+    @Query(value = "SELECT COUNT(*) FROM bookings b WHERE b.user_id = :userId AND " +
+            "b.status IN ('REQUESTED', 'CONFIRMED', 'IN_PROGRESS')",
+            nativeQuery = true)
+    Long countActiveBookings(@Param("userId") Long userId);
 }
