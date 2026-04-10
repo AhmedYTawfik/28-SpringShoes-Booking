@@ -52,4 +52,14 @@ public class TimeSlotService {
         TimeSlot existing = getTimeSlotById(id);
         timeSlotRepository.delete(existing);
     }
+
+    public List<TimeSlot> searchByMetadata(String key, String operator, String value) {
+        return switch (operator.toLowerCase()) {
+            case "eq" -> timeSlotRepository.findByMetadataEquals(key, value);
+            case "gt" -> timeSlotRepository.findByMetadataGreaterThan(key, value);
+            case "lt" -> timeSlotRepository.findByMetadataLessThan(key, value);
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid operator: " + operator + ". Must be eq, gt, or lt");
+        };
+    }
 }
