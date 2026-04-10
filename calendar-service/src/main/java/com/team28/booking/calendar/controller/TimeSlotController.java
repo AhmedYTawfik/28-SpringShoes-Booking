@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.controller;
 
+import com.team28.booking.calendar.dto.IdleProviderDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.service.TimeSlotService;
 import org.springframework.http.HttpStatus;
@@ -59,6 +60,13 @@ public class TimeSlotController {
             @RequestParam String operator,
             @RequestParam String value) {
         return timeSlotService.searchByMetadata(key, operator, value);
+    }
+
+    @GetMapping("/idle")
+    public List<IdleProviderDTO> getIdleProviders(
+            @RequestParam int maxBookedSlots,
+            @RequestParam int sinceDays) {
+        return timeSlotService.findIdleProviders(maxBookedSlots, sinceDays);
     }
 
     @PutMapping("/{id}")
