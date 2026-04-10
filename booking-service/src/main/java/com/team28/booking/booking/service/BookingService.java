@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.team28.booking.booking.model.BookingItem;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -99,6 +101,33 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Metadata value must not be blank");
         }
         return bookingRepository.findByMetadataKeyValue(key, value);
+    }
+
+    @Transactional
+    public Booking completeBooking(Long id) {
+        Booking booking = getBookingById(id);
+
+        if (booking.getStatus() != Booking.Status.IN_PROGRESS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be IN_PROGRESS to complete");
+        }
+
+        booking.setStatus(Booking.Status.COMPLETED);
+        booking.setCompletedAt(LocalDateTime.now());
+
+        if (booking.getTotalPrice() == null) {
+            BigDecimal total = booking.getBookingServices().stream()
+                    .map(BookingItem::getPrice)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            booking.setTotalPrice(total);
+        }
+
+        if (booking.getProviderId() != null) {
+            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
+        }
+
+        bookingRepository.createInvoiceForBooking(booking.getId(), booking.getUserId(), booking.getTotalPrice());
+
+        return bookingRepository.save(booking);
     }
 
     @Transactional

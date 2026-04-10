@@ -24,4 +24,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     @Query(value = "SELECT * FROM bookings WHERE metadata->>:key = :value", nativeQuery = true)
     List<Booking> findByMetadataKeyValue(@Param("key") String key, @Param("value") String value);
+
+    @Modifying
+    @Query(value = "INSERT INTO invoices (booking_id, user_id, amount, method, status, created_at) " +
+            "VALUES (:bookingId, :userId, :amount, 'CASH', 'PENDING', NOW())", nativeQuery = true)
+    void createInvoiceForBooking(@Param("bookingId") Long bookingId,
+                                  @Param("userId") Long userId,
+                                  @Param("amount") java.math.BigDecimal amount);
 }
