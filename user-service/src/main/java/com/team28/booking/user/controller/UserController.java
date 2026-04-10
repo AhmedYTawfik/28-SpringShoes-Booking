@@ -61,6 +61,24 @@ public class UserController {
         }
     }
 
+    // S1-F7: Set Default Saved Address
+    @PutMapping("/{userId}/addresses/{addressId}/default")
+    public ResponseEntity<User> setDefaultSavedAddress(
+            @PathVariable Long userId,
+            @PathVariable Long addressId) {
+        try {
+            return ResponseEntity.ok(userService.setDefaultSavedAddress(userId, addressId));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage()) || "Address not found".equals(e.getMessage())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            }
+            if ("Address does not belong to this user".equals(e.getMessage())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            }
+            throw e;
+        }
+    }
+
     // S1-F1: Search Users with Filters
     @GetMapping("/search")    // ← Maps to GET /api/users/search
     public ResponseEntity<List<User>> searchUsers(

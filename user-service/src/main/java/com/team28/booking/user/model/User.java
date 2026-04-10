@@ -1,6 +1,6 @@
 package com.team28.booking.user.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -49,7 +49,7 @@ public class User {
     // Bidirectional relationship: One User has Many SavedAddresses
     // User is the INVERSE side (not the owner)
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JsonIgnore  // Prevent infinite recursion during JSON serialization
+    @JsonManagedReference
     private List<SavedAddress> savedAddresses = new ArrayList<>();
 
     // Enums as required by PDF Section 7.1.1
