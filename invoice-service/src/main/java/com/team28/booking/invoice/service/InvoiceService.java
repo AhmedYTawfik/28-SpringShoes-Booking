@@ -1,9 +1,11 @@
 package com.team28.booking.invoice.service;
 
 import com.team28.booking.invoice.model.Invoice;
+import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
 import com.team28.booking.invoice.repository.InvoiceRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -24,7 +26,7 @@ public class InvoiceService {
     // Read by ID
     public Invoice getInvoiceById(Long id) {
         return invoiceRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+            .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
     }
 
     // Read all
@@ -48,7 +50,14 @@ public class InvoiceService {
     // Delete
     public void deleteInvoice(Long id) {
         invoiceRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+            .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
         invoiceRepository.deleteById(id);
+    }
+
+    // Search invoices by status and date range
+    // Converts enum to string for native SQL query
+    public List<Invoice> searchInvoices(InvoiceStatus status, LocalDateTime startDate, LocalDateTime endDate) {
+        String statusStr = status != null ? status.name() : null;
+        return invoiceRepository.searchInvoices(statusStr, startDate, endDate);
     }
 }
