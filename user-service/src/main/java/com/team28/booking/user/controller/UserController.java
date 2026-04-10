@@ -2,6 +2,7 @@ package com.team28.booking.user.controller;
 
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
+import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,6 +75,19 @@ public class UserController {
             }
             if ("Address does not belong to this user".equals(e.getMessage())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            }
+            throw e;
+        }
+    }
+
+    // S1-F8: Get User Profile with Addresses
+    @GetMapping("/{id}/profile")
+    public ResponseEntity<UserProfileDTO> getUserProfile(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(userService.getUserProfile(id));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
             }
             throw e;
         }
