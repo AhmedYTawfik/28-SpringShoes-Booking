@@ -28,4 +28,25 @@ public interface UserRepository extends JpaRepository<User, Long> {
             "b.status IN ('REQUESTED', 'CONFIRMED', 'IN_PROGRESS')",
             nativeQuery = true)
     Long countActiveBookings(@Param("userId") Long userId);
+
+    // S1-F6: Top Clients by Spending (native SQL with JOIN)
+    // Returns: user_id, name, total_spent, booking_count
+    @Query(value = "SELECT u.id as user_id, u.name, " +
+            "COALESCE(SUM(b.total_price), 0) as total_spent, " +
+            "COUNT(b.id) as booking_count " +
+            "FROM users u " +
+            "LEFT JOIN bookings b ON u.id = b.user_id " +
+            "WHERE b.status = 'COMPLETED' " +
+            "AND b.completed_at >= CAST(:startDate AS TIMESTAMP) " +
+            "AND b.completed_at <= CAST(:endDate AS TIMESTAMP) " +
+            "GROUP BY u.id, u.name " +
+            "ORDER BY total_spent DESC " +
+            "LIMIT :limit",
+            nativeQuery = true)
+    List<Object[]> findTopClientsBySpending(
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("limit") int limit
+    );
+
 }
