@@ -45,7 +45,15 @@ public class ProviderController {
         return ResponseEntity.ok("Provider deleted successfully");
     }
 
-    @PutMapping("{providerId}/certifications/{certificationId}/verify")
+    @GetMapping("/pricing-tier")
+    public List<Provider> filterByPricingTier(
+            @RequestParam String tier,
+            @RequestParam(required = false) Provider.ProviderStatus status
+    ) {
+        return providerService.filterByPricingTier(tier, status);
+    }
+
+    @PutMapping("/{providerId}/certifications/{certificationId}/verify")
     public Provider verifyCertificate(
         @PathVariable Long providerId, @PathVariable Long certificationId,
         @RequestBody VerifiedBy verifiedBy

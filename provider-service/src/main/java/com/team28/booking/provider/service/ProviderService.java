@@ -42,6 +42,13 @@ public class ProviderService {
                 .orElseThrow(() -> new RuntimeException("Provider not found with id: " + id));
     }
 
+    public List<Provider> filterByPricingTier(
+            String tier, Provider.ProviderStatus status
+    ) {
+        if (status == null) return providerRepository.findByTier(tier);
+        else return providerRepository.findByTierAndStatus(tier, status.name());
+    }
+
     //update
     public Provider updateProvider(Long id, Provider updatedProvider) {
         Provider existingProvider = getProviderById(id);
