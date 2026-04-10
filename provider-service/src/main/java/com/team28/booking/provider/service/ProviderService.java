@@ -1,9 +1,12 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.TopProviderDTO;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.repository.ProviderRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -28,6 +31,23 @@ public class ProviderService {
     public Provider getProviderById(Long id) {
         return providerRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Provider not found with id: " + id));
+    }
+
+    public List<TopProviderDTO> getTopRatedProviders(int limit) {
+        List<Provider> topProviders;
+        if (limit == 0) topProviders = providerRepository.findAll();
+        else {
+            PageRequest paging = PageRequest.of(0, limit);
+            topProviders = providerRepository.findTopProviders(paging);
+        }
+
+        List<TopProviderDTO> topProviderDTOS = new ArrayList<>();
+        topProviders.forEach(provider -> topProviderDTOS.add(
+            // The total bookings are left as 0 for now
+            new TopProviderDTO(provider.getId(), provider.getName(), provider.getRating(), 0))
+        );
+
+        return topProviderDTOS;
     }
 
     //update
