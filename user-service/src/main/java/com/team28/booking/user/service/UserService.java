@@ -69,6 +69,17 @@ public class UserService {
         );
     }
 
+    public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
+        if (language == null || language.trim().isEmpty()) {
+            throw new IllegalArgumentException("Language must not be blank");
+        }
+
+        return userRepository.findUsersByLanguagePreferenceAndMinimumCompletedBookings(
+                language.trim(),
+                minBookings
+        );
+    }
+
     // S1-F7: Set one saved address as default for the user.
     @Transactional
     public User setDefaultSavedAddress(Long userId, Long addressId) {
