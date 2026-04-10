@@ -1,5 +1,6 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
@@ -70,6 +71,39 @@ public class ProviderService {
     public void deleteProvider(Long id) {
         Provider provider = getProviderById(id);
         providerRepository.delete(provider);
+    }
+
+    public ProviderEarningsDTO getProviderEarningsSummary(Long providerId, LocalDate startDate, LocalDate endDate) {
+        Provider provider = getProviderById(providerId);
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
+        }
+
+        Object[] result = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
+
+        Long totalBookings = 0L;
+        Double totalEarnings = 0.0;
+        Double averageBookingPrice = 0.0;
+
+        if (result != null) {
+            if (result[0] != null) {
+                totalBookings = ((Number) result[0]).longValue();
+            }
+            if (result[1] != null) {
+                totalEarnings = ((Number) result[1]).doubleValue();
+            }
+            if (result[2] != null) {
+                averageBookingPrice = ((Number) result[2]).doubleValue();
+            }
+        }
+
+        return new ProviderEarningsDTO(
+                provider.getId(),
+                provider.getName(),
+                totalBookings,
+                totalEarnings,
+                averageBookingPrice
+        );
     }
 
     // I am only writing once, but whatever
