@@ -72,6 +72,14 @@ public class ProviderService {
         providerRepository.delete(provider);
     }
 
+    public List<Provider> searchProviders(Provider.ProviderStatus status, Double minRating, Double maxRating) {
+        if (minRating != null && maxRating != null && minRating > maxRating) {
+            throw new IllegalArgumentException("minRating cannot be greater than maxRating");
+        }
+
+        return providerRepository.searchProviders(status, minRating, maxRating);
+    }
+
     // I am only writing once, but whatever
     @Transactional
     public Provider verifyCertificate(Long providerId, Long certificationId, VerifiedBy verifiedBy) {
