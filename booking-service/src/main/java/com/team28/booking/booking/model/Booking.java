@@ -48,9 +48,9 @@ public class Booking {
 
     private LocalDateTime completedAt;
 
-    // Booking is the INVERSE side; BookingService is the owner (has the FK)
+    // Booking is the INVERSE side; BookingItem is the owner (has the FK)
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<BookingService> bookingServices = new ArrayList<>();
+    private List<BookingItem> bookingServices = new ArrayList<>();
 
     public enum Status {
         REQUESTED, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED
@@ -94,6 +94,6 @@ public class Booking {
     public LocalDateTime getCompletedAt() { return completedAt; }
     public void setCompletedAt(LocalDateTime completedAt) { this.completedAt = completedAt; }
 
-    public List<BookingService> getBookingServices() { return bookingServices; }
-    public void setBookingServices(List<BookingService> bookingServices) { this.bookingServices = bookingServices; }
+    public List<BookingItem> getBookingServices() { return bookingServices; }
+    public void setBookingServices(List<BookingItem> bookingServices) { this.bookingServices = bookingServices; }
 }

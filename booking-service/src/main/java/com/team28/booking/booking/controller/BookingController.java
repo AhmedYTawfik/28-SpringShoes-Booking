@@ -29,29 +29,17 @@ public class BookingController {
 
     @GetMapping("/{id}")
     public ResponseEntity<Booking> getBookingById(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(bookingService.getBookingById(id));
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+        return ResponseEntity.ok(bookingService.getBookingById(id));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<Booking> updateBooking(@PathVariable Long id, @RequestBody Booking booking) {
-        try {
-            return ResponseEntity.ok(bookingService.updateBooking(id, booking));
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+        return ResponseEntity.ok(bookingService.updateBooking(id, booking));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteBooking(@PathVariable Long id) {
-        try {
-            bookingService.deleteBooking(id);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+        bookingService.deleteBooking(id);
+        return ResponseEntity.noContent().build();
     }
 }

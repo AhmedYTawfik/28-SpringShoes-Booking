@@ -9,7 +9,7 @@ import java.util.Map;
 
 @Entity
 @Table(name = "booking_services")
-public class BookingService {
+public class BookingItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,7 +35,7 @@ public class BookingService {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> metadata;
 
-    // BookingService is the OWNER side (has the FK column booking_id)
+    // BookingItem is the OWNER side (has the FK column booking_id)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "booking_id", nullable = false)
     @JsonIgnore
