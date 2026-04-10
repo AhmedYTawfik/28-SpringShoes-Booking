@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.controller;
 
+import com.team28.booking.calendar.dto.AvailableProviderDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.service.TimeSlotService;
 import org.springframework.http.HttpStatus;
@@ -10,9 +11,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -40,6 +43,13 @@ public class TimeSlotController {
     @GetMapping
     public List<TimeSlot> getAll() {
         return timeSlotService.getAllTimeSlots();
+    }
+
+    @GetMapping("/available")
+    public List<AvailableProviderDTO> getAvailableProviders(
+            @RequestParam LocalDate date,
+            @RequestParam(required = false) String specialty) {
+        return timeSlotService.findAvailableProviders(date, specialty);
     }
 
     @GetMapping("/{id}")
