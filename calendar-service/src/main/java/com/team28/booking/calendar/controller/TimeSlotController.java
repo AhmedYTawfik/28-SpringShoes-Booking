@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/timeslots")
@@ -70,5 +71,10 @@ public class TimeSlotController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         timeSlotService.deleteTimeSlot(id);
+    }
+
+    @DeleteMapping("/purge")
+    public Map<String, Integer> purge(@RequestParam int olderThanDays) {
+        return timeSlotService.purgeOldSlots(olderThanDays);
     }
 }

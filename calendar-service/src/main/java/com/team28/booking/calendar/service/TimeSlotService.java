@@ -4,11 +4,14 @@ import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class TimeSlotService {
@@ -86,6 +89,19 @@ public class TimeSlotService {
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Invalid operator: " + operator + ". Must be eq, gt, or lt");
         };
+    }
+
+    @Transactional
+    public Map<String, Integer> purgeOldSlots(int olderThanDays) {
+        if (olderThanDays < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "olderThanDays must be greater than or equal to 0");
+        }
+
+        LocalDate cutoffDate = LocalDate.now().minusDays(olderThanDays);
+        int deletedCount = timeSlotRepository.countByDateBefore(cutoffDate);
+        timeSlotRepository.deleteByDateBefore(cutoffDate);
+        return Map.of("deletedCount", deletedCount);
     }
 
     private void validateTimeRange(TimeSlot timeSlot) {
