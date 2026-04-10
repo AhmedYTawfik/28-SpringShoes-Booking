@@ -1,10 +1,12 @@
 package com.team28.booking.invoice.controller;
 
 import com.team28.booking.invoice.model.Invoice;
+import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
 import com.team28.booking.invoice.service.InvoiceService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -13,6 +15,7 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
 
+    // Constructor injection
     public InvoiceController(InvoiceService invoiceService) {
         this.invoiceService = invoiceService;
     }
@@ -33,6 +36,17 @@ public class InvoiceController {
     @GetMapping
     public ResponseEntity<List<Invoice>> getAllInvoices() {
         return ResponseEntity.ok(invoiceService.getAllInvoices());
+    }
+
+    // Search invoices by status and date range
+    // Supports partial matching - returns empty list if no matches
+    @GetMapping("/search")
+    public ResponseEntity<List<Invoice>> searchInvoices(
+        @RequestParam(required = false) InvoiceStatus status,
+        @RequestParam(required = false) LocalDateTime startDate,
+        @RequestParam(required = false) LocalDateTime endDate
+    ) {
+        return ResponseEntity.ok(invoiceService.searchInvoices(status, startDate, endDate));
     }
 
     // Update
