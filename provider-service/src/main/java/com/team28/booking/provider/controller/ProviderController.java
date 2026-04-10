@@ -1,5 +1,6 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.provider.dto.TopProviderDTO;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.service.ProviderService;
 import org.springframework.http.ResponseEntity;
@@ -42,5 +43,12 @@ public class ProviderController {
     public ResponseEntity<String> deleteProvider(@PathVariable Long id) {
         providerService.deleteProvider(id);
         return ResponseEntity.ok("Provider deleted successfully");
+    }
+
+    @GetMapping("/reports/top-rated")
+    public List<TopProviderDTO> getTopProviders(
+        @RequestParam(required = false, defaultValue = "0") int limit
+    ) {
+        return providerService.getTopRatedProviders(limit);
     }
 }
