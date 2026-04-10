@@ -49,4 +49,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("limit") int limit
     );
 
+    // S1-F3: User booking summary aggregated from the shared bookings table.
+    @Query(value = "SELECT u.id AS user_id, u.name, " +
+            "COUNT(b.id) AS total_bookings, " +
+            "SUM(CASE WHEN b.status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed_bookings, " +
+            "SUM(CASE WHEN b.status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancelled_bookings, " +
+            "COALESCE(SUM(CASE WHEN b.status = 'COMPLETED' THEN b.total_price ELSE 0 END), 0) AS total_spent, " +
+            "COALESCE(ROUND(AVG(CASE WHEN b.status = 'COMPLETED' THEN b.total_price END), 2), 0) AS average_booking_price " +
+            "FROM users u " +
+            "LEFT JOIN bookings b ON u.id = b.user_id " +
+            "WHERE u.id = :userId " +
+            "GROUP BY u.id, u.name",
+            nativeQuery = true)
+    Object[] findUserBookingSummary(@Param("userId") Long userId);
+
 }
