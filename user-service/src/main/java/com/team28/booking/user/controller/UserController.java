@@ -1,6 +1,7 @@
 package com.team28.booking.user.controller;
 
 import com.team28.booking.user.model.User;
+import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -70,5 +71,22 @@ public class UserController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
+
+    // S1-F6: Top Clients by Spending Report
+    @GetMapping("/reports/top-clients")
+    public ResponseEntity<List<TopClientDTO>> getTopClients(
+            @RequestParam String startDate,
+            @RequestParam String endDate,
+            @RequestParam(defaultValue = "10") int limit) {
+
+        try {
+            List<TopClientDTO> topClients = userService.getTopClientsBySpending(
+                    startDate, endDate, limit);
+            return ResponseEntity.ok(topClients);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
 
 }
