@@ -60,47 +60,43 @@ public class InvoiceService {
     }
     
     public InvoiceDetailsDTO getInvoiceDetails(Long invoiceId) {
-    Invoice invoice = invoiceRepository.findByIdWithDiscounts(invoiceId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invoice not found with id: " + invoiceId));
+        Invoice invoice = invoiceRepository.findByIdWithDiscounts(invoiceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invoice not found with id: " + invoiceId));
 
-    InvoiceDetailsDTO details = new InvoiceDetailsDTO();
-    details.setInvoiceId(invoice.getId());
-    details.setBookingId(invoice.getBookingId());
-    details.setUserId(invoice.getUserId());
-    details.setOriginalAmount(invoice.getAmount());
-    details.setMethod(invoice.getMethod());
-    details.setStatus(invoice.getStatus());
-    details.setTransactionDetails(invoice.getTransactionDetails());
-
-    List<AppliedDiscountDTO> appliedDiscounts = invoice.getInvoiceDiscounts().stream()
+        List<AppliedDiscountDTO> appliedDiscounts = invoice.getInvoiceDiscounts().stream()
             .map(this::mapAppliedDiscount)
             .toList();
 
-    double totalDiscount = invoice.getInvoiceDiscounts().stream()
-            .map(InvoiceDiscount::getDiscountApplied)
-            .filter(v -> v != null)
-            .mapToDouble(Double::doubleValue)
-            .sum();
+        double totalDiscount = invoice.getInvoiceDiscounts().stream()
+                .map(InvoiceDiscount::getDiscountApplied)
+                .filter(v -> v != null)
+                .mapToDouble(Double::doubleValue)
+                .sum();
 
-    double originalAmount = invoice.getAmount() == null ? 0.0 : invoice.getAmount();
-    double finalAmount = originalAmount - totalDiscount;
+        double originalAmount = invoice.getAmount() == null ? 0.0 : invoice.getAmount();
+        double finalAmount = originalAmount - totalDiscount;
 
-    details.setAppliedDiscounts(appliedDiscounts);
-    details.setTotalDiscount(totalDiscount);
-    details.setFinalAmount(finalAmount);
-
-    return details;
-}
+        return new InvoiceDetailsDTO(
+                invoice.getId(),
+                invoice.getBookingId(),
+                invoice.getUserId(),
+                originalAmount,
+                invoice.getMethod(),
+                invoice.getStatus(),
+                invoice.getTransactionDetails(),
+                appliedDiscounts,
+                totalDiscount,
+                finalAmount
+        );
+    }
 
 private AppliedDiscountDTO mapAppliedDiscount(InvoiceDiscount invoiceDiscount) {
-    AppliedDiscountDTO dto = new AppliedDiscountDTO();
     Discount discount = invoiceDiscount.getDiscount();
-
-    dto.setDiscountCode(discount != null ? discount.getCode() : null);
-    dto.setDiscountType(discount != null ? discount.getDiscountType() : null);
-    dto.setDiscountApplied(invoiceDiscount.getDiscountApplied());
-    dto.setAppliedAt(invoiceDiscount.getAppliedAt());
-
-    return dto;
+    return new AppliedDiscountDTO(
+            discount != null ? discount.getCode() : null,
+            discount != null ? discount.getDiscountType() : null,
+            invoiceDiscount.getDiscountApplied(),
+            invoiceDiscount.getAppliedAt()
+    );
 }
 }
