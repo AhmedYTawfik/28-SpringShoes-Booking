@@ -49,4 +49,9 @@ public class BookingController {
     public ResponseEntity<BookingEstimateDTO> getEstimate(@RequestBody BookingEstimateRequestDTO request) {
         return ResponseEntity.ok(bookingService.getEstimate(request));
     }
+  
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<Booking> cancelBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.cancelBooking(id));
+    }
 }

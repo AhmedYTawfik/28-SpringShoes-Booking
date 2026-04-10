@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -50,6 +51,14 @@ public class TimeSlotController {
     @GetMapping("/provider/{providerId}/latest")
     public TimeSlot getLatestTimeSlot(@PathVariable Long providerId) {
         return timeSlotService.getLatestTimeSlot(providerId);
+    }
+
+    @GetMapping("/metadata/search")
+    public List<TimeSlot> searchByMetadata(
+            @RequestParam String key,
+            @RequestParam String operator,
+            @RequestParam String value) {
+        return timeSlotService.searchByMetadata(key, operator, value);
     }
 
     @PutMapping("/{id}")
