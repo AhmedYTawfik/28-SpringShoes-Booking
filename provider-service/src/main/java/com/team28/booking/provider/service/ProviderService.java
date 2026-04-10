@@ -1,17 +1,29 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
+import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.provider.repository.ProviderRepository;
+import jakarta.transaction.Transactional;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ProviderService {
     private final ProviderRepository providerRepository;
+    private final ProviderCertificationService certificationService;
 
-    public ProviderService(ProviderRepository providerRepository) {
+    public ProviderService(
+            ProviderRepository providerRepository,
+            ProviderCertificationService certificationService
+    ) {
         this.providerRepository = providerRepository;
+        this.certificationService = certificationService;
     }
 
     //create
@@ -51,5 +63,36 @@ public class ProviderService {
     public void deleteProvider(Long id) {
         Provider provider = getProviderById(id);
         providerRepository.delete(provider);
+    }
+
+    // I am only writing once, but whatever
+    @Transactional
+    public Provider verifyCertificate(Long providerId, Long certificationId, VerifiedBy verifiedBy) {
+        Provider provider;
+        ProviderCertification providerCertification;
+        try {
+            provider = getProviderById(providerId);
+            providerCertification = certificationService.getCertificationById(certificationId);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
+
+        if (providerCertification.getProvider() != provider)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Certificate does not belong to provider");
+
+        LocalDate currentDate = LocalDate.now();
+        if (providerCertification.getExpiryDate().isBefore(currentDate))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Certificate has already expired");
+
+        if (!certificationService.verifyCertificateAdmin(verifiedBy.verifier()))
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "The verifier is not admin");
+
+        providerCertification.setVerified(true);
+        Map<String, Object> metadata = providerCertification.getMetadata();
+        metadata.put("verifiedAt", currentDate);
+        metadata.put("verifiedBy", verifiedBy.verifier());
+        certificationService.updateCertification(certificationId, providerCertification);
+
+        return provider;
     }
 }

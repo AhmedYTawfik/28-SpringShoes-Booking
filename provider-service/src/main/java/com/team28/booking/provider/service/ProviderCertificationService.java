@@ -56,4 +56,8 @@ public class ProviderCertificationService {
         ProviderCertification certification = getCertificationById(id);
         providerCertificationRepository.delete(certification);
     }
+
+    public boolean verifyCertificateAdmin(Long id) {
+        return providerCertificationRepository.verifyVerifierIsAdmin(id);
+    }
 }
