@@ -1,5 +1,6 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.service.ProviderService;
 import org.springframework.http.ResponseEntity;
@@ -50,5 +51,13 @@ public class ProviderController {
             @RequestParam(required = false) Provider.ProviderStatus status
     ) {
         return providerService.filterByPricingTier(tier, status);
+    }
+
+    @PutMapping("/{providerId}/certifications/{certificationId}/verify")
+    public Provider verifyCertificate(
+        @PathVariable Long providerId, @PathVariable Long certificationId,
+        @RequestBody VerifiedBy verifiedBy
+    ) {
+        return providerService.verifyCertificate(providerId, certificationId, verifiedBy);
     }
 }
