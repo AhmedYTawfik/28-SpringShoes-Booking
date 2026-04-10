@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.rest.core.annotation.RepositoryRestResource;
 
+import java.util.List;
 import java.util.Optional;
 
 @RepositoryRestResource(exported=false)
@@ -15,4 +16,15 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
     Long countProviderById(@Param("providerId") Long providerId);
 
     Optional<TimeSlot> findTopByProviderIdOrderByDateDescStartTimeDesc(Long providerId);
+
+    @Query(value = "SELECT * FROM time_slots WHERE metadata ->> :key = :value", nativeQuery = true)
+    List<TimeSlot> findByMetadataEquals(@Param("key") String key, @Param("value") String value);
+
+    @Query(value = "SELECT * FROM time_slots WHERE CAST(metadata ->> :key AS NUMERIC) > CAST(:value AS NUMERIC)",
+            nativeQuery = true)
+    List<TimeSlot> findByMetadataGreaterThan(@Param("key") String key, @Param("value") String value);
+
+    @Query(value = "SELECT * FROM time_slots WHERE CAST(metadata ->> :key AS NUMERIC) < CAST(:value AS NUMERIC)",
+            nativeQuery = true)
+    List<TimeSlot> findByMetadataLessThan(@Param("key") String key, @Param("value") String value);
 }
