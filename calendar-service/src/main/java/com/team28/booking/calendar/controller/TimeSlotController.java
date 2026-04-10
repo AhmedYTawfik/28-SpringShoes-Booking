@@ -31,6 +31,12 @@ public class TimeSlotController {
         return timeSlotService.createTimeSlot(timeSlot);
     }
 
+    @PostMapping("/provider/{providerId}")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TimeSlot createForProvider(@PathVariable Long providerId, @RequestBody TimeSlot timeSlot) {
+        return timeSlotService.createTimeSlotForProvider(providerId, timeSlot);
+    }
+
     @GetMapping
     public List<TimeSlot> getAll() {
         return timeSlotService.getAllTimeSlots();

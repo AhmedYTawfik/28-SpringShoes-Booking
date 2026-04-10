@@ -24,6 +24,19 @@ public class TimeSlotService {
         return timeSlotRepository.save(timeSlot);
     }
 
+    public TimeSlot createTimeSlotForProvider(Long providerId, TimeSlot timeSlot) {
+        Long providerCount = timeSlotRepository.countProviderById(providerId);
+        if (providerCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        validateTimeRange(timeSlot);
+        timeSlot.setProviderId(providerId);
+        timeSlot.setAvailable(true);
+        timeSlot.setCreatedAt(LocalDateTime.now());
+        return timeSlotRepository.save(timeSlot);
+    }
+
     public List<TimeSlot> getAllTimeSlots() {
         return timeSlotRepository.findAll();
     }
@@ -33,7 +46,7 @@ public class TimeSlotService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "TimeSlot not found with id: " + id));
     }
-    //todo: check if this function is written correctly
+
     public TimeSlot getLatestTimeSlot(Long providerId) {
         Long providerCount = timeSlotRepository.countProviderById(providerId);
         if (providerCount == 0) {
@@ -62,5 +75,14 @@ public class TimeSlotService {
     public void deleteTimeSlot(Long id) {
         TimeSlot existing = getTimeSlotById(id);
         timeSlotRepository.delete(existing);
+    }
+
+    private void validateTimeRange(TimeSlot timeSlot) {
+        if (timeSlot.getStartTime() == null
+                || timeSlot.getEndTime() == null
+                || !timeSlot.getStartTime().isBefore(timeSlot.getEndTime())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "startTime must be before endTime");
+        }
     }
 }
