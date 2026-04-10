@@ -35,7 +35,7 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
       AND b.status = 'COMPLETED'
       AND b.appointment_date BETWEEN :startDate AND :endDate
     """, nativeQuery = true)
-    Object[] getProviderEarningsSummary(@Param("providerId") Long providerId,
+    List<Object[]> getProviderEarningsSummary(@Param("providerId") Long providerId,
                                         @Param("startDate") LocalDate startDate,
                                         @Param("endDate") LocalDate endDate);
 
