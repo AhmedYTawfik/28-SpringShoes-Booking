@@ -45,7 +45,7 @@ public class TimeSlotController {
     @PostMapping("/batch")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Integer> batchCreate(@RequestBody BatchTimeSlotRequest request) {
-        int count = timeSlotService.batchCreateTimeSlots(request.getProviderId(), request.getTimeSlots());
+        int count = timeSlotService.batchCreateTimeSlots(request.providerId(), request.timeSlots());
         return Map.of("count", count);
     }
 

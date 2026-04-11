@@ -41,6 +41,10 @@ public class TimeSlotService {
         validateProviderExists(providerId);
 
         for (TimeSlot timeSlot : timeSlots) {
+            if (timeSlot.getId() != null) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "TimeSlot ID must be null for batch create");
+            }
             validateTimeRange(timeSlot);
             timeSlot.setProviderId(providerId);
             timeSlot.setAvailable(true);
