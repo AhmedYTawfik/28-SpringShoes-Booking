@@ -1,5 +1,7 @@
 package com.team28.booking.booking.controller;
 
+import com.team28.booking.booking.dto.BookingEstimateDTO;
+import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
@@ -41,5 +43,22 @@ public class BookingController {
     public ResponseEntity<Void> deleteBooking(@PathVariable Long id) {
         bookingService.deleteBooking(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/estimate")
+    public ResponseEntity<BookingEstimateDTO> getEstimate(@RequestBody BookingEstimateRequestDTO request) {
+        return ResponseEntity.ok(bookingService.getEstimate(request));
+    }
+
+    @GetMapping("/metadata/search")
+    public ResponseEntity<List<Booking>> searchByMetadata(
+            @RequestParam String key,
+            @RequestParam String value) {
+        return ResponseEntity.ok(bookingService.searchByMetadata(key, value));
+    }
+  
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<Booking> cancelBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.cancelBooking(id));
     }
 }

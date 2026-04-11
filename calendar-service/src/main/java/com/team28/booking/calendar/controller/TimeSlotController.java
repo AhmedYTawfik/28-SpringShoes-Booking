@@ -1,5 +1,9 @@
 package com.team28.booking.calendar.controller;
 
+import com.team28.booking.calendar.dto.AvailableProviderDTO;
+import com.team28.booking.calendar.dto.IdleProviderDTO;
+import com.team28.booking.calendar.dto.BatchTimeSlotRequest;
+import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.service.TimeSlotService;
 import org.springframework.http.HttpStatus;
@@ -10,10 +14,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/timeslots")
@@ -31,9 +38,29 @@ public class TimeSlotController {
         return timeSlotService.createTimeSlot(timeSlot);
     }
 
+    @PostMapping("/provider/{providerId}")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TimeSlot createForProvider(@PathVariable Long providerId, @RequestBody TimeSlot timeSlot) {
+        return timeSlotService.createTimeSlotForProvider(providerId, timeSlot);
+    }
+
+    @PostMapping("/batch")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Map<String, Integer> batchCreate(@RequestBody BatchTimeSlotRequest request) {
+        int count = timeSlotService.batchCreateTimeSlots(request.providerId(), request.timeSlots());
+        return Map.of("count", count);
+    }
+
     @GetMapping
     public List<TimeSlot> getAll() {
         return timeSlotService.getAllTimeSlots();
+    }
+
+    @GetMapping("/available")
+    public List<AvailableProviderDTO> getAvailableProviders(
+            @RequestParam LocalDate date,
+            @RequestParam(required = false) String specialty) {
+        return timeSlotService.findAvailableProviders(date, specialty);
     }
 
     @GetMapping("/{id}")
@@ -46,6 +73,37 @@ public class TimeSlotController {
         return timeSlotService.getLatestTimeSlot(providerId);
     }
 
+    @GetMapping("/history")
+    public List<TimeSlot> getHistory(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate,
+            @RequestParam(required = false) Long providerId) {
+        return timeSlotService.getHistory(startDate, endDate, providerId);
+    }
+      
+    @GetMapping("/metadata/search")
+    public List<TimeSlot> searchByMetadata(
+            @RequestParam String key,
+            @RequestParam String operator,
+            @RequestParam String value) {
+        return timeSlotService.searchByMetadata(key, operator, value);
+    }
+
+    @GetMapping("/idle")
+    public List<IdleProviderDTO> getIdleProviders(
+            @RequestParam int maxBookedSlots,
+            @RequestParam int sinceDays) {
+        return timeSlotService.findIdleProviders(maxBookedSlots, sinceDays);
+    }
+      
+    @GetMapping("/provider/{providerId}/utilization")
+    public ProviderUtilizationDTO getUtilization(
+            @PathVariable Long providerId,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return timeSlotService.getUtilization(providerId, startDate, endDate);
+    }
+
     @PutMapping("/{id}")
     public TimeSlot update(@PathVariable Long id, @RequestBody TimeSlot timeSlot) {
         return timeSlotService.updateTimeSlot(id, timeSlot);
@@ -55,5 +113,10 @@ public class TimeSlotController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         timeSlotService.deleteTimeSlot(id);
+    }
+
+    @DeleteMapping("/purge")
+    public Map<String, Integer> purge(@RequestParam int olderThanDays) {
+        return timeSlotService.purgeOldSlots(olderThanDays);
     }
 }
