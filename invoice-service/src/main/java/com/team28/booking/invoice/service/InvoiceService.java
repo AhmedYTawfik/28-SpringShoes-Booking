@@ -2,6 +2,16 @@ package com.team28.booking.invoice.service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.team28.booking.invoice.dto.AppliedDiscountDTO;
+import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -160,6 +170,47 @@ public class InvoiceService {
         invoiceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
         invoiceRepository.deleteById(id);
+    }
+    
+    public InvoiceDetailsDTO getInvoiceDetails(Long invoiceId) {
+        Invoice invoice = invoiceRepository.findByIdWithDiscounts(invoiceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + invoiceId));
+
+        List<AppliedDiscountDTO> appliedDiscounts = invoice.getInvoiceDiscounts().stream()
+                .map(this::mapAppliedDiscount)
+                .toList();
+
+        double totalDiscount = invoice.getInvoiceDiscounts().stream()
+                .map(InvoiceDiscount::getDiscountApplied)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+
+        double originalAmount = invoice.getAmount() == null ? 0.0 : invoice.getAmount();
+        double finalAmount = originalAmount - totalDiscount;
+
+        return new InvoiceDetailsDTO(
+                invoice.getId(),
+                invoice.getBookingId(),
+                invoice.getUserId(),
+                originalAmount,
+                invoice.getMethod(),
+                invoice.getStatus(),
+                invoice.getTransactionDetails(),
+                appliedDiscounts,
+                totalDiscount,
+                finalAmount
+        );
+    }
+
+    private AppliedDiscountDTO mapAppliedDiscount(InvoiceDiscount invoiceDiscount) {
+        Discount discount = invoiceDiscount.getDiscount();
+        return new AppliedDiscountDTO(
+                discount != null ? discount.getCode() : null,
+                discount != null ? discount.getDiscountType() : null,
+                invoiceDiscount.getDiscountApplied(),
+                invoiceDiscount.getAppliedAt()
+        );
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
