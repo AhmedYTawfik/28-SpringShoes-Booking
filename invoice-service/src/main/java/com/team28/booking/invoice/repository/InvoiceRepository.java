@@ -58,4 +58,18 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
             """, nativeQuery = true)
     Object[] getRevenueStats(@Param("startDate") LocalDateTime startDate,
                              @Param("endDate") LocalDateTime endDate);
+
+
+    // Get invoice summary grouped by method for a user
+    @Query(value = """
+        SELECT method, COUNT(*) as invoice_count, SUM(amount) as total_amount
+        FROM invoices
+        WHERE user_id = :userId AND status = 'COMPLETED'
+        GROUP BY method
+        """, nativeQuery = true)
+    List<Object[]> getInvoiceSummaryByUserId(@Param("userId") Long userId);
+
+    // Verify user exists (cross-service query)
+    @Query(value = "SELECT id FROM users WHERE id = :userId", nativeQuery = true)
+    Long findUserById(@Param("userId") Long userId);
 }
