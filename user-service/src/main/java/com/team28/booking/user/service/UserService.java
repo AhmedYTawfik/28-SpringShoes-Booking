@@ -80,6 +80,64 @@ public class UserService {
         userRepository.delete(existingUser);
     }
 
+    public SavedAddress createSavedAddress(Long userId, SavedAddress savedAddress) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        savedAddress.setId(null);
+        savedAddress.setUser(user);
+        return savedAddressRepository.save(savedAddress);
+    }
+
+    public List<SavedAddress> getAllSavedAddresses() {
+        return savedAddressRepository.findAll();
+    }
+
+    public SavedAddress getSavedAddressById(Long addressId) {
+        SavedAddress savedAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (savedAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+        return savedAddress;
+    }
+
+    public SavedAddress updateSavedAddress(Long addressId, SavedAddress updatedAddress) {
+        SavedAddress existingAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (existingAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+
+        existingAddress.setLabel(updatedAddress.getLabel());
+        existingAddress.setAddress(updatedAddress.getAddress());
+        existingAddress.setLatitude(updatedAddress.getLatitude());
+        existingAddress.setLongitude(updatedAddress.getLongitude());
+        if (updatedAddress.getIsDefault() != null) {
+            existingAddress.setIsDefault(updatedAddress.getIsDefault());
+        }
+        existingAddress.setMetadata(updatedAddress.getMetadata());
+
+        if (updatedAddress.getUser() != null && updatedAddress.getUser().getId() != null) {
+            User user = userRepository.findById(updatedAddress.getUser().getId()).orElse(null);
+            if (user == null) {
+                throw new RuntimeException("User not found");
+            }
+            existingAddress.setUser(user);
+        }
+
+        return savedAddressRepository.save(existingAddress);
+    }
+
+    public void deleteSavedAddress(Long addressId) {
+        SavedAddress existingAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (existingAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+
+        savedAddressRepository.delete(existingAddress);
+    }
+
     public UserProfileDTO getUserProfile(Long userId) {
         User user = userRepository.findByIdWithSavedAddresses(userId).orElse(null);
         if (user == null) {
@@ -137,8 +195,9 @@ public class UserService {
             throw new IllegalArgumentException("Address does not belong to this user");
         }
 
+        List<SavedAddress> userAddresses = savedAddressRepository.findByUserId(userId);
         SavedAddress targetAddress = null;
-        for (SavedAddress address : user.getSavedAddresses()) {
+        for (SavedAddress address : userAddresses) {
             address.setIsDefault(false);
             if (addressId.equals(address.getId())) {
                 targetAddress = address;
@@ -150,7 +209,9 @@ public class UserService {
         }
 
         targetAddress.setIsDefault(true);
-        return userRepository.save(user);
+        savedAddressRepository.saveAll(userAddresses);
+        return userRepository.findByIdWithSavedAddresses(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
     }
 
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
@@ -159,7 +220,7 @@ public class UserService {
             throw new RuntimeException("User not found");
         }
 
-        Object[] summaryRow = userRepository.findUserBookingSummary(userId);
+        Object[] summaryRow = normalizeSummaryRow(userRepository.findUserBookingSummary(userId));
         if (summaryRow == null) {
             return new UserBookingSummaryDTO(
                     user.getId(),
@@ -181,6 +242,33 @@ public class UserService {
                 toBigDecimal(summaryRow[5]),
                 toBigDecimal(summaryRow[6])
         );
+    }
+
+    private Object[] normalizeSummaryRow(Object summaryData) {
+        if (summaryData == null) {
+            return null;
+        }
+
+        if (summaryData instanceof List<?> rows) {
+            if (rows.isEmpty()) {
+                return null;
+            }
+            return normalizeSummaryRow(rows.get(0));
+        }
+
+        if (summaryData instanceof Object[] row) {
+            if (row.length == 0) {
+                return null;
+            }
+
+            if (row.length == 1 && (row[0] instanceof Object[] || row[0] instanceof List<?>)) {
+                return normalizeSummaryRow(row[0]);
+            }
+
+            return row;
+        }
+
+        throw new IllegalStateException("Unexpected booking summary result type: " + summaryData.getClass().getName());
     }
 
     // S1-F1: Search Users
