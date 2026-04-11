@@ -1,5 +1,6 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.provider.dto.RateProviderDTO;
 import com.team28.booking.provider.dto.TopProviderDTO;
 import com.team28.booking.provider.dto.UpdateAvailabilityRequest;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
@@ -92,6 +93,13 @@ public class ProviderController {
             @RequestParam(required = false) Provider.ProviderStatus status
     ) {
         return providerService.filterByPricingTier(tier, status);
+    }
+
+    @PostMapping("/{id}/rate")
+    public void rateProvider(
+        @PathVariable Long id, @RequestBody RateProviderDTO rateProvider
+    ) {
+        providerService.rateProvider(id, rateProvider);
     }
 
     @PutMapping("/{providerId}/certifications/{certificationId}/verify")
