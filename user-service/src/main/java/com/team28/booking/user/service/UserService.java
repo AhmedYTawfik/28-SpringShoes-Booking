@@ -50,6 +50,36 @@ public class UserService {
         return userRepository.findById(id).orElse(null);
     }
 
+    public User updateUser(Long userId, User updatedUser) {
+        User existingUser = userRepository.findById(userId).orElse(null);
+        if (existingUser == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        existingUser.setName(updatedUser.getName());
+        existingUser.setEmail(updatedUser.getEmail());
+        existingUser.setPassword(updatedUser.getPassword());
+        existingUser.setPhone(updatedUser.getPhone());
+        existingUser.setRole(updatedUser.getRole());
+
+        if (updatedUser.getStatus() != null) {
+            existingUser.setStatus(updatedUser.getStatus());
+        }
+
+        existingUser.setPreferences(updatedUser.getPreferences());
+
+        return userRepository.save(existingUser);
+    }
+
+    public void deleteUser(Long userId) {
+        User existingUser = userRepository.findById(userId).orElse(null);
+        if (existingUser == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        userRepository.delete(existingUser);
+    }
+
     public UserProfileDTO getUserProfile(Long userId) {
         User user = userRepository.findByIdWithSavedAddresses(userId).orElse(null);
         if (user == null) {
