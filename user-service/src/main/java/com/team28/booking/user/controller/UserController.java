@@ -3,6 +3,7 @@ package com.team28.booking.user.controller;
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.dto.UserProfileDTO;
+import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +49,96 @@ public class UserController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(user);
+    }
+
+    // CRUD: Update User
+    @PutMapping("/{id}")
+    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User user) {
+        try {
+            return ResponseEntity.ok(userService.updateUser(id, user));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Delete User
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        try {
+            userService.deleteUser(id);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Create Saved Address
+    @PostMapping("/{userId}/addresses")
+    public ResponseEntity<SavedAddress> createSavedAddress(
+            @PathVariable Long userId,
+            @RequestBody SavedAddress savedAddress) {
+        try {
+            return ResponseEntity.ok(userService.createSavedAddress(userId, savedAddress));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Get All Saved Addresses
+    @GetMapping("/addresses")
+    public ResponseEntity<List<SavedAddress>> getAllSavedAddresses() {
+        return ResponseEntity.ok(userService.getAllSavedAddresses());
+    }
+
+    // CRUD: Get Saved Address by ID
+    @GetMapping("/addresses/{addressId}")
+    public ResponseEntity<SavedAddress> getSavedAddressById(@PathVariable Long addressId) {
+        try {
+            return ResponseEntity.ok(userService.getSavedAddressById(addressId));
+        } catch (RuntimeException e) {
+            if ("Address not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Update Saved Address
+    @PutMapping("/addresses/{addressId}")
+    public ResponseEntity<SavedAddress> updateSavedAddress(
+            @PathVariable Long addressId,
+            @RequestBody SavedAddress savedAddress) {
+        try {
+            return ResponseEntity.ok(userService.updateSavedAddress(addressId, savedAddress));
+        } catch (RuntimeException e) {
+            if ("Address not found".equals(e.getMessage()) || "User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Delete Saved Address
+    @DeleteMapping("/addresses/{addressId}")
+    public ResponseEntity<Void> deleteSavedAddress(@PathVariable Long addressId) {
+        try {
+            userService.deleteSavedAddress(addressId);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            if ("Address not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
     }
 
     // S1-F2: Put User Preferences
