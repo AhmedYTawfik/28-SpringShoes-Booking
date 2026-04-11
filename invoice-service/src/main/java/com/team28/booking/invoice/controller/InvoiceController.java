@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
@@ -48,6 +49,12 @@ public class InvoiceController {
         return ResponseEntity.ok(invoiceService.getInvoiceById(id));
     }
 
+    @GetMapping("/{invoiceId}/details")
+    public ResponseEntity<InvoiceDetailsDTO> getInvoiceDetails(@PathVariable Long invoiceId) {
+        return ResponseEntity.ok(invoiceService.getInvoiceDetails(invoiceId));
+    }
+
+    // Read all
     @PostMapping("/{invoiceId}/discounts/{discountId}")
     public ResponseEntity<Invoice> applyDiscountToInvoice(@PathVariable Long invoiceId, @PathVariable Long discountId) {
         return ResponseEntity.ok(invoiceService.applyDiscountToInvoice(invoiceId, discountId));
