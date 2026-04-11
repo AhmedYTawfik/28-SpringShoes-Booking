@@ -132,6 +132,7 @@ public class InvoiceService {
     // ── CRUD ────────────────────────────────────────────────────────────────
 
     public Invoice createInvoice(Invoice invoice) {
+        invoice.setCreatedAt(LocalDateTime.now());
         return invoiceRepository.save(invoice);
     }
 
