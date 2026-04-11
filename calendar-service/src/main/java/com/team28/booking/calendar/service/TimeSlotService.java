@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 
@@ -57,6 +58,15 @@ public class TimeSlotService {
         return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "No time slots found for provider"));
+    }
+
+    public List<TimeSlot> getHistory(LocalDate startDate, LocalDate endDate, Long providerId) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "startDate must be before or equal to endDate");
+        }
+
+        return timeSlotRepository.findByDateRangeAndProvider(startDate, endDate, providerId);
     }
 
     public TimeSlot updateTimeSlot(Long id, TimeSlot updated) {
