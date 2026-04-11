@@ -29,6 +29,7 @@ public class InvoiceDiscount {
     @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "invoice_id")
+    @JsonIgnore
     private Invoice invoice;
 
     @JsonIgnore

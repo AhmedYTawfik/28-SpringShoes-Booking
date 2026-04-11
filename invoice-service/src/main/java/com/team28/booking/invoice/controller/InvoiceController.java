@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
+import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
@@ -38,6 +39,10 @@ public class InvoiceController {
     public ResponseEntity<Invoice> createInvoice(@RequestBody Invoice invoice) {
         return ResponseEntity.status(201).body(invoiceService.createInvoice(invoice));
     }
+    @GetMapping("/discounts/top-used")
+    public ResponseEntity<List<DiscountUsageDTO>> getTopUsedDiscounts( @RequestParam(name = "limit", defaultValue = "10") Integer limit) {
+        return ResponseEntity.ok(invoiceService.getTopUsedDiscountsReport(limit)); 
+    }
 
     @GetMapping("/{id}")
     public ResponseEntity<Invoice> getInvoiceById(@PathVariable Long id) {
@@ -50,6 +55,11 @@ public class InvoiceController {
     }
 
     // Read all
+    @PostMapping("/{invoiceId}/discounts/{discountId}")
+    public ResponseEntity<Invoice> applyDiscountToInvoice(@PathVariable Long invoiceId, @PathVariable Long discountId) {
+        return ResponseEntity.ok(invoiceService.applyDiscountToInvoice(invoiceId, discountId));
+    }
+
     @GetMapping
     public ResponseEntity<List<Invoice>> getAllInvoices() {
         return ResponseEntity.ok(invoiceService.getAllInvoices());
