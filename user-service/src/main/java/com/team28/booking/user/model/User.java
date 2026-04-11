@@ -36,6 +36,7 @@ public class User {
     private Role role;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)
     private Status status = Status.ACTIVE;
 
