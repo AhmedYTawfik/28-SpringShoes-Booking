@@ -5,6 +5,7 @@ import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -27,16 +28,26 @@ public class TimeSlotService {
     }
 
     public TimeSlot createTimeSlotForProvider(Long providerId, TimeSlot timeSlot) {
-        Long providerCount = timeSlotRepository.countProviderById(providerId);
-        if (providerCount == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
-        }
-
+        validateProviderExists(providerId);
         validateTimeRange(timeSlot);
         timeSlot.setProviderId(providerId);
         timeSlot.setAvailable(true);
         timeSlot.setCreatedAt(LocalDateTime.now());
         return timeSlotRepository.save(timeSlot);
+    }
+
+    @Transactional
+    public int batchCreateTimeSlots(Long providerId, List<TimeSlot> timeSlots) {
+        validateProviderExists(providerId);
+
+        for (TimeSlot timeSlot : timeSlots) {
+            validateTimeRange(timeSlot);
+            timeSlot.setProviderId(providerId);
+            timeSlot.setAvailable(true);
+            timeSlot.setCreatedAt(LocalDateTime.now());
+        }
+
+        return timeSlotRepository.saveAll(timeSlots).size();
     }
 
     public List<TimeSlot> getAllTimeSlots() {
@@ -63,11 +74,7 @@ public class TimeSlotService {
     }
 
     public TimeSlot getLatestTimeSlot(Long providerId) {
-        Long providerCount = timeSlotRepository.countProviderById(providerId);
-        if (providerCount == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
-        }
-
+        validateProviderExists(providerId);
         return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "No time slots found for provider"));
@@ -98,6 +105,13 @@ public class TimeSlotService {
                 || !timeSlot.getStartTime().isBefore(timeSlot.getEndTime())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "startTime must be before endTime");
+        }
+    }
+
+    private void validateProviderExists(Long providerId) {
+        Long providerCount = timeSlotRepository.countProviderById(providerId);
+        if (providerCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
         }
     }
 }
