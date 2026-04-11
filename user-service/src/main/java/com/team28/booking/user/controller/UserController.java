@@ -125,6 +125,24 @@ public class UserController {
         }
     }
 
+    // CRUD: Get Saved Address by ID for User
+    @GetMapping("/{userId}/addresses/{addressId}")
+    public ResponseEntity<SavedAddress> getSavedAddressById(
+            @PathVariable Long userId,
+            @PathVariable Long addressId) {
+        try {
+            return ResponseEntity.ok(userService.getSavedAddressById(userId, addressId));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage()) || "Address not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            if ("Address does not belong to this user".equals(e.getMessage())) {
+                return ResponseEntity.badRequest().build();
+            }
+            throw e;
+        }
+    }
+
     // CRUD: Update Saved Address
     @PutMapping("/addresses/{addressId}")
     public ResponseEntity<SavedAddress> updateSavedAddress(
@@ -135,6 +153,25 @@ public class UserController {
         } catch (RuntimeException e) {
             if ("Address not found".equals(e.getMessage()) || "User not found".equals(e.getMessage())) {
                 return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Update Saved Address for User
+    @PutMapping("/{userId}/addresses/{addressId}")
+    public ResponseEntity<SavedAddress> updateSavedAddress(
+            @PathVariable Long userId,
+            @PathVariable Long addressId,
+            @RequestBody SavedAddress savedAddress) {
+        try {
+            return ResponseEntity.ok(userService.updateSavedAddress(userId, addressId, savedAddress));
+        } catch (RuntimeException e) {
+            if ("Address not found".equals(e.getMessage()) || "User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            if ("Address does not belong to this user".equals(e.getMessage())) {
+                return ResponseEntity.badRequest().build();
             }
             throw e;
         }
