@@ -17,7 +17,7 @@ public interface DiscountRepository extends JpaRepository<Discount, Long> {
             d.code AS code,
             d.discount_type AS discount_type,
             d.discount_value AS discount_value,
-            d.current_uses AS times_used,
+            COALESCE(d.current_uses, 0) AS times_used,
             COALESCE(SUM(id.discount_applied), 0) AS total_discount_given,
             d.active AS active,
             d.expiry_date AS expiry_date
@@ -26,8 +26,8 @@ public interface DiscountRepository extends JpaRepository<Discount, Long> {
         GROUP BY
             d.id, d.code, d.discount_type, d.discount_value,
             d.current_uses, d.active, d.expiry_date
-        ORDER BY d.current_uses DESC, d.id ASC
+        ORDER BY COALESCE(d.current_uses, 0) DESC, d.id ASC
         LIMIT :limit
         """, nativeQuery = true)
-    List<Object[]> findTopUsedDiscounts(@Param("limit") int limit);
+    List<DiscountUsageProjection> findTopUsedDiscounts(@Param("limit") int limit);
 }

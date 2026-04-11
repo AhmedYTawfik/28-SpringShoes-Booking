@@ -17,6 +17,7 @@ import com.team28.booking.invoice.dto.RevenueReportDTO;
 import com.team28.booking.invoice.exception.BadRequestException;
 import com.team28.booking.invoice.exception.ResourceNotFoundException;
 import com.team28.booking.invoice.model.Discount;
+import com.team28.booking.invoice.repository.DiscountUsageProjection;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.repository.DiscountRepository;
 import com.team28.booking.invoice.repository.InvoiceRepository;
@@ -35,37 +36,25 @@ public class InvoiceService {
         this.discountRepository = discountRepository;
     }
 
-    public List<DiscountUsageDTO> getTopUsedDiscountsReport(Integer limit) {
-        int safeLimit = (limit == null || limit <= 0) ? 10 : limit;
+    private static final int MAX_DISCOUNT_REPORT_LIMIT = 100;
 
-        List<Object[]> rows = discountRepository.findTopUsedDiscounts(safeLimit);
+    public List<DiscountUsageDTO> getTopUsedDiscountsReport(Integer limit) {
+        int safeLimit = (limit == null || limit <= 0) ? 10 : Math.min(limit, MAX_DISCOUNT_REPORT_LIMIT);
+
+        List<DiscountUsageProjection> rows = discountRepository.findTopUsedDiscounts(safeLimit);
         List<DiscountUsageDTO> result = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
 
-        for (Object[] row : rows) {
-            Long discountId = ((Number) row[0]).longValue();
-            String code = (String) row[1];
-            Discount.DiscountType discountType = Discount.DiscountType.valueOf(row[2].toString());
-            Double discountValue = row[3] == null ? 0.0 : ((Number) row[3]).doubleValue();
-            Integer timesUsed = row[4] == null ? 0 : ((Number) row[4]).intValue();
-            Double totalDiscountGiven = row[5] == null ? 0.0 : ((Number) row[5]).doubleValue();
-            Boolean active = row[6] != null && (Boolean) row[6];
-            LocalDateTime expiryDate;
-            if (row[7] instanceof java.sql.Timestamp ts) {
-                expiryDate = ts.toLocalDateTime();
-            } else {
-                expiryDate = (LocalDateTime) row[7];
-            }
-            boolean expired = expiryDate != null && expiryDate.isBefore(now);
-
+        for (DiscountUsageProjection row : rows) {
+            boolean expired = row.getExpiryDate() != null && row.getExpiryDate().isBefore(now);
             result.add(new DiscountUsageDTO(
-                discountId,
-                code,
-                discountType,
-                discountValue,
-                timesUsed,
-                totalDiscountGiven,
-                active,
+                row.getDiscountId(),
+                row.getCode(),
+                Discount.DiscountType.valueOf(row.getDiscountType()),
+                row.getDiscountValue() == null ? 0.0 : row.getDiscountValue(),
+                row.getTimesUsed() == null ? 0 : row.getTimesUsed(),
+                row.getTotalDiscountGiven() == null ? 0.0 : row.getTotalDiscountGiven(),
+                row.getActive() != null && row.getActive(),
                 expired
             ));
         }
