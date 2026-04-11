@@ -48,6 +48,11 @@ public class InvoiceController {
         return ResponseEntity.ok(invoiceService.getInvoiceById(id));
     }
 
+    @PostMapping("/{invoiceId}/discounts/{discountId}")
+    public ResponseEntity<Invoice> applyDiscountToInvoice(@PathVariable Long invoiceId, @PathVariable Long discountId) {
+        return ResponseEntity.ok(invoiceService.applyDiscountToInvoice(invoiceId, discountId));
+    }
+
     @GetMapping
     public ResponseEntity<List<Invoice>> getAllInvoices() {
         return ResponseEntity.ok(invoiceService.getAllInvoices());
