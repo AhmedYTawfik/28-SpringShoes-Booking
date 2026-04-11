@@ -95,11 +95,37 @@ public class UserService {
         return savedAddressRepository.findAll();
     }
 
+    public List<SavedAddress> getSavedAddressesByUserId(Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+        return savedAddressRepository.findByUserId(userId);
+    }
+
     public SavedAddress getSavedAddressById(Long addressId) {
         SavedAddress savedAddress = savedAddressRepository.findById(addressId).orElse(null);
         if (savedAddress == null) {
             throw new RuntimeException("Address not found");
         }
+        return savedAddress;
+    }
+
+    public SavedAddress getSavedAddressById(Long userId, Long addressId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        SavedAddress savedAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (savedAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+
+        if (savedAddress.getUser() == null || !userId.equals(savedAddress.getUser().getId())) {
+            throw new IllegalArgumentException("Address does not belong to this user");
+        }
+
         return savedAddress;
     }
 
@@ -129,10 +155,56 @@ public class UserService {
         return savedAddressRepository.save(existingAddress);
     }
 
+    public SavedAddress updateSavedAddress(Long userId, Long addressId, SavedAddress updatedAddress) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        SavedAddress existingAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (existingAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+
+        if (existingAddress.getUser() == null || !userId.equals(existingAddress.getUser().getId())) {
+            throw new IllegalArgumentException("Address does not belong to this user");
+        }
+
+        existingAddress.setLabel(updatedAddress.getLabel());
+        existingAddress.setAddress(updatedAddress.getAddress());
+        existingAddress.setLatitude(updatedAddress.getLatitude());
+        existingAddress.setLongitude(updatedAddress.getLongitude());
+        if (updatedAddress.getIsDefault() != null) {
+            existingAddress.setIsDefault(updatedAddress.getIsDefault());
+        }
+        existingAddress.setMetadata(updatedAddress.getMetadata());
+        existingAddress.setUser(user);
+
+        return savedAddressRepository.save(existingAddress);
+    }
+
     public void deleteSavedAddress(Long addressId) {
         SavedAddress existingAddress = savedAddressRepository.findById(addressId).orElse(null);
         if (existingAddress == null) {
             throw new RuntimeException("Address not found");
+        }
+
+        savedAddressRepository.delete(existingAddress);
+    }
+
+    public void deleteSavedAddress(Long userId, Long addressId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        SavedAddress existingAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (existingAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+
+        if (existingAddress.getUser() == null || !userId.equals(existingAddress.getUser().getId())) {
+            throw new IllegalArgumentException("Address does not belong to this user");
         }
 
         savedAddressRepository.delete(existingAddress);
