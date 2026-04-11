@@ -78,11 +78,13 @@ public class UserController {
     @GetMapping("/preferences/search")
     ResponseEntity<List<User>> getUsersByPreference(@RequestParam("key") String key,
             @RequestParam("value") String value) {
-        if (key == "" || value == "") {
+        String trimmedKey = key.trim();
+        String trimmedValue = value.trim();
+        if (trimmedKey.isEmpty() || trimmedValue.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
 
-        List<User> filteredUsers = userService.getUsersbyPreference(key, value);
+        List<User> filteredUsers = userService.getUsersbyPreference(trimmedKey, trimmedValue);
         return ResponseEntity.ok(filteredUsers);
 
     }
