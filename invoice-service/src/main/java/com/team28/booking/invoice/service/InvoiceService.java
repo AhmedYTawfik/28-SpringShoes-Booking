@@ -62,6 +62,9 @@ public class InvoiceService {
     // Search invoices by status and date range
     // Converts enum to string for native SQL query
     public List<Invoice> searchInvoices(InvoiceStatus status, LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new BadRequestException("startDate must not be after endDate");
+        }
         String statusStr = status != null ? status.name() : null;
         return invoiceRepository.searchInvoices(statusStr, startDate, endDate);
     }
