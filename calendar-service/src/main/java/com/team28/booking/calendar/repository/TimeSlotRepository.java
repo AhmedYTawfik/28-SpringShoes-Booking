@@ -35,18 +35,14 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
                    p.name AS providerName,
                    p.specialty,
                    p.rating,
-                   COALESCE(booked.cnt, 0) AS bookedSlotsCount,
+                   COUNT(ts.id) FILTER (WHERE ts.available = false) AS bookedSlotsCount,
                    COUNT(ts.id) AS totalSlotsCount
             FROM providers p
-            LEFT JOIN time_slots ts ON ts.provider_id = p.id AND ts.date >= :sinceDate
-            LEFT JOIN (
-                SELECT provider_id, COUNT(*) AS cnt
-                FROM time_slots
-                WHERE available = false AND date >= :sinceDate
-                GROUP BY provider_id
-            ) booked ON booked.provider_id = p.id
-            GROUP BY p.id, p.name, p.specialty, p.rating, booked.cnt
-            HAVING COALESCE(booked.cnt, 0) <= :maxBookedSlots
+            LEFT JOIN time_slots ts
+                ON ts.provider_id = p.id
+               AND ts.date >= :sinceDate
+            GROUP BY p.id, p.name, p.specialty, p.rating
+            HAVING COUNT(ts.id) FILTER (WHERE ts.available = false) <= :maxBookedSlots
             ORDER BY p.id
             """, nativeQuery = true)
     List<IdleProviderProjection> findIdleProviders(
