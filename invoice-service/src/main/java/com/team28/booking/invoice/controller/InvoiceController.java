@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
@@ -36,6 +37,10 @@ public class InvoiceController {
     @PostMapping
     public ResponseEntity<Invoice> createInvoice(@RequestBody Invoice invoice) {
         return ResponseEntity.status(201).body(invoiceService.createInvoice(invoice));
+    }
+    @GetMapping("/discounts/top-used")
+    public ResponseEntity<List<DiscountUsageDTO>> getTopUsedDiscounts( @RequestParam(name = "limit", defaultValue = "10") Integer limit) {
+        return ResponseEntity.ok(invoiceService.getTopUsedDiscountsReport(limit)); 
     }
 
     @GetMapping("/{id}")
