@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -53,6 +54,13 @@ public class TimeSlotController {
         return timeSlotService.getLatestTimeSlot(providerId);
     }
 
+    @GetMapping("/history")
+    public List<TimeSlot> getHistory(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate,
+            @RequestParam(required = false) Long providerId) {
+        return timeSlotService.getHistory(startDate, endDate, providerId);
+      
     @GetMapping("/metadata/search")
     public List<TimeSlot> searchByMetadata(
             @RequestParam String key,
