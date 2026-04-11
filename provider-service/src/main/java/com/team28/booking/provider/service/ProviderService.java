@@ -74,6 +74,27 @@ public class ProviderService {
         providerRepository.delete(provider);
     }
 
+    @Transactional
+    public void updateAvailability(Long providerId, Provider.ProviderStatus newStatus) {
+        Provider provider = getProviderById(providerId);
+
+        if (newStatus == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Status is required");
+        }
+        if (newStatus == Provider.ProviderStatus.OFFLINE) {
+            Long activeBookings = providerRepository.countActiveBookings(providerId);
+            if (activeBookings != null && activeBookings > 0) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Cannot set provider to OFFLINE while having active bookings"
+                );
+            }
+        }
+
+        provider.setStatus(newStatus);
+        providerRepository.save(provider);
+    }
+  
     public ProviderEarningsDTO getProviderEarningsSummary(Long providerId, LocalDate startDate, LocalDate endDate) {
         Provider provider = getProviderById(providerId);
         if (startDate != null && endDate != null && startDate.isAfter(endDate)) {

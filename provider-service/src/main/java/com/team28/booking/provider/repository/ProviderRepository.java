@@ -24,6 +24,14 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
             @Param("status") String status
     );
 
+    @Query(value = """
+    SELECT COUNT(*)
+    FROM bookings b
+    WHERE b.provider_id = :providerId
+      AND b.status NOT IN ('COMPLETED', 'CANCELLED')
+    """, nativeQuery = true)
+    Long countActiveBookings(@Param("providerId") Long providerId);
+
     //it wasn't clear in the pdf so i assumed we will filter according appointmentDate not completedAt
     @Query(value = """
     SELECT 
