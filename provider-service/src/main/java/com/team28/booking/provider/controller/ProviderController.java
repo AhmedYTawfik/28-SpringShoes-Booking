@@ -45,6 +45,14 @@ public class ProviderController {
         return ResponseEntity.ok("Provider deleted successfully");
     }
 
+    @GetMapping("/search")
+    public ResponseEntity<List<Provider>> searchProviders(
+            @RequestParam(required = false) Provider.ProviderStatus status,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating) {
+        return ResponseEntity.ok(providerService.searchProviders(status, minRating, maxRating));
+    }
+
     @GetMapping("/pricing-tier")
     public List<Provider> filterByPricingTier(
             @RequestParam String tier,
