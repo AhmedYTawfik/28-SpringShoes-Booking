@@ -87,6 +87,14 @@ public class ProviderService {
         provider.setServiceDetails(existingDetails);
         return providerRepository.save(provider);
     }
+  
+    public List<Provider> searchProviders(Provider.ProviderStatus status, Double minRating, Double maxRating) {
+        if (minRating != null && maxRating != null && minRating > maxRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
+        }
+
+        return providerRepository.searchProviders(status, minRating, maxRating);
+    }
 
     // I am only writing once, but whatever
     @Transactional

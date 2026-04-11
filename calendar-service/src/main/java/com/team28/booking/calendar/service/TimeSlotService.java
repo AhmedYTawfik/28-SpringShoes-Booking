@@ -1,14 +1,19 @@
 package com.team28.booking.calendar.service;
 
+import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class TimeSlotService {
@@ -21,21 +26,43 @@ public class TimeSlotService {
 
     public TimeSlot createTimeSlot(TimeSlot timeSlot) {
         timeSlot.setCreatedAt(LocalDateTime.now());
-        timeSlot.setAvailable(true);
+        if (timeSlot.getAvailable() == null) {
+            timeSlot.setAvailable(true);
+        }
         return timeSlotRepository.save(timeSlot);
     }
 
     public TimeSlot createTimeSlotForProvider(Long providerId, TimeSlot timeSlot) {
-        Long providerCount = timeSlotRepository.countProviderById(providerId);
-        if (providerCount == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
-        }
-
+        validateProviderExists(providerId);
         validateTimeRange(timeSlot);
         timeSlot.setProviderId(providerId);
-        timeSlot.setAvailable(true);
+        if (timeSlot.getAvailable() == null) {
+            timeSlot.setAvailable(true);
+        }
         timeSlot.setCreatedAt(LocalDateTime.now());
         return timeSlotRepository.save(timeSlot);
+    }
+
+    @Transactional
+    public int batchCreateTimeSlots(Long providerId, List<TimeSlot> timeSlots) {
+        validateProviderExists(providerId);
+        validateBatchRequest(timeSlots);
+
+        LocalDateTime createdAt = LocalDateTime.now();
+        List<TimeSlot> slotsToSave = new ArrayList<>(timeSlots.size());
+        for (TimeSlot timeSlot : timeSlots) {
+            if (timeSlot == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "timeSlots must not contain null entries");
+            }
+
+            validateTimeRange(timeSlot);
+            timeSlot.setProviderId(providerId);
+            timeSlot.setAvailable(true);
+            timeSlot.setCreatedAt(createdAt);
+            slotsToSave.add(timeSlot);
+        }
+
+        return timeSlotRepository.saveAll(slotsToSave).size();
     }
 
     public List<TimeSlot> getAllTimeSlots() {
@@ -57,6 +84,15 @@ public class TimeSlotService {
         return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "No time slots found for provider"));
+    }
+
+    public List<TimeSlot> getHistory(LocalDate startDate, LocalDate endDate, Long providerId) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "startDate must be before or equal to endDate");
+        }
+
+        return timeSlotRepository.findByDateRangeAndProvider(startDate, endDate, providerId);
     }
 
     public TimeSlot updateTimeSlot(Long id, TimeSlot updated) {
@@ -88,12 +124,55 @@ public class TimeSlotService {
         };
     }
 
+    public ProviderUtilizationDTO getUtilization(Long providerId, LocalDate startDate, LocalDate endDate) {
+        validateProviderExists(providerId);
+        Object[] stats = timeSlotRepository.getUtilizationStats(providerId, startDate, endDate);
+        Object[] row = (Object[]) stats[0];
+        Long totalSlots = ((Number) row[0]).longValue();
+        Long bookedSlots = ((Number) row[1]).longValue();
+        Long availableSlots = ((Number) row[2]).longValue();
+
+        Double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots * 100.0 : 0.0;
+
+        String peakDay = timeSlotRepository.findPeakDay(providerId, startDate, endDate);
+        if (peakDay != null) {
+            peakDay = peakDay.trim();
+        }
+
+        return new ProviderUtilizationDTO(providerId, totalSlots, bookedSlots, availableSlots, utilizationRate, peakDay);
+    }
+
+    @Transactional
+    public Map<String, Integer> purgeOldSlots(int olderThanDays) {
+        if (olderThanDays < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "olderThanDays must be greater than or equal to 0");
+        }
+
+        LocalDate cutoffDate = LocalDate.now().minusDays(olderThanDays);
+        int deletedCount = timeSlotRepository.countByDateBefore(cutoffDate);
+        timeSlotRepository.deleteByDateBefore(cutoffDate);
+        return Map.of("deletedCount", deletedCount);
+    }
+
     private void validateTimeRange(TimeSlot timeSlot) {
         if (timeSlot.getStartTime() == null
                 || timeSlot.getEndTime() == null
                 || !timeSlot.getStartTime().isBefore(timeSlot.getEndTime())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "startTime must be before endTime");
+        }
+    }
+
+    private void validateProviderExists(Long providerId) {
+        if (providerId == null || timeSlotRepository.countProviderById(providerId) == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+    }
+
+    private void validateBatchRequest(List<TimeSlot> timeSlots) {
+        if (timeSlots == null || timeSlots.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "timeSlots must not be empty");
         }
     }
 }
