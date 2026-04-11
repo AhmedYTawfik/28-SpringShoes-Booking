@@ -1,5 +1,6 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
@@ -73,6 +74,41 @@ public class ProviderService {
         providerRepository.delete(provider);
     }
 
+    public ProviderEarningsDTO getProviderEarningsSummary(Long providerId, LocalDate startDate, LocalDate endDate) {
+        Provider provider = getProviderById(providerId);
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
+        }
+
+        List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
+
+        Long totalBookings = 0L;
+        Double totalEarnings = 0.0;
+        Double averageBookingPrice = 0.0;
+
+        if (!results.isEmpty()) {
+            Object[] row = results.get(0);
+
+            if (row[0] != null) {
+                totalBookings = ((Number) row[0]).longValue();
+            }
+            if (row[1] != null) {
+                totalEarnings = ((Number) row[1]).doubleValue();
+            }
+            if (row[2] != null) {
+                averageBookingPrice = ((Number) row[2]).doubleValue();
+            }
+        }
+
+        return new ProviderEarningsDTO(
+                provider.getId(),
+                provider.getName(),
+                totalBookings,
+                totalEarnings,
+                averageBookingPrice
+        );
+    }
+  
     public Provider updateServiceDetails(Long id, Map<String, Object> updates) {
         Provider provider = getProviderById(id);
         Map<String, Object> existingDetails = provider.getServiceDetails();
