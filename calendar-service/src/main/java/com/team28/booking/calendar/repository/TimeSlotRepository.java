@@ -42,6 +42,34 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
             nativeQuery = true)
     List<TimeSlot> findByMetadataLessThan(@Param("key") String key, @Param("value") String value);
 
+    @Query(value = """
+            SELECT
+                COUNT(*) AS totalSlots,
+                COUNT(*) FILTER (WHERE available = false) AS bookedSlots,
+                COUNT(*) FILTER (WHERE available = true) AS availableSlots
+            FROM time_slots
+            WHERE provider_id = :providerId
+              AND date >= :startDate AND date <= :endDate
+            """, nativeQuery = true)
+    Object[] getUtilizationStats(
+            @Param("providerId") Long providerId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @Query(value = """
+            SELECT TO_CHAR(date, 'Day') AS dayOfWeek
+            FROM time_slots
+            WHERE provider_id = :providerId
+              AND date >= :startDate AND date <= :endDate
+              AND available = false
+            GROUP BY TO_CHAR(date, 'Day')
+            ORDER BY COUNT(*) DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    String findPeakDay(
+            @Param("providerId") Long providerId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
     @Query(value = "SELECT COUNT(*) FROM time_slots WHERE date < :cutoffDate", nativeQuery = true)
     int countByDateBefore(@Param("cutoffDate") LocalDate cutoffDate);
 
