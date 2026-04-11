@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.controller;
 
+import com.team28.booking.calendar.dto.AvailableProviderDTO;
 import com.team28.booking.calendar.dto.IdleProviderDTO;
 import com.team28.booking.calendar.dto.BatchTimeSlotRequest;
 import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
@@ -53,6 +54,13 @@ public class TimeSlotController {
     @GetMapping
     public List<TimeSlot> getAll() {
         return timeSlotService.getAllTimeSlots();
+    }
+
+    @GetMapping("/available")
+    public List<AvailableProviderDTO> getAvailableProviders(
+            @RequestParam LocalDate date,
+            @RequestParam(required = false) String specialty) {
+        return timeSlotService.findAvailableProviders(date, specialty);
     }
 
     @GetMapping("/{id}")

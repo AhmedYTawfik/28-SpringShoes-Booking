@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.service;
 
+import com.team28.booking.calendar.dto.AvailableProviderDTO;
 import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.dto.IdleProviderDTO;
 import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
@@ -69,6 +70,19 @@ public class TimeSlotService {
 
     public List<TimeSlot> getAllTimeSlots() {
         return timeSlotRepository.findAll();
+    }
+
+    public List<AvailableProviderDTO> findAvailableProviders(LocalDate date, String specialty) {
+        List<Object[]> results = timeSlotRepository.findAvailableProvidersByDate(date, specialty);
+        return results.stream()
+                .map(row -> new AvailableProviderDTO(
+                        ((Number) row[0]).longValue(),
+                        (String) row[1],
+                        (String) row[2],
+                        ((Number) row[3]).doubleValue(),
+                        ((Number) row[4]).longValue()
+                ))
+                .toList();
     }
 
     public TimeSlot getTimeSlotById(Long id) {
