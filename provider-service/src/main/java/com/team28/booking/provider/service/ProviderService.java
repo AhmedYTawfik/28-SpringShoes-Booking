@@ -1,9 +1,13 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.ProviderCertAlertDTO;
 import com.team28.booking.provider.model.Provider;
+import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.provider.repository.ProviderRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -51,5 +55,25 @@ public class ProviderService {
     public void deleteProvider(Long id) {
         Provider provider = getProviderById(id);
         providerRepository.delete(provider);
+    }
+
+    public List<ProviderCertAlertDTO> getProvidersWithExpCert() {
+        List<Provider> providers =
+                providerRepository.findProvidersWithExpiredCerts(LocalDate.now());
+
+        List<ProviderCertAlertDTO> certificationAlerts = new ArrayList<>();
+        for (Provider provider : providers) {
+            List<ProviderCertification> expiredCerts = provider.getProviderCertifications()
+                .stream().filter(
+                        cert -> cert.getExpiryDate().isBefore(LocalDate.now())
+                ).toList();
+
+            certificationAlerts.add(new ProviderCertAlertDTO(
+                provider.getId(), provider.getName(),
+                provider.getStatus(), expiredCerts, expiredCerts.size()
+            ));
+        }
+
+        return certificationAlerts;
     }
 }
