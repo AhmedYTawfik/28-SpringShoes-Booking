@@ -1,5 +1,6 @@
 package com.team28.booking.provider.repository;
 
+import com.team28.booking.provider.dto.BookingSummary;
 import com.team28.booking.provider.dto.ProviderSummary;
 import com.team28.booking.provider.model.Provider;
 import org.springframework.data.domain.Pageable;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ProviderRepository extends JpaRepository<Provider, Long> {
@@ -23,12 +25,13 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
     List<ProviderSummary> findTopProvidersWithBookingCount(Pageable pageable);
            
     @Query("""
-    SELECT DISTINCT p
-    FROM Provider p
-    JOIN FETCH p.providerCertifications c
-    WHERE c.expiryDate < :now
+      SELECT DISTINCT p
+      FROM Provider p
+      JOIN FETCH p.providerCertifications c
+      WHERE c.expiryDate < :now
     """)
     List<Provider> findProvidersWithExpiredCerts(@Param("now") LocalDate now);
+           
     @Query(value = "SELECT * FROM providers WHERE service_details ->> 'pricingTier' = :tier", nativeQuery = true)
     List<Provider> findByTier(@Param("tier") String tier);
 
@@ -38,11 +41,17 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
         AND service_details ->> 'pricingTier' = :tier
     """, nativeQuery = true)
     List<Provider> findByTierAndStatus(
-            @Param("tier") String tier,
-            @Param("status") String status
+        @Param("tier") String tier,
+        @Param("status") String status
     );
 
     @Query(value = """
+        SELECT id, provider_id, status FROM bookings
+        WHERE id = :bookingId
+    """, nativeQuery = true)
+    Optional<BookingSummary> getBookingSummary(@Param("bookingId") Long bookingId);
+           
+    @Query(value = """        
     SELECT COUNT(*)
     FROM bookings b
     WHERE b.provider_id = :providerId
