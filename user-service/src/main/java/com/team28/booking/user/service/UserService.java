@@ -17,7 +17,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class UserService {
@@ -54,8 +56,7 @@ public class UserService {
                     savedAddress.getLatitude(),
                     savedAddress.getLongitude(),
                     savedAddress.getIsDefault(),
-                    savedAddress.getMetadata()
-            ));
+                    savedAddress.getMetadata()));
         }
 
         return new UserProfileDTO(
@@ -65,8 +66,7 @@ public class UserService {
                 user.getPhone(),
                 user.getPreferences(),
                 addressDTOs,
-                (long) addressDTOs.size()
-        );
+                (long) addressDTOs.size());
     }
 
     public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
@@ -76,8 +76,7 @@ public class UserService {
 
         return userRepository.findUsersByLanguagePreferenceAndMinimumCompletedBookings(
                 language.trim(),
-                minBookings
-        );
+                minBookings);
     }
 
     // S1-F7: Set one saved address as default for the user.
@@ -128,8 +127,7 @@ public class UserService {
                     0L,
                     0L,
                     BigDecimal.ZERO,
-                    BigDecimal.ZERO
-            );
+                    BigDecimal.ZERO);
         }
 
         return new UserBookingSummaryDTO(
@@ -139,8 +137,7 @@ public class UserService {
                 ((Number) summaryRow[3]).longValue(),
                 ((Number) summaryRow[4]).longValue(),
                 toBigDecimal(summaryRow[5]),
-                toBigDecimal(summaryRow[6])
-        );
+                toBigDecimal(summaryRow[6]));
     }
 
     // S1-F1: Search Users
@@ -150,6 +147,21 @@ public class UserService {
         String searchRole = (role == null || role.trim().isEmpty()) ? null : role;
 
         return userRepository.searchUsers(searchName, searchEmail, searchRole);
+    }
+
+    public User updateUserPreferences(Long UserId, Map<String, Object> updatedPreferences) {
+        User user = userRepository.findById(UserId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found"); // Will be caught and converted to 404
+        }
+
+        Map<String, Object> userPreferences = user.getPreferences();
+        for (String key : updatedPreferences.keySet()) {
+            userPreferences.put(key, updatedPreferences.get(key));
+        }
+
+        userRepository.save(user);
+        return user;
     }
 
     // S1-F4: Deactivate User Account (Transactional)
@@ -173,7 +185,6 @@ public class UserService {
         // 4. Save and return updated user
         return userRepository.save(user);
     }
-
 
     // S1-F6: Top Clients by Spending Report
     public List<TopClientDTO> getTopClientsBySpending(String startDate, String endDate, int limit) {

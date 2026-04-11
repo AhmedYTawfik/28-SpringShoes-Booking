@@ -1,5 +1,6 @@
 package com.team28.booking.invoice.service;
 
+import com.team28.booking.invoice.exception.ResourceNotFoundException;
 import com.team28.booking.invoice.model.InvoiceDiscount;
 import com.team28.booking.invoice.repository.InvoiceDiscountRepository;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,7 @@ public class InvoiceDiscountService {
     // Read by ID
     public InvoiceDiscount getInvoiceDiscountById(Long id) {
         return invoiceDiscountRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("InvoiceDiscount not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("InvoiceDiscount not found with id: " + id));
     }
 
     // Read all
@@ -44,7 +45,7 @@ public class InvoiceDiscountService {
     // Delete
     public void deleteInvoiceDiscount(Long id) {
         invoiceDiscountRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("InvoiceDiscount not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("InvoiceDiscount not found with id: " + id));
         invoiceDiscountRepository.deleteById(id);
     }
 }
