@@ -1,5 +1,7 @@
 package com.team28.booking.calendar.service;
 
+import com.team28.booking.calendar.dto.IdleProviderProjection;
+import com.team28.booking.calendar.dto.IdleProviderDTO;
 import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
@@ -124,6 +126,31 @@ public class TimeSlotService {
         };
     }
 
+    public List<IdleProviderDTO> findIdleProviders(int maxBookedSlots, int sinceDays) {
+        if (maxBookedSlots < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "maxBookedSlots must be greater than or equal to 0");
+        }
+        if (sinceDays < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "sinceDays must be greater than or equal to 0");
+        }
+
+        LocalDate sinceDate = LocalDate.now().minusDays(sinceDays);
+        List<IdleProviderProjection> results = timeSlotRepository.findIdleProviders(maxBookedSlots, sinceDate);
+
+        return results.stream()
+                .map(row -> new IdleProviderDTO(
+                        row.getProviderId(),
+                        row.getProviderName(),
+                        row.getSpecialty(),
+                        row.getRating(),
+                        row.getBookedSlotsCount(),
+                        row.getTotalSlotsCount()
+                ))
+                .toList();
+    }
+
     public ProviderUtilizationDTO getUtilization(Long providerId, LocalDate startDate, LocalDate endDate) {
         validateProviderExists(providerId);
         Object[] stats = timeSlotRepository.getUtilizationStats(providerId, startDate, endDate);
@@ -140,7 +167,7 @@ public class TimeSlotService {
         }
 
         return new ProviderUtilizationDTO(providerId, totalSlots, bookedSlots, availableSlots, utilizationRate, peakDay);
-    }
+    }  
 
     @Transactional
     public Map<String, Integer> purgeOldSlots(int olderThanDays) {
