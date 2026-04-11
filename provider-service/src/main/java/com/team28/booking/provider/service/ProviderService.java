@@ -73,9 +73,13 @@ public class ProviderService {
     }
 
     @Transactional
-    public Provider toggleAvailability(Long providerId) {
+    public void updateAvailability(Long providerId, Provider.ProviderStatus newStatus) {
         Provider provider = getProviderById(providerId);
-        if (provider.getStatus() == Provider.ProviderStatus.AVAILABLE) {
+
+        if (newStatus == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Status is required");
+        }
+        if (newStatus == Provider.ProviderStatus.OFFLINE) {
             Long activeBookings = providerRepository.countActiveBookings(providerId);
             if (activeBookings != null && activeBookings > 0) {
                 throw new ResponseStatusException(
@@ -83,15 +87,10 @@ public class ProviderService {
                         "Cannot set provider to OFFLINE while having active bookings"
                 );
             }
-            provider.setStatus(Provider.ProviderStatus.OFFLINE);
-        } else if (provider.getStatus() == Provider.ProviderStatus.OFFLINE) {
-            provider.setStatus(Provider.ProviderStatus.AVAILABLE);
-        } else {
-            //assumed if busy will treat it as available
-            provider.setStatus(Provider.ProviderStatus.AVAILABLE);
         }
 
-        return providerRepository.save(provider);
+        provider.setStatus(newStatus);
+        providerRepository.save(provider);
     }
 
     // I am only writing once, but whatever
