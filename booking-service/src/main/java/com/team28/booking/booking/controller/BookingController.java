@@ -1,5 +1,6 @@
 package com.team28.booking.booking.controller;
 
+import com.team28.booking.booking.dto.AddServiceItemDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.model.Booking;
@@ -60,5 +61,12 @@ public class BookingController {
     @PutMapping("/{id}/cancel")
     public ResponseEntity<Booking> cancelBooking(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.cancelBooking(id));
+    }
+
+    @PostMapping("/{id}/services")
+    public ResponseEntity<Booking> addServices(
+            @PathVariable Long id,
+            @RequestBody List<AddServiceItemDTO> services) {
+        return ResponseEntity.ok(bookingService.addServicesToBooking(id, services));
     }
 }
