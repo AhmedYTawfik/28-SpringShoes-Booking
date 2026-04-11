@@ -1,5 +1,6 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,7 +41,7 @@ public class ProviderService {
     //get by id
     public Provider getProviderById(Long id) {
         return providerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Provider not found with id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found with id: " + id));
     }
 
     public List<Provider> filterByPricingTier(
@@ -91,6 +93,64 @@ public class ProviderService {
 
         provider.setStatus(newStatus);
         providerRepository.save(provider);
+    }
+  
+    public ProviderEarningsDTO getProviderEarningsSummary(Long providerId, LocalDate startDate, LocalDate endDate) {
+        Provider provider = getProviderById(providerId);
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
+        }
+
+        List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
+
+        Long totalBookings = 0L;
+        Double totalEarnings = 0.0;
+        Double averageBookingPrice = 0.0;
+
+        if (!results.isEmpty()) {
+            Object[] row = results.get(0);
+
+            if (row[0] != null) {
+                totalBookings = ((Number) row[0]).longValue();
+            }
+            if (row[1] != null) {
+                totalEarnings = ((Number) row[1]).doubleValue();
+            }
+            if (row[2] != null) {
+                averageBookingPrice = ((Number) row[2]).doubleValue();
+            }
+        }
+
+        return new ProviderEarningsDTO(
+                provider.getId(),
+                provider.getName(),
+                totalBookings,
+                totalEarnings,
+                averageBookingPrice
+        );
+    }
+  
+    public Provider updateServiceDetails(Long id, Map<String, Object> updates) {
+        Provider provider = getProviderById(id);
+        Map<String, Object> existingDetails = provider.getServiceDetails();
+
+        if (existingDetails == null) {
+            existingDetails = new HashMap<>();
+        }
+        if (updates != null) {
+            existingDetails.putAll(updates);
+        }
+
+        provider.setServiceDetails(existingDetails);
+        return providerRepository.save(provider);
+    }
+  
+    public List<Provider> searchProviders(Provider.ProviderStatus status, Double minRating, Double maxRating) {
+        if (minRating != null && maxRating != null && minRating > maxRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
+        }
+
+        return providerRepository.searchProviders(status, minRating, maxRating);
     }
 
     // I am only writing once, but whatever
