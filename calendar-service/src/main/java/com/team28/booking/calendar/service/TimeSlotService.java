@@ -10,7 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,11 +33,7 @@ public class TimeSlotService {
     }
 
     public TimeSlot createTimeSlotForProvider(Long providerId, TimeSlot timeSlot) {
-        Long providerCount = timeSlotRepository.countProviderById(providerId);
-        if (providerCount == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
-        }
-
+        validateProviderExists(providerId);
         validateTimeRange(timeSlot);
         timeSlot.setProviderId(providerId);
         if (timeSlot.getAvailable() == null) {
@@ -45,6 +41,28 @@ public class TimeSlotService {
         }
         timeSlot.setCreatedAt(LocalDateTime.now());
         return timeSlotRepository.save(timeSlot);
+    }
+
+    @Transactional
+    public int batchCreateTimeSlots(Long providerId, List<TimeSlot> timeSlots) {
+        validateProviderExists(providerId);
+        validateBatchRequest(timeSlots);
+
+        LocalDateTime createdAt = LocalDateTime.now();
+        List<TimeSlot> slotsToSave = new ArrayList<>(timeSlots.size());
+        for (TimeSlot timeSlot : timeSlots) {
+            if (timeSlot == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "timeSlots must not contain null entries");
+            }
+
+            validateTimeRange(timeSlot);
+            timeSlot.setProviderId(providerId);
+            timeSlot.setAvailable(true);
+            timeSlot.setCreatedAt(createdAt);
+            slotsToSave.add(timeSlot);
+        }
+
+        return timeSlotRepository.saveAll(slotsToSave).size();
     }
 
     public List<TimeSlot> getAllTimeSlots() {
@@ -107,11 +125,7 @@ public class TimeSlotService {
     }
 
     public ProviderUtilizationDTO getUtilization(Long providerId, LocalDate startDate, LocalDate endDate) {
-        Long count = timeSlotRepository.countProviderById(providerId);
-        if (count == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
-        }
-
+        validateProviderExists(providerId);
         Object[] stats = timeSlotRepository.getUtilizationStats(providerId, startDate, endDate);
         Object[] row = (Object[]) stats[0];
         Long totalSlots = ((Number) row[0]).longValue();
@@ -147,6 +161,18 @@ public class TimeSlotService {
                 || !timeSlot.getStartTime().isBefore(timeSlot.getEndTime())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "startTime must be before endTime");
+        }
+    }
+
+    private void validateProviderExists(Long providerId) {
+        if (providerId == null || timeSlotRepository.countProviderById(providerId) == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+    }
+
+    private void validateBatchRequest(List<TimeSlot> timeSlots) {
+        if (timeSlots == null || timeSlots.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "timeSlots must not be empty");
         }
     }
 }
