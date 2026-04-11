@@ -86,6 +86,7 @@ public class TimeSlotController {
             @RequestParam int maxBookedSlots,
             @RequestParam int sinceDays) {
         return timeSlotService.findIdleProviders(maxBookedSlots, sinceDays);
+    }
       
     @GetMapping("/provider/{providerId}/utilization")
     public ProviderUtilizationDTO getUtilization(
