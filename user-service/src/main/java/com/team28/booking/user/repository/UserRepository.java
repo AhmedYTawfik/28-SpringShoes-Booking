@@ -64,6 +64,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
             nativeQuery = true)
     Object[] findUserBookingSummary(@Param("userId") Long userId);
 
+    @Query(value = "SELECT * FROM users u WHERE u.preferences @> CAST(:filter AS jsonb)",
+            nativeQuery = true)
+    List<User> findByPreference(@Param("filter") String jsonFilter);
+
     // S1-F8: Load user together with saved addresses for profile DTO construction.
     @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.savedAddresses WHERE u.id = :userId")
     Optional<User> findByIdWithSavedAddresses(@Param("userId") Long userId);
