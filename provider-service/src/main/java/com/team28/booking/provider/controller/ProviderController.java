@@ -1,11 +1,13 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.service.ProviderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +48,14 @@ public class ProviderController {
         return ResponseEntity.ok("Provider deleted successfully");
     }
 
+    @GetMapping("/{id}/earnings")
+    public ResponseEntity<ProviderEarningsDTO> getProviderEarningsSummary(
+            @PathVariable Long id,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(providerService.getProviderEarningsSummary(id, startDate, endDate));
+    }
+  
     @PutMapping("/{id}/service-details")
     public ResponseEntity<Provider> updateServiceDetails(@PathVariable Long id,
                                                          @RequestBody Map<String, Object> updates) {

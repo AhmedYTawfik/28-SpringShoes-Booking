@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Repository
@@ -22,6 +23,21 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
             @Param("tier") String tier,
             @Param("status") String status
     );
+
+    //it wasn't clear in the pdf so i assumed we will filter according appointmentDate not completedAt
+    @Query(value = """
+    SELECT 
+        COUNT(*) AS total_bookings,
+        COALESCE(SUM(b.total_price), 0),
+        COALESCE(AVG(b.total_price), 0)
+    FROM bookings b
+    WHERE b.provider_id = :providerId
+      AND b.status = 'COMPLETED'
+      AND b.appointment_date BETWEEN :startDate AND :endDate
+    """, nativeQuery = true)
+    List<Object[]> getProviderEarningsSummary(@Param("providerId") Long providerId,
+                                        @Param("startDate") LocalDate startDate,
+                                        @Param("endDate") LocalDate endDate);
 
     //could have done it without jpql but will not be the best if status is null
     @Query("""
