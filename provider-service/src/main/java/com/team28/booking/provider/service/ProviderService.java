@@ -1,5 +1,7 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.BookingSummary;
+import com.team28.booking.provider.dto.RateProviderDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
@@ -70,6 +72,35 @@ public class ProviderService {
     public void deleteProvider(Long id) {
         Provider provider = getProviderById(id);
         providerRepository.delete(provider);
+    }
+
+    @Transactional
+    public void rateProvider(Long providerId, RateProviderDTO rateProvider) {
+        Provider provider;
+        try {
+            provider = getProviderById(providerId);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
+
+        BookingSummary bookingSummary =
+                providerRepository.getBookingSummary(rateProvider.bookingId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        if (!bookingSummary.getProviderId().equals(providerId))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not associated with given provider");
+
+        if (!bookingSummary.getStatus().equals("COMPLETED"))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking was not completed");
+
+        if (rateProvider.rating() < 1.0 || rateProvider.rating() > 5.0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
+
+        int newTotalRatings = provider.getTotalRatings() + 1;
+        double newRating = (provider.getRating() + rateProvider.rating()) / newTotalRatings;
+        provider.setRating(newRating);
+        provider.setTotalRatings(newTotalRatings);
+        updateProvider(providerId, provider);
     }
 
     // I am only writing once, but whatever
