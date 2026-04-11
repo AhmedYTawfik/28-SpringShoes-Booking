@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/providers")
@@ -43,6 +44,20 @@ public class ProviderController {
     public ResponseEntity<String> deleteProvider(@PathVariable Long id) {
         providerService.deleteProvider(id);
         return ResponseEntity.ok("Provider deleted successfully");
+    }
+
+    @PutMapping("/{id}/service-details")
+    public ResponseEntity<Provider> updateServiceDetails(@PathVariable Long id,
+                                                         @RequestBody Map<String, Object> updates) {
+        return ResponseEntity.ok(providerService.updateServiceDetails(id, updates));
+    }
+      
+    @GetMapping("/search")
+    public ResponseEntity<List<Provider>> searchProviders(
+            @RequestParam(required = false) Provider.ProviderStatus status,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating) {
+        return ResponseEntity.ok(providerService.searchProviders(status, minRating, maxRating));
     }
 
     @GetMapping("/pricing-tier")

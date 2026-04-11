@@ -1,6 +1,7 @@
 package com.team28.booking.calendar.controller;
 
 import com.team28.booking.calendar.dto.IdleProviderDTO;
+import com.team28.booking.calendar.dto.BatchTimeSlotRequest;
 import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.service.TimeSlotService;
@@ -40,6 +41,13 @@ public class TimeSlotController {
     @ResponseStatus(HttpStatus.CREATED)
     public TimeSlot createForProvider(@PathVariable Long providerId, @RequestBody TimeSlot timeSlot) {
         return timeSlotService.createTimeSlotForProvider(providerId, timeSlot);
+    }
+
+    @PostMapping("/batch")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Map<String, Integer> batchCreate(@RequestBody BatchTimeSlotRequest request) {
+        int count = timeSlotService.batchCreateTimeSlots(request.providerId(), request.timeSlots());
+        return Map.of("count", count);
     }
 
     @GetMapping
