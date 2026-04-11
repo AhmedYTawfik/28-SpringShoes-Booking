@@ -154,6 +154,25 @@ public class UserController {
         }
     }
 
+    // CRUD: Delete Saved Address for User
+    @DeleteMapping("/{userId}/addresses/{addressId}")
+    public ResponseEntity<Void> deleteSavedAddress(
+            @PathVariable Long userId,
+            @PathVariable Long addressId) {
+        try {
+            userService.deleteSavedAddress(userId, addressId);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage()) || "Address not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            if ("Address does not belong to this user".equals(e.getMessage())) {
+                return ResponseEntity.badRequest().build();
+            }
+            throw e;
+        }
+    }
+
     // S1-F2: Put User Preferences
     @PutMapping("/{id}/preferences")
     public ResponseEntity<User> updatePreferences(@PathVariable long id,

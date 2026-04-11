@@ -146,6 +146,24 @@ public class UserService {
         savedAddressRepository.delete(existingAddress);
     }
 
+    public void deleteSavedAddress(Long userId, Long addressId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        SavedAddress existingAddress = savedAddressRepository.findById(addressId).orElse(null);
+        if (existingAddress == null) {
+            throw new RuntimeException("Address not found");
+        }
+
+        if (existingAddress.getUser() == null || !userId.equals(existingAddress.getUser().getId())) {
+            throw new IllegalArgumentException("Address does not belong to this user");
+        }
+
+        savedAddressRepository.delete(existingAddress);
+    }
+
     public UserProfileDTO getUserProfile(Long userId) {
         User user = userRepository.findByIdWithSavedAddresses(userId).orElse(null);
         if (user == null) {
