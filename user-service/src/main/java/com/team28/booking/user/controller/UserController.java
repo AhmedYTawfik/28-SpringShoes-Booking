@@ -12,41 +12,54 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
-@RestController              // ← REQUIRED: Marks this as REST controller
+@RestController // ← REQUIRED: Marks this as REST controller
 @RequestMapping("/api/users") // ← REQUIRED: Base path for all endpoints
 public class UserController {
 
     @Autowired
     private UserService userService;
 
-  // Health endpoint (PDF Section 4.1.9)
-//    @GetMapping("/health")
-//    public ResponseEntity<String> health() {
-//        return ResponseEntity.ok("OK");
-//    }
+    // Health endpoint (PDF Section 4.1.9)
+    // @GetMapping("/health")
+    // public ResponseEntity<String> health() {
+    // return ResponseEntity.ok("OK");
+    // }
 
     // CRUD: Create User
-    @PostMapping              // ← Maps to POST /api/users
+    @PostMapping // ← Maps to POST /api/users
     public ResponseEntity<User> createUser(@RequestBody User user) {
         User saved = userService.save(user);
         return ResponseEntity.ok(saved);
     }
 
     // CRUD: Get All Users
-    @GetMapping               // ← Maps to GET /api/users
+    @GetMapping // ← Maps to GET /api/users
     public ResponseEntity<List<User>> getAllUsers() {
         return ResponseEntity.ok(userService.findAll());
     }
 
     // CRUD: Get User by ID
-    @GetMapping("/{id}")      // ← Maps to GET /api/users/{id}
+    @GetMapping("/{id}") // ← Maps to GET /api/users/{id}
     public ResponseEntity<User> getUser(@PathVariable Long id) {
         User user = userService.findById(id);
         if (user == null) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(user);
+    }
+
+    // S1-F2: Put User Preferences
+    @PutMapping("/{id}/preferences")
+    public ResponseEntity<User> updatePreferences(@PathVariable long id,
+            @RequestBody Map<String, Object> updatedPreferences) {
+        try {
+            User updatedUser = userService.updateUserPreferences(id, updatedPreferences);
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     // S1-F3: Get User Booking Summary
@@ -100,15 +113,14 @@ public class UserController {
             @RequestParam long minBookings) {
         try {
             return ResponseEntity.ok(
-                    userService.findUsersByLanguagePreferenceWithMinimumBookings(lang, minBookings)
-            );
+                    userService.findUsersByLanguagePreferenceWithMinimumBookings(lang, minBookings));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
     // S1-F1: Search Users with Filters
-    @GetMapping("/search")    // ← Maps to GET /api/users/search
+    @GetMapping("/search") // ← Maps to GET /api/users/search
     public ResponseEntity<List<User>> searchUsers(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String email,
@@ -147,6 +159,5 @@ public class UserController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
-
 
 }
