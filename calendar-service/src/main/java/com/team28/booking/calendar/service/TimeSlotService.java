@@ -126,6 +126,8 @@ public class TimeSlotService {
         }
 
         return new ProviderUtilizationDTO(providerId, totalSlots, bookedSlots, availableSlots, utilizationRate, peakDay);
+    }
+
     @Transactional
     public Map<String, Integer> purgeOldSlots(int olderThanDays) {
         if (olderThanDays < 0) {

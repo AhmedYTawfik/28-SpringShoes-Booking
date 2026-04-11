@@ -62,6 +62,7 @@ public class TimeSlotController {
             @RequestParam LocalDate endDate,
             @RequestParam(required = false) Long providerId) {
         return timeSlotService.getHistory(startDate, endDate, providerId);
+    }
       
     @GetMapping("/metadata/search")
     public List<TimeSlot> searchByMetadata(
