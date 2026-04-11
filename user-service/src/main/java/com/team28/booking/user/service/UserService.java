@@ -95,6 +95,14 @@ public class UserService {
         return savedAddressRepository.findAll();
     }
 
+    public List<SavedAddress> getSavedAddressesByUserId(Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+        return savedAddressRepository.findByUserId(userId);
+    }
+
     public SavedAddress getSavedAddressById(Long addressId) {
         SavedAddress savedAddress = savedAddressRepository.findById(addressId).orElse(null);
         if (savedAddress == null) {
