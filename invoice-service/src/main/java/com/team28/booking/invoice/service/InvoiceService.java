@@ -12,6 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
@@ -20,15 +31,112 @@ import com.team28.booking.invoice.exception.ResourceNotFoundException;
 import com.team28.booking.invoice.model.Discount;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.InvoiceDiscount;
+import com.team28.booking.invoice.repository.DiscountRepository;
+import com.team28.booking.invoice.repository.DiscountUsageProjection;
+import com.team28.booking.invoice.repository.InvoiceDiscountRepository;
 import com.team28.booking.invoice.repository.InvoiceRepository;
 
 @Service
 public class InvoiceService {
 
     private final InvoiceRepository invoiceRepository;
+    private final DiscountRepository discountRepository;
+    private final InvoiceDiscountRepository invoiceDiscountRepository;
 
-    public InvoiceService(InvoiceRepository invoiceRepository) {
+    public InvoiceService(InvoiceRepository invoiceRepository,
+                          DiscountRepository discountRepository,
+                          InvoiceDiscountRepository invoiceDiscountRepository) {
         this.invoiceRepository = invoiceRepository;
+        this.discountRepository = discountRepository;
+        this.invoiceDiscountRepository = invoiceDiscountRepository;
+    }
+
+    // ── Top Used Discounts Report ────────────────────────────────────────────
+
+    private static final int MAX_DISCOUNT_REPORT_LIMIT = 100;
+
+    public List<DiscountUsageDTO> getTopUsedDiscountsReport(Integer limit) {
+        int safeLimit = (limit == null || limit <= 0) ? 10 : Math.min(limit, MAX_DISCOUNT_REPORT_LIMIT);
+
+        List<DiscountUsageProjection> rows = discountRepository.findTopUsedDiscounts(safeLimit);
+        List<DiscountUsageDTO> result = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (DiscountUsageProjection row : rows) {
+            boolean expired = row.getExpiryDate() != null && row.getExpiryDate().isBefore(now);
+            result.add(new DiscountUsageDTO(
+                row.getDiscountId(),
+                row.getCode(),
+                Discount.DiscountType.valueOf(row.getDiscountType()),
+                row.getDiscountValue() == null ? 0.0 : row.getDiscountValue(),
+                row.getTimesUsed() == null ? 0 : row.getTimesUsed(),
+                row.getTotalDiscountGiven() == null ? 0.0 : row.getTotalDiscountGiven(),
+                row.getActive() != null && row.getActive(),
+                expired
+            ));
+        }
+
+        return result;
+    }
+
+    // ── Apply Discount to Invoice ────────────────────────────────────────────
+
+    @Transactional
+    public Invoice applyDiscountToInvoice(Long invoiceId, Long discountId) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Invoice not found with id: " + invoiceId));
+
+        if (invoice.getStatus() == Invoice.InvoiceStatus.COMPLETED
+                || invoice.getStatus() == Invoice.InvoiceStatus.REFUNDED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "cannot apply discount to a completed/cancelled invoice");
+        }
+
+        Discount discount = discountRepository.findById(discountId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Discount not found with id: " + discountId));
+
+        if (!Boolean.TRUE.equals(discount.getActive())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "discount is inactive");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (discount.getExpiryDate() == null || !discount.getExpiryDate().isAfter(now)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "discount is expired");
+        }
+
+        int currentUses = discount.getCurrentUses() == null ? 0 : discount.getCurrentUses();
+        int maxUses = discount.getMaxUses() == null ? 0 : discount.getMaxUses();
+        if (currentUses >= maxUses) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "discount usage limit reached");
+        }
+
+        if (invoiceDiscountRepository.existsByInvoiceIdAndDiscountId(invoiceId, discountId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "discount already applied");
+        }
+
+        double discountApplied;
+        if (discount.getDiscountType() == Discount.DiscountType.PERCENTAGE) {
+            discountApplied = invoice.getAmount() * discount.getDiscountValue() / 100.0;
+        } else {
+            discountApplied = discount.getDiscountValue();
+        }
+        discountApplied = Math.min(discountApplied, invoice.getAmount());
+
+        InvoiceDiscount invoiceDiscount = new InvoiceDiscount();
+        invoiceDiscount.setInvoice(invoice);
+        invoiceDiscount.setDiscount(discount);
+        invoiceDiscount.setDiscountApplied(discountApplied);
+        invoiceDiscount.setAppliedAt(now);
+
+        invoiceDiscountRepository.save(invoiceDiscount);
+
+        discount.setCurrentUses(currentUses + 1);
+        discountRepository.save(discount);
+
+        invoice.getInvoiceDiscounts().add(invoiceDiscount);
+        return invoice;
     }
 
     // ── CRUD ────────────────────────────────────────────────────────────────
@@ -160,12 +268,12 @@ public class InvoiceService {
 
         Object[] row = invoiceRepository.getRevenueStats(from, to);
 
-        double totalRevenue        = row[0] == null ? 0.0 : ((Number) row[0]).doubleValue();
-        long   totalInvoices       = row[1] == null ? 0L  : ((Number) row[1]).longValue();
-        long   completedInvoices   = row[2] == null ? 0L  : ((Number) row[2]).longValue();
-        double refundedAmount      = row[3] == null ? 0.0 : ((Number) row[3]).doubleValue();
-        double averageInvoiceAmount= row[4] == null ? 0.0 : ((Number) row[4]).doubleValue();
-        double netRevenue          = totalRevenue - refundedAmount;
+        double totalRevenue         = row[0] == null ? 0.0 : ((Number) row[0]).doubleValue();
+        long   totalInvoices        = row[1] == null ? 0L  : ((Number) row[1]).longValue();
+        long   completedInvoices    = row[2] == null ? 0L  : ((Number) row[2]).longValue();
+        double refundedAmount       = row[3] == null ? 0.0 : ((Number) row[3]).doubleValue();
+        double averageInvoiceAmount = row[4] == null ? 0.0 : ((Number) row[4]).doubleValue();
+        double netRevenue           = totalRevenue - refundedAmount;
 
         return new RevenueReportDTO(startDate, endDate, totalRevenue, totalInvoices,
                 completedInvoices, refundedAmount, netRevenue, averageInvoiceAmount);
