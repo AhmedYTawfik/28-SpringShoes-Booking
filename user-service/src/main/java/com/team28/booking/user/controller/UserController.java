@@ -62,7 +62,13 @@ public class UserController {
     }
 
     // S1-F7: Set Default Saved Address
-    @PutMapping("/{userId}/addresses/{addressId}/default")
+    @RequestMapping(
+            path = {
+                    "/{userId}/addresses/{addressId}/default",
+                    "/{userId}/addresses/{addressId}/set-default"
+            },
+            method = {RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.POST}
+    )
     public ResponseEntity<User> setDefaultSavedAddress(
             @PathVariable Long userId,
             @PathVariable Long addressId) {
