@@ -1,5 +1,8 @@
 package com.team28.booking.user.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.util.ObjectBuffer;
 import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
@@ -9,6 +12,9 @@ import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Status;
 import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +35,10 @@ public class UserService {
 
     @Autowired
     private SavedAddressRepository savedAddressRepository;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     public User save(User user) {
         return userRepository.save(user);
@@ -162,6 +172,21 @@ public class UserService {
 
         userRepository.save(user);
         return user;
+    }
+
+    public List<User> getUsersbyPreference(String key, String value) {
+        Map<String, Object> filter = Map.of(
+                key, value);
+
+        List<User> filteredUsers = new ArrayList<>();
+        try {
+            String jsonFilter = objectMapper.writeValueAsString(filter);
+            filteredUsers = userRepository.findbyPreference(jsonFilter);
+        } catch (JsonProcessingException e) {
+            log.warn("failed to convert preference {} into json: {}", filter.toString(), e.getMessage());
+        }
+
+        return filteredUsers;
     }
 
     // S1-F4: Deactivate User Account (Transactional)
