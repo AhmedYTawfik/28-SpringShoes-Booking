@@ -1,5 +1,6 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.ProviderCertAlertDTO;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +76,26 @@ public class ProviderService {
         providerRepository.delete(provider);
     }
 
+    public List<ProviderCertAlertDTO> getProvidersWithExpCert() {
+        List<Provider> providers =
+                providerRepository.findProvidersWithExpiredCerts(LocalDate.now());
+
+        List<ProviderCertAlertDTO> certificationAlerts = new ArrayList<>();
+        for (Provider provider : providers) {
+            List<ProviderCertification> expiredCerts = provider.getProviderCertifications()
+                .stream().filter(
+                        cert -> cert.getExpiryDate().isBefore(LocalDate.now())
+                ).toList();
+
+            certificationAlerts.add(new ProviderCertAlertDTO(
+                provider.getId(), provider.getName(),
+                provider.getStatus(), expiredCerts, expiredCerts.size()
+            ));
+        }
+
+        return certificationAlerts;
+    }
+  
     @Transactional
     public void updateAvailability(Long providerId, Provider.ProviderStatus newStatus) {
         Provider provider = getProviderById(providerId);

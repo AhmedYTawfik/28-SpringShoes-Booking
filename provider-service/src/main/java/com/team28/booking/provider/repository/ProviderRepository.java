@@ -11,6 +11,13 @@ import java.util.List;
 
 @Repository
 public interface ProviderRepository extends JpaRepository<Provider, Long> {
+    @Query("""
+    SELECT DISTINCT p
+    FROM Provider p
+    JOIN FETCH p.providerCertifications c
+    WHERE c.expiryDate < :now
+    """)
+    List<Provider> findProvidersWithExpiredCerts(@Param("now") LocalDate now);
     @Query(value = "SELECT * FROM providers WHERE service_details ->> 'pricingTier' = :tier", nativeQuery = true)
     List<Provider> findByTier(@Param("tier") String tier);
 
