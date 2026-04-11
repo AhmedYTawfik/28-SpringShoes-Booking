@@ -5,6 +5,7 @@ import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.dto.EstimateServiceItemDTO;
 import com.team28.booking.booking.model.Booking;
+import com.team28.booking.booking.model.BookingItem;
 import com.team28.booking.booking.repository.BookingRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -121,7 +124,54 @@ public class BookingService {
 
     @Transactional
     public Booking addServicesToBooking(Long bookingId, List<AddServiceItemDTO> services) {
-        // TODO: implement logic
-        return null;
+        Booking booking = getBookingById(bookingId);
+
+        if (booking.getStatus() != Booking.Status.REQUESTED && booking.getStatus() != Booking.Status.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot add services to in-progress or completed bookings");
+        }
+
+        if (services != null) {
+            for (AddServiceItemDTO service : services) {
+                if (service.serviceName() == null || service.serviceName().isBlank()) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service name is required");
+                }
+                if (service.duration() == null || service.duration() <= 0) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service duration must be positive");
+                }
+                if (service.price() == null || service.price().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service price must be positive");
+                }
+            }
+        }
+
+        if (booking.getBookingServices() == null) {
+            booking.setBookingServices(new ArrayList<>());
+        }
+
+        int maxOrder = booking.getBookingServices().stream()
+                .mapToInt(BookingItem::getServiceOrder)
+                .max()
+                .orElse(0);
+
+        if (services != null) {
+            for (AddServiceItemDTO serviceData : services) {
+                maxOrder++;
+                BookingItem item = new BookingItem();
+                item.setServiceName(serviceData.serviceName());
+                item.setDuration(serviceData.duration());
+                item.setPrice(serviceData.price());
+                item.setMetadata(serviceData.metadata());
+                item.setServiceOrder(maxOrder);
+                item.setStatus(BookingItem.Status.PENDING);
+                item.setBooking(booking);
+                booking.getBookingServices().add(item);
+            }
+        }
+
+        Booking savedBooking = bookingRepository.save(booking);
+
+        savedBooking.getBookingServices().sort(Comparator.comparing(BookingItem::getServiceOrder));
+
+        return savedBooking;
     }
 }
