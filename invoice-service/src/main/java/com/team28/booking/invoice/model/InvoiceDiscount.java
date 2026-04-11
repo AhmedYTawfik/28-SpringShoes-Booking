@@ -2,6 +2,7 @@ package com.team28.booking.invoice.model;
 
 import java.time.LocalDateTime;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -25,10 +26,12 @@ public class InvoiceDiscount {
     @Column(name = "applied_at", nullable = false)
     private LocalDateTime appliedAt;
 
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "invoice_id")
     private Invoice invoice;
 
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "discount_id")
     private Discount discount;
