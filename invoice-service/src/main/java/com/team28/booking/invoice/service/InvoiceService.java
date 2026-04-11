@@ -1,5 +1,16 @@
 package com.team28.booking.invoice.service;
 
+import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
+import com.team28.booking.invoice.dto.RetryInvoiceRequest;
+import com.team28.booking.invoice.dto.RevenueReportDTO;
+import com.team28.booking.invoice.exception.BadRequestException;
+import com.team28.booking.invoice.exception.ResourceNotFoundException;
+import com.team28.booking.invoice.model.Invoice;
+import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
+import com.team28.booking.invoice.repository.InvoiceRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -7,34 +18,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+
 
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
-import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
-import com.team28.booking.invoice.dto.RetryInvoiceRequest;
-import com.team28.booking.invoice.dto.RevenueReportDTO;
-import com.team28.booking.invoice.exception.BadRequestException;
-import com.team28.booking.invoice.exception.ResourceNotFoundException;
 import com.team28.booking.invoice.model.Discount;
-import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.InvoiceDiscount;
 import com.team28.booking.invoice.repository.DiscountRepository;
 import com.team28.booking.invoice.repository.DiscountUsageProjection;
 import com.team28.booking.invoice.repository.InvoiceDiscountRepository;
-import com.team28.booking.invoice.repository.InvoiceRepository;
 
 @Service
 public class InvoiceService {
@@ -211,6 +209,16 @@ public class InvoiceService {
                 invoiceDiscount.getDiscountApplied(),
                 invoiceDiscount.getAppliedAt()
         );
+    }
+
+    // Search invoices by status and date range
+    // Converts enum to string for native SQL query
+    public List<Invoice> searchInvoices(InvoiceStatus status, LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new BadRequestException("startDate must not be after endDate");
+        }
+        String statusStr = status != null ? status.name() : null;
+        return invoiceRepository.searchInvoices(statusStr, startDate, endDate);
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
