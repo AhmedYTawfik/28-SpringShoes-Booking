@@ -99,6 +99,19 @@ public class UserController {
         return ResponseEntity.ok(userService.getAllSavedAddresses());
     }
 
+    // CRUD: Get Saved Addresses for User
+    @GetMapping("/{userId}/addresses")
+    public ResponseEntity<List<SavedAddress>> getSavedAddressesByUserId(@PathVariable Long userId) {
+        try {
+            return ResponseEntity.ok(userService.getSavedAddressesByUserId(userId));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
     // CRUD: Get Saved Address by ID
     @GetMapping("/addresses/{addressId}")
     public ResponseEntity<SavedAddress> getSavedAddressById(@PathVariable Long addressId) {
