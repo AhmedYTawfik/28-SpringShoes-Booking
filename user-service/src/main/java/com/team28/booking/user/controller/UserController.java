@@ -14,34 +14,34 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Map;
 
-@RestController // ← REQUIRED: Marks this as REST controller
+@RestController              // ← REQUIRED: Marks this as REST controller
 @RequestMapping("/api/users") // ← REQUIRED: Base path for all endpoints
 public class UserController {
 
     @Autowired
     private UserService userService;
 
-    // Health endpoint (PDF Section 4.1.9)
-    // @GetMapping("/health")
-    // public ResponseEntity<String> health() {
-    // return ResponseEntity.ok("OK");
-    // }
+  // Health endpoint (PDF Section 4.1.9)
+//    @GetMapping("/health")
+//    public ResponseEntity<String> health() {
+//        return ResponseEntity.ok("OK");
+//    }
 
     // CRUD: Create User
-    @PostMapping // ← Maps to POST /api/users
+    @PostMapping              // ← Maps to POST /api/users
     public ResponseEntity<User> createUser(@RequestBody User user) {
         User saved = userService.save(user);
         return ResponseEntity.ok(saved);
     }
 
     // CRUD: Get All Users
-    @GetMapping // ← Maps to GET /api/users
+    @GetMapping               // ← Maps to GET /api/users
     public ResponseEntity<List<User>> getAllUsers() {
         return ResponseEntity.ok(userService.findAll());
     }
 
     // CRUD: Get User by ID
-    @GetMapping("/{id}") // ← Maps to GET /api/users/{id}
+    @GetMapping("/{id}")      // ← Maps to GET /api/users/{id}
     public ResponseEntity<User> getUser(@PathVariable Long id) {
         User user = userService.findById(id);
         if (user == null) {
@@ -76,15 +76,13 @@ public class UserController {
     }
 
     @GetMapping("/preferences/search")
-    ResponseEntity<List<User>> getUsersByPreference(@RequestParam("key") String key,
+    public ResponseEntity<List<User>> getUsersByPreference(@RequestParam("key") String key,
             @RequestParam("value") String value) {
-        if (key == "" || value == "") {
-            return ResponseEntity.badRequest().build();
+        try {
+            return ResponseEntity.ok(userService.getUsersByPreference(key, value));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
-
-        List<User> filteredUsers = userService.getUsersbyPreference(key, value);
-        return ResponseEntity.ok(filteredUsers);
-
     }
 
     // S1-F7: Set Default Saved Address
@@ -132,7 +130,7 @@ public class UserController {
     }
 
     // S1-F1: Search Users with Filters
-    @GetMapping("/search") // ← Maps to GET /api/users/search
+    @GetMapping("/search")    // ← Maps to GET /api/users/search
     public ResponseEntity<List<User>> searchUsers(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String email,
