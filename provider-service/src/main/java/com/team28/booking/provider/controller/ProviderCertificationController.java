@@ -1,7 +1,9 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.provider.dto.ProviderCertAlertDTO;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.provider.service.ProviderCertificationService;
+import com.team28.booking.provider.service.ProviderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,9 +13,14 @@ import java.util.List;
 @RequestMapping("/api/providers")
 public class ProviderCertificationController {
     private final ProviderCertificationService providerCertificationService;
+    private final ProviderService providerService;
 
-    public ProviderCertificationController(ProviderCertificationService providerCertificationService) {
+    public ProviderCertificationController(
+        ProviderCertificationService providerCertificationService,
+        ProviderService providerService
+    ) {
         this.providerCertificationService = providerCertificationService;
+        this.providerService = providerService;
     }
 
     @PostMapping("/{providerId}/certifications")
@@ -44,5 +51,10 @@ public class ProviderCertificationController {
     public ResponseEntity<String> deleteCertification(@PathVariable Long id) {
         providerCertificationService.deleteCertification(id);
         return ResponseEntity.ok("Certification deleted successfully");
+    }
+
+    @GetMapping("/certifications/expired")
+    public List<ProviderCertAlertDTO> getProvidersWithExpiredCert() {
+        return providerService.getProvidersWithExpCert();
     }
 }
