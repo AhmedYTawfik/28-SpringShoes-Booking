@@ -2,6 +2,7 @@ package com.team28.booking.user.controller;
 
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
+import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController              // ← REQUIRED: Marks this as REST controller
 @RequestMapping("/api/users") // ← REQUIRED: Base path for all endpoints
@@ -48,6 +50,18 @@ public class UserController {
         return ResponseEntity.ok(user);
     }
 
+    // S1-F2: Put User Preferences
+    @PutMapping("/{id}/preferences")
+    public ResponseEntity<User> updatePreferences(@PathVariable long id,
+            @RequestBody Map<String, Object> updatedPreferences) {
+        try {
+            User updatedUser = userService.updateUserPreferences(id, updatedPreferences);
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     // S1-F3: Get User Booking Summary
     @GetMapping("/{id}/booking-summary")
     public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable Long id) {
@@ -58,6 +72,16 @@ public class UserController {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
             }
             throw e;
+        }
+    }
+
+    @GetMapping("/preferences/search")
+    public ResponseEntity<List<User>> getUsersByPreference(@RequestParam("key") String key,
+            @RequestParam("value") String value) {
+        try {
+            return ResponseEntity.ok(userService.getUsersByPreference(key, value));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -76,6 +100,32 @@ public class UserController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }
             throw e;
+        }
+    }
+
+    // S1-F8: Get User Profile with Addresses
+    @GetMapping("/{id}/profile")
+    public ResponseEntity<UserProfileDTO> getUserProfile(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(userService.getUserProfile(id));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+            }
+            throw e;
+        }
+    }
+
+    // S1-F9: Find Users by Language Preference with Minimum Bookings
+    @GetMapping("/preferences/language")
+    public ResponseEntity<List<User>> getUsersByLanguagePreference(
+            @RequestParam String lang,
+            @RequestParam long minBookings) {
+        try {
+            return ResponseEntity.ok(
+                    userService.findUsersByLanguagePreferenceWithMinimumBookings(lang, minBookings));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -119,6 +169,5 @@ public class UserController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
-
 
 }
