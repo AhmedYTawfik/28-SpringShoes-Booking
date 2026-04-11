@@ -1,6 +1,7 @@
 package com.team28.booking.invoice.controller;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.format.annotation.DateTimeFormat;
@@ -15,22 +16,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
+import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RefundRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
+import com.team28.booking.invoice.dto.UserInvoiceSummaryDTO;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
 import com.team28.booking.invoice.service.InvoiceService;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.time.LocalDateTime;
-import java.time.LocalDate;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/invoices")
@@ -38,7 +33,6 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
 
-    // Constructor injection
     public InvoiceController(InvoiceService invoiceService) {
         this.invoiceService = invoiceService;
     }
@@ -64,7 +58,6 @@ public class InvoiceController {
         return ResponseEntity.ok(invoiceService.getInvoiceDetails(invoiceId));
     }
 
-    // Read all
     @PostMapping("/{invoiceId}/discounts/{discountId}")
     public ResponseEntity<Invoice> applyDiscountToInvoice(@PathVariable Long invoiceId, @PathVariable Long discountId) {
         return ResponseEntity.ok(invoiceService.applyDiscountToInvoice(invoiceId, discountId));
@@ -103,6 +96,12 @@ public class InvoiceController {
         @RequestBody RefundRequest refundRequest
     ) {
         return ResponseEntity.ok(invoiceService.processRefund(id, refundRequest.reason()));
+    }
+
+    // Get User Invoice Summary
+    @GetMapping("/user/{userId}/summary")
+    public ResponseEntity<UserInvoiceSummaryDTO> getUserInvoiceSummary(@PathVariable Long userId) {
+        return ResponseEntity.ok(invoiceService.getUserInvoiceSummary(userId));
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
