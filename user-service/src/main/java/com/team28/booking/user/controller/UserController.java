@@ -75,6 +75,18 @@ public class UserController {
         }
     }
 
+    @GetMapping("/preferences/search")
+    ResponseEntity<List<User>> getUsersByPreference(@RequestParam("key") String key,
+            @RequestParam("value") String value) {
+        if (key == "" || value == "") {
+            return ResponseEntity.badRequest().build();
+        }
+
+        List<User> filteredUsers = userService.getUsersbyPreference(key, value);
+        return ResponseEntity.ok(filteredUsers);
+
+    }
+
     // S1-F7: Set Default Saved Address
     @PutMapping("/{userId}/addresses/{addressId}/default")
     public ResponseEntity<User> setDefaultSavedAddress(
