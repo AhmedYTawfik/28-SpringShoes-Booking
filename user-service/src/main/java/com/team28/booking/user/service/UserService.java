@@ -2,6 +2,7 @@ package com.team28.booking.user.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.util.ObjectBuffer;
 import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
@@ -22,6 +23,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -64,8 +66,7 @@ public class UserService {
                     savedAddress.getLatitude(),
                     savedAddress.getLongitude(),
                     savedAddress.getIsDefault(),
-                    savedAddress.getMetadata()
-            ));
+                    savedAddress.getMetadata()));
         }
 
         return new UserProfileDTO(
@@ -75,8 +76,7 @@ public class UserService {
                 user.getPhone(),
                 user.getPreferences(),
                 addressDTOs,
-                (long) addressDTOs.size()
-        );
+                (long) addressDTOs.size());
     }
 
     public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
@@ -86,8 +86,7 @@ public class UserService {
 
         return userRepository.findUsersByLanguagePreferenceAndMinimumCompletedBookings(
                 language.trim(),
-                minBookings
-        );
+                minBookings);
     }
 
     // S1-F7: Set one saved address as default for the user.
@@ -138,8 +137,7 @@ public class UserService {
                     0L,
                     0L,
                     BigDecimal.ZERO,
-                    BigDecimal.ZERO
-            );
+                    BigDecimal.ZERO);
         }
 
         return new UserBookingSummaryDTO(
@@ -149,8 +147,7 @@ public class UserService {
                 ((Number) summaryRow[3]).longValue(),
                 ((Number) summaryRow[4]).longValue(),
                 toBigDecimal(summaryRow[5]),
-                toBigDecimal(summaryRow[6])
-        );
+                toBigDecimal(summaryRow[6]));
     }
 
     // S1-F1: Search Users
@@ -177,20 +174,19 @@ public class UserService {
         return user;
     }
 
-    public List<User> getUsersByPreference(String key, String value) {
-        if (key == null || key.trim().isEmpty() || value == null || value.trim().isEmpty()) {
-            throw new IllegalArgumentException("Preference key and value must not be blank");
-        }
+    public List<User> getUsersbyPreference(String key, String value) {
+        Map<String, Object> filter = Map.of(
+                key, value);
 
-        Map<String, Object> filter = Map.of(key.trim(), value.trim());
-
+        List<User> filteredUsers = new ArrayList<>();
         try {
             String jsonFilter = objectMapper.writeValueAsString(filter);
-            return userRepository.findByPreference(jsonFilter);
+            filteredUsers = userRepository.findbyPreference(jsonFilter);
         } catch (JsonProcessingException e) {
             log.warn("failed to convert preference {} into json: {}", filter.toString(), e.getMessage());
-            throw new IllegalStateException("Failed to build preference filter", e);
         }
+
+        return filteredUsers;
     }
 
     // S1-F4: Deactivate User Account (Transactional)
