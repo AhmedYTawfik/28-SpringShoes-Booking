@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.repository;
 
+import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.model.TimeSlot;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -43,6 +44,25 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
     List<TimeSlot> findByMetadataLessThan(@Param("key") String key, @Param("value") String value);
 
     @Query(value = """
+            SELECT p.id AS providerId,
+                   p.name AS providerName,
+                   p.specialty,
+                   p.rating,
+                   COUNT(ts.id) FILTER (WHERE ts.available = false) AS bookedSlotsCount,
+                   COUNT(ts.id) AS totalSlotsCount
+            FROM providers p
+            LEFT JOIN time_slots ts
+                ON ts.provider_id = p.id
+               AND ts.date >= :sinceDate
+            GROUP BY p.id, p.name, p.specialty, p.rating
+            HAVING COUNT(ts.id) FILTER (WHERE ts.available = false) <= :maxBookedSlots
+            ORDER BY p.id
+            """, nativeQuery = true)
+    List<IdleProviderProjection> findIdleProviders(
+            @Param("maxBookedSlots") int maxBookedSlots,
+            @Param("sinceDate") LocalDate sinceDate);
+           
+    @Query(value = """
             SELECT
                 COUNT(*) AS totalSlots,
                 COUNT(*) FILTER (WHERE available = false) AS bookedSlots,
@@ -70,6 +90,7 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
             @Param("providerId") Long providerId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
+           
     @Query(value = "SELECT COUNT(*) FROM time_slots WHERE date < :cutoffDate", nativeQuery = true)
     int countByDateBefore(@Param("cutoffDate") LocalDate cutoffDate);
 

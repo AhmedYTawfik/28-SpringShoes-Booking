@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.controller;
 
+import com.team28.booking.calendar.dto.IdleProviderDTO;
 import com.team28.booking.calendar.dto.BatchTimeSlotRequest;
 import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
@@ -80,6 +81,12 @@ public class TimeSlotController {
         return timeSlotService.searchByMetadata(key, operator, value);
     }
 
+    @GetMapping("/idle")
+    public List<IdleProviderDTO> getIdleProviders(
+            @RequestParam int maxBookedSlots,
+            @RequestParam int sinceDays) {
+        return timeSlotService.findIdleProviders(maxBookedSlots, sinceDays);
+      
     @GetMapping("/provider/{providerId}/utilization")
     public ProviderUtilizationDTO getUtilization(
             @PathVariable Long providerId,
