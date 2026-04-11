@@ -8,10 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
@@ -79,36 +77,33 @@ public class InvoiceService {
     @Transactional
     public Invoice applyDiscountToInvoice(Long invoiceId, Long discountId) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Invoice not found with id: " + invoiceId));
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + invoiceId));
 
         if (invoice.getStatus() == Invoice.InvoiceStatus.COMPLETED
                 || invoice.getStatus() == Invoice.InvoiceStatus.REFUNDED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "cannot apply discount to a completed/cancelled invoice");
+            throw new BadRequestException("cannot apply discount to a completed/cancelled invoice");
         }
 
         Discount discount = discountRepository.findById(discountId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Discount not found with id: " + discountId));
+                .orElseThrow(() -> new ResourceNotFoundException("Discount not found with id: " + discountId));
 
         if (!Boolean.TRUE.equals(discount.getActive())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "discount is inactive");
+            throw new BadRequestException("discount is inactive");
         }
 
         LocalDateTime now = LocalDateTime.now();
         if (discount.getExpiryDate() == null || !discount.getExpiryDate().isAfter(now)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "discount is expired");
+            throw new BadRequestException("discount is expired");
         }
 
         int currentUses = discount.getCurrentUses() == null ? 0 : discount.getCurrentUses();
         int maxUses = discount.getMaxUses() == null ? 0 : discount.getMaxUses();
         if (currentUses >= maxUses) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "discount usage limit reached");
+            throw new BadRequestException("discount usage limit reached");
         }
 
         if (invoiceDiscountRepository.existsByInvoiceIdAndDiscountId(invoiceId, discountId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "discount already applied");
+            throw new BadRequestException("discount already applied");
         }
 
         double discountApplied;
