@@ -58,7 +58,7 @@ public class InvoiceController {
         return ResponseEntity.ok(invoiceService.getInvoiceDetails(invoiceId));
     }
 
-    @PutMapping("/{invoiceId}/discounts/{discountId}")
+    @PostMapping("/{invoiceId}/discounts/{discountId}")
     public ResponseEntity<Invoice> applyDiscountToInvoice(@PathVariable Long invoiceId, @PathVariable Long discountId) {
         return ResponseEntity.ok(invoiceService.applyDiscountToInvoice(invoiceId, discountId));
     }
@@ -90,7 +90,7 @@ public class InvoiceController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/refund")
+    @PutMapping("/{id}/refund")
     public ResponseEntity<Invoice> processRefund(
         @PathVariable Long id,
         @RequestBody RefundRequest refundRequest
