@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/timeslots")
@@ -55,6 +56,13 @@ public class TimeSlotController {
         return timeSlotService.getLatestTimeSlot(providerId);
     }
 
+    @GetMapping("/history")
+    public List<TimeSlot> getHistory(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate,
+            @RequestParam(required = false) Long providerId) {
+        return timeSlotService.getHistory(startDate, endDate, providerId);
+      
     @GetMapping("/metadata/search")
     public List<TimeSlot> searchByMetadata(
             @RequestParam String key,
@@ -80,5 +88,10 @@ public class TimeSlotController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         timeSlotService.deleteTimeSlot(id);
+    }
+
+    @DeleteMapping("/purge")
+    public Map<String, Integer> purge(@RequestParam int olderThanDays) {
+        return timeSlotService.purgeOldSlots(olderThanDays);
     }
 }

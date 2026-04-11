@@ -1,0 +1,37 @@
+name: "Gemini PR Review"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Required permissions to allow the bot to leave PR comments
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Gemini Code Review
+        uses: sshnaidm/gemini-code-review-action@v2
+        with:
+          gemini-key: ${{ secrets.GEMINI_API_KEY }}
+          model: gemini-2.5-pro
+          prompt: |
+            You are reviewing a Java 21+ Spring Boot REST API backed by PostgreSQL.
+            Analyse the diff and give specific, actionable feedback on the following — skip any area that is not touched by the diff:
+
+            1. Business logic correctness — are edge cases handled? Are status transitions valid? Can the code produce inconsistent data?
+            2. Transaction safety — are @Transactional boundaries correct? Could partial failures leave the database in a bad state? Are @Modifying queries missing @Transactional?
+            3. JPA / Hibernate pitfalls — N+1 queries, lazy-loading outside a session, missing cascade rules, wrong fetch strategy.
+            4. Native SQL safety — are all parameters bound via @Param / named parameters (never string-concatenated)? Do JSONB operators behave correctly under the driver version in use?
+            5. REST API design — correct HTTP status codes (200 vs 201, 400 vs 404 vs 409), idempotency of PUT endpoints, missing or redundant validations.
+            6. Test quality — are happy paths AND all error branches covered? Are side-effects (saves, native writes) verified with verify()/never()? Are mocks realistic?
+            7. Spring best practices — read-only service methods annotated @Transactional(readOnly = true), no business logic leaking into controllers or repositories.
+
+            Format your response as a prioritised list: Critical → High → Medium → Low.
+            For each finding include the file name, the relevant code snippet, and a concrete fix.
