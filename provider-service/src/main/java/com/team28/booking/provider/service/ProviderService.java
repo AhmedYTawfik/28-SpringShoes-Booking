@@ -96,8 +96,9 @@ public class ProviderService {
         if (rateProvider.rating() < 1.0 || rateProvider.rating() > 5.0)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
 
-        int newTotalRatings = provider.getTotalRatings() + 1;
-        double newRating = (provider.getRating() + rateProvider.rating()) / newTotalRatings;
+        int previousRating = provider.getTotalRatings();
+        int newTotalRatings = previousRating + 1;
+        double newRating = (provider.getRating() * previousRating + rateProvider.rating()) / newTotalRatings;
         provider.setRating(newRating);
         provider.setTotalRatings(newTotalRatings);
         updateProvider(providerId, provider);
