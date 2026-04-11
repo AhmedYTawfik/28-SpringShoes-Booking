@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
+import com.team28.booking.invoice.dto.RefundRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
 import com.team28.booking.invoice.model.Invoice;
@@ -94,6 +95,14 @@ public class InvoiceController {
     public ResponseEntity<Void> deleteInvoice(@PathVariable Long id) {
         invoiceService.deleteInvoice(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/refund")
+    public ResponseEntity<Invoice> processRefund(
+        @PathVariable Long id,
+        @RequestBody RefundRequest refundRequest
+    ) {
+        return ResponseEntity.ok(invoiceService.processRefund(id, refundRequest.reason()));
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────

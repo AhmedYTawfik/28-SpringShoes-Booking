@@ -221,6 +221,31 @@ public class InvoiceService {
         return invoiceRepository.searchInvoices(statusStr, startDate, endDate);
     }
 
+    @Transactional
+    public Invoice processRefund(Long invoiceId, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("Refund reason must not be blank");
+        }
+
+        Invoice invoice = getInvoiceById(invoiceId);
+
+        if (invoice.getStatus() != InvoiceStatus.COMPLETED) {
+            throw new BadRequestException("Invoice must be COMPLETED to process refund");
+        }
+
+        invoice.setStatus(InvoiceStatus.REFUNDED);
+
+        Map<String, Object> transactionDetails = invoice.getTransactionDetails();
+        if (transactionDetails == null) {
+            transactionDetails = new HashMap<>();
+        }
+        transactionDetails.put("refundReason", reason);
+        transactionDetails.put("refundedAt", LocalDateTime.now().toString());
+        invoice.setTransactionDetails(transactionDetails);
+
+        return invoiceRepository.save(invoice);
+    }
+
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
 
     @Transactional
