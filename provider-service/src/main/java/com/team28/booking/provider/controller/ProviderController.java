@@ -1,13 +1,18 @@
 package com.team28.booking.provider.controller;
 
 import com.team28.booking.provider.dto.RateProviderDTO;
+import com.team28.booking.provider.dto.TopProviderDTO;
+import com.team28.booking.provider.dto.UpdateAvailabilityRequest;
+import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.service.ProviderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/providers")
@@ -44,6 +49,42 @@ public class ProviderController {
     public ResponseEntity<String> deleteProvider(@PathVariable Long id) {
         providerService.deleteProvider(id);
         return ResponseEntity.ok("Provider deleted successfully");
+    }
+
+    @GetMapping("/reports/top-rated")
+    public List<TopProviderDTO> getTopProviders(
+        @RequestParam(required = false, defaultValue = "0") int limit
+    ) {
+        return providerService.getTopRatedProviders(limit);
+    }
+  
+    @PutMapping("/{id}/availability")
+    public ResponseEntity<Void> updateAvailability(@PathVariable Long id,
+                                                   @RequestBody UpdateAvailabilityRequest request) {
+        providerService.updateAvailability(id, request.status());
+        return ResponseEntity.ok().build();
+    }
+  
+    @GetMapping("/{id}/earnings")
+    public ResponseEntity<ProviderEarningsDTO> getProviderEarningsSummary(
+            @PathVariable Long id,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(providerService.getProviderEarningsSummary(id, startDate, endDate));
+    }
+  
+    @PutMapping("/{id}/service-details")
+    public ResponseEntity<Provider> updateServiceDetails(@PathVariable Long id,
+                                                         @RequestBody Map<String, Object> updates) {
+        return ResponseEntity.ok(providerService.updateServiceDetails(id, updates));
+    }
+      
+    @GetMapping("/search")
+    public ResponseEntity<List<Provider>> searchProviders(
+            @RequestParam(required = false) Provider.ProviderStatus status,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating) {
+        return ResponseEntity.ok(providerService.searchProviders(status, minRating, maxRating));
     }
 
     @GetMapping("/pricing-tier")

@@ -2,6 +2,7 @@ package com.team28.booking.invoice.model;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -9,7 +10,6 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,7 +47,7 @@ public class Invoice {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "transaction_details", columnDefinition = "jsonb")
-    private Map<String, Object> transactionDetails;
+    private Map<String, Object> transactionDetails = new HashMap<>();
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
