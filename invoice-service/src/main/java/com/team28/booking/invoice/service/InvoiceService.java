@@ -1,41 +1,35 @@
 package com.team28.booking.invoice.service;
 
-import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
-import com.team28.booking.invoice.dto.RetryInvoiceRequest;
-import com.team28.booking.invoice.dto.RevenueReportDTO;
-import com.team28.booking.invoice.exception.BadRequestException;
-import com.team28.booking.invoice.exception.ResourceNotFoundException;
-import com.team28.booking.invoice.dto.UserInvoiceSummaryDTO;
-import com.team28.booking.invoice.model.Invoice;
-import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
-import com.team28.booking.invoice.repository.InvoiceRepository;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-
-import com.team28.booking.invoice.dto.AppliedDiscountDTO;
-import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
-import java.util.ArrayList;
-
-
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
+import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
+import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
+import com.team28.booking.invoice.dto.RetryInvoiceRequest;
+import com.team28.booking.invoice.dto.RevenueReportDTO;
+import com.team28.booking.invoice.dto.UserInvoiceSummaryDTO;
+import com.team28.booking.invoice.exception.BadRequestException;
+import com.team28.booking.invoice.exception.ResourceNotFoundException;
 import com.team28.booking.invoice.model.Discount;
+import com.team28.booking.invoice.model.Invoice;
+import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
 import com.team28.booking.invoice.model.InvoiceDiscount;
 import com.team28.booking.invoice.repository.DiscountRepository;
 import com.team28.booking.invoice.repository.DiscountUsageProjection;
 import com.team28.booking.invoice.repository.InvoiceDiscountRepository;
+import com.team28.booking.invoice.repository.InvoiceRepository;
 
 @Service
 public class InvoiceService {
@@ -249,38 +243,28 @@ public class InvoiceService {
         return invoiceRepository.save(invoice);
     }
 
-    // Get User Invoice Summary (DTO)
-    // a) Verify user exists - throw 404 if not found
-    // b) Query payment data grouped by method
-    // c) Build method breakdown map
-    // d) Calculate totals
-    // e) Build and return DTO
     public UserInvoiceSummaryDTO getUserInvoiceSummary(Long userId) {
-        // Verify user exists
         Long userExists = invoiceRepository.findUserById(userId);
         if (userExists == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found with id: " + userId);
+            throw new ResourceNotFoundException("User not found with id: " + userId);
         }
 
-        // Query payment data grouped by method
         List<Object[]> results = invoiceRepository.getInvoiceSummaryByUserId(userId);
 
-        // Build method breakdown map and calculate totals
         Map<String, Double> methodBreakdown = new HashMap<>();
         int totalInvoices = 0;
         double totalAmount = 0.0;
 
         for (Object[] row : results) {
             String method = (String) row[0];
-            Long count = ((Number) row[1]).longValue();
-            Double amount = ((Number) row[2]).doubleValue();
+            long count = ((Number) row[1]).longValue();
+            double amount = ((Number) row[2]).doubleValue();
 
             methodBreakdown.put(method, amount);
             totalInvoices += count;
             totalAmount += amount;
         }
 
-        // Build and return DTO
         return new UserInvoiceSummaryDTO(userId, totalInvoices, totalAmount, methodBreakdown);
     }
 
