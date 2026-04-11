@@ -8,6 +8,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -184,7 +185,7 @@ class UserServiceTest {
                 (proxy, method, args) -> {
                     return switch (method.getName()) {
                         case "findById" -> user;
-                        case "findUserBookingSummary" -> summaryRow;
+                        case "findUserBookingSummary" -> summaryRow == null ? List.of() : List.of(summaryRow);
                         default -> throw new UnsupportedOperationException(method.getName());
                     };
                 }
