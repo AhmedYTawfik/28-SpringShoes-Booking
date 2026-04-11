@@ -1,6 +1,7 @@
 package com.team28.booking.booking.controller;
 
 import com.team28.booking.booking.dto.BookingEstimateDTO;
+import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.service.BookingService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,9 +13,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -112,6 +117,97 @@ class BookingControllerTest {
                         .content("""
                                 {"providerId":1,"appointmentDate":"2026-04-15","services":[{"serviceName":"X","duration":-5}]}
                                 """))
+                .andExpect(status().isBadRequest());
+    }
+
+    // --- S3-F5: GET /api/bookings/metadata/search ---
+
+    @Test
+    void metadataSearch_validParams_returnsMatchingBookings() throws Exception {
+        Booking b1 = new Booking();
+        b1.setId(1L);
+        Booking b2 = new Booking();
+        b2.setId(2L);
+        when(bookingService.searchByMetadata("bookingType", "IN_PERSON")).thenReturn(List.of(b1, b2));
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("key", "bookingType")
+                        .param("value", "IN_PERSON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(1))
+                .andExpect(jsonPath("$[1].id").value(2));
+    }
+
+    @Test
+    void metadataSearch_noMatches_returnsEmptyArray() throws Exception {
+        when(bookingService.searchByMetadata("bookingType", "VIRTUAL")).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("key", "bookingType")
+                        .param("value", "VIRTUAL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void metadataSearch_blankKey_returnsBadRequest() throws Exception {
+        when(bookingService.searchByMetadata(eq(""), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Metadata key must not be blank"));
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("key", "")
+                        .param("value", "IN_PERSON"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void metadataSearch_blankValue_returnsBadRequest() throws Exception {
+        when(bookingService.searchByMetadata(any(), eq("")))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Metadata value must not be blank"));
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("key", "bookingType")
+                        .param("value", ""))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void metadataSearch_returnsJsonContentType() throws Exception {
+        when(bookingService.searchByMetadata(any(), any())).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("key", "bookingType")
+                        .param("value", "IN_PERSON"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
+    }
+
+    @Test
+    void metadataSearch_passesCorrectParamsToService() throws Exception {
+        when(bookingService.searchByMetadata("priorityLevel", "EXPRESS")).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("key", "priorityLevel")
+                        .param("value", "EXPRESS"))
+                .andExpect(status().isOk());
+
+        verify(bookingService).searchByMetadata("priorityLevel", "EXPRESS");
+    }
+
+    @Test
+    void metadataSearch_missingKey_returns400() throws Exception {
+        // Spring rejects the request before the controller method is reached when a required
+        // @RequestParam is absent entirely — distinct from the blank-string case handled by the service.
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("value", "IN_PERSON"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void metadataSearch_missingValue_returns400() throws Exception {
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .param("key", "bookingType"))
                 .andExpect(status().isBadRequest());
     }
 

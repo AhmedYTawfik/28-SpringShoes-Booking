@@ -2,16 +2,20 @@ package com.team28.booking.calendar.service;
 
 import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.dto.IdleProviderDTO;
+import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class TimeSlotService {
@@ -24,7 +28,9 @@ public class TimeSlotService {
 
     public TimeSlot createTimeSlot(TimeSlot timeSlot) {
         timeSlot.setCreatedAt(LocalDateTime.now());
-        timeSlot.setAvailable(true);
+        if (timeSlot.getAvailable() == null) {
+            timeSlot.setAvailable(true);
+        }
         return timeSlotRepository.save(timeSlot);
     }
 
@@ -36,7 +42,9 @@ public class TimeSlotService {
 
         validateTimeRange(timeSlot);
         timeSlot.setProviderId(providerId);
-        timeSlot.setAvailable(true);
+        if (timeSlot.getAvailable() == null) {
+            timeSlot.setAvailable(true);
+        }
         timeSlot.setCreatedAt(LocalDateTime.now());
         return timeSlotRepository.save(timeSlot);
     }
@@ -60,6 +68,15 @@ public class TimeSlotService {
         return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "No time slots found for provider"));
+    }
+
+    public List<TimeSlot> getHistory(LocalDate startDate, LocalDate endDate, Long providerId) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "startDate must be before or equal to endDate");
+        }
+
+        return timeSlotRepository.findByDateRangeAndProvider(startDate, endDate, providerId);
     }
 
     public TimeSlot updateTimeSlot(Long id, TimeSlot updated) {
@@ -114,6 +131,41 @@ public class TimeSlotService {
                         row.getTotalSlotsCount()
                 ))
                 .toList();
+    }
+
+    public ProviderUtilizationDTO getUtilization(Long providerId, LocalDate startDate, LocalDate endDate) {
+        Long count = timeSlotRepository.countProviderById(providerId);
+        if (count == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        Object[] stats = timeSlotRepository.getUtilizationStats(providerId, startDate, endDate);
+        Object[] row = (Object[]) stats[0];
+        Long totalSlots = ((Number) row[0]).longValue();
+        Long bookedSlots = ((Number) row[1]).longValue();
+        Long availableSlots = ((Number) row[2]).longValue();
+
+        Double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots * 100.0 : 0.0;
+
+        String peakDay = timeSlotRepository.findPeakDay(providerId, startDate, endDate);
+        if (peakDay != null) {
+            peakDay = peakDay.trim();
+        }
+
+        return new ProviderUtilizationDTO(providerId, totalSlots, bookedSlots, availableSlots, utilizationRate, peakDay);
+    }
+  
+    @Transactional
+    public Map<String, Integer> purgeOldSlots(int olderThanDays) {
+        if (olderThanDays < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "olderThanDays must be greater than or equal to 0");
+        }
+
+        LocalDate cutoffDate = LocalDate.now().minusDays(olderThanDays);
+        int deletedCount = timeSlotRepository.countByDateBefore(cutoffDate);
+        timeSlotRepository.deleteByDateBefore(cutoffDate);
+        return Map.of("deletedCount", deletedCount);
     }
 
     private void validateTimeRange(TimeSlot timeSlot) {
