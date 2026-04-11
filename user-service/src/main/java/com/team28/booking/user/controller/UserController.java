@@ -50,6 +50,33 @@ public class UserController {
         return ResponseEntity.ok(user);
     }
 
+    // CRUD: Update User
+    @PutMapping("/{id}")
+    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User user) {
+        try {
+            return ResponseEntity.ok(userService.updateUser(id, user));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Delete User
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        try {
+            userService.deleteUser(id);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
     // S1-F2: Put User Preferences
     @PutMapping("/{id}/preferences")
     public ResponseEntity<User> updatePreferences(@PathVariable long id,
