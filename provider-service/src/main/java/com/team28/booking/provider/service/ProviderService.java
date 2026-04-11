@@ -1,5 +1,6 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.dto.ProviderSummary;
 import com.team28.booking.provider.dto.TopProviderDTO;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.repository.ProviderRepository;
@@ -34,18 +35,18 @@ public class ProviderService {
     }
 
     public List<TopProviderDTO> getTopRatedProviders(int limit) {
-        List<Provider> topProviders;
-        if (limit == 0) topProviders = providerRepository.findAll();
-        else {
-            PageRequest paging = PageRequest.of(0, limit);
-            topProviders = providerRepository.findTopProviders(paging);
-        }
+        if (limit == 0) limit = 50;
+        PageRequest paging = PageRequest.of(0, limit);
+        List<ProviderSummary> topProviders = providerRepository.findTopProvidersWithBookingCount(paging);
 
         List<TopProviderDTO> topProviderDTOS = new ArrayList<>();
         topProviders.forEach(provider -> topProviderDTOS.add(
             // The total bookings are left as 0 for now
-            new TopProviderDTO(provider.getId(), provider.getName(), provider.getRating(), 0))
-        );
+            new TopProviderDTO(
+                    provider.getId(), provider.getName(),
+                    provider.getRating(), provider.getBookingCount().intValue()
+            )
+        ));
 
         return topProviderDTOS;
     }
