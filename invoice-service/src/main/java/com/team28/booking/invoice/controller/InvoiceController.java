@@ -1,6 +1,7 @@
 package com.team28.booking.invoice.controller;
 
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
+import com.team28.booking.invoice.dto.RefundRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
 import com.team28.booking.invoice.model.Invoice;
@@ -11,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/invoices")
@@ -19,7 +19,6 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
 
-    // Constructor injection
     public InvoiceController(InvoiceService invoiceService) {
         this.invoiceService = invoiceService;
     }
@@ -52,14 +51,12 @@ public class InvoiceController {
         return ResponseEntity.noContent().build();
     }
 
-    // Process Refund
     @PutMapping("/{id}/refund")
     public ResponseEntity<Invoice> processRefund(
         @PathVariable Long id,
-        @RequestBody Map<String, Object> refundRequest
+        @RequestBody RefundRequest refundRequest
     ) {
-        String reason = (String) refundRequest.get("reason");
-        return ResponseEntity.ok(invoiceService.processRefund(id, reason));
+        return ResponseEntity.ok(invoiceService.processRefund(id, refundRequest.reason()));
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
