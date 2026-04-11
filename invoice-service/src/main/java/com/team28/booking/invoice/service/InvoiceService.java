@@ -8,10 +8,8 @@ import com.team28.booking.invoice.exception.ResourceNotFoundException;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
 import com.team28.booking.invoice.repository.InvoiceRepository;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -63,15 +61,22 @@ public class InvoiceService {
 
     @Transactional
     public Invoice processRefund(Long invoiceId, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("Refund reason must not be blank");
+        }
+
         Invoice invoice = getInvoiceById(invoiceId);
 
         if (invoice.getStatus() != InvoiceStatus.COMPLETED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invoice must be COMPLETED to process refund");
+            throw new BadRequestException("Invoice must be COMPLETED to process refund");
         }
 
         invoice.setStatus(InvoiceStatus.REFUNDED);
 
         Map<String, Object> transactionDetails = invoice.getTransactionDetails();
+        if (transactionDetails == null) {
+            transactionDetails = new HashMap<>();
+        }
         transactionDetails.put("refundReason", reason);
         transactionDetails.put("refundedAt", LocalDateTime.now().toString());
         invoice.setTransactionDetails(transactionDetails);
