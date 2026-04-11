@@ -1,5 +1,6 @@
 package com.team28.booking.booking.service;
 
+import com.team28.booking.booking.dto.AddServiceItemDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.dto.EstimateServiceItemDTO;
@@ -116,5 +117,11 @@ public class BookingService {
         }
 
         return bookingRepository.save(booking);
+    }
+
+    @Transactional
+    public Booking addServicesToBooking(Long bookingId, List<AddServiceItemDTO> services) {
+        // TODO: implement logic
+        return null;
     }
 }
