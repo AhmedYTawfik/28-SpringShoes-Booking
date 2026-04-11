@@ -4,6 +4,7 @@ import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.repository.InvoiceRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -18,6 +19,7 @@ public class InvoiceService {
 
     // Create
     public Invoice createInvoice(Invoice invoice) {
+        invoice.setCreatedAt(LocalDateTime.now());
         return invoiceRepository.save(invoice);
     }
 
