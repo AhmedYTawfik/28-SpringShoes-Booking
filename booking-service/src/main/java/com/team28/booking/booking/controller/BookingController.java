@@ -49,6 +49,13 @@ public class BookingController {
     public ResponseEntity<BookingEstimateDTO> getEstimate(@RequestBody BookingEstimateRequestDTO request) {
         return ResponseEntity.ok(bookingService.getEstimate(request));
     }
+
+    @GetMapping("/metadata/search")
+    public ResponseEntity<List<Booking>> searchByMetadata(
+            @RequestParam String key,
+            @RequestParam String value) {
+        return ResponseEntity.ok(bookingService.searchByMetadata(key, value));
+    }
   
     @PutMapping("/{id}/cancel")
     public ResponseEntity<Booking> cancelBooking(@PathVariable Long id) {
