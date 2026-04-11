@@ -2,6 +2,8 @@ package com.team28.booking.user.controller;
 
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
+import com.team28.booking.user.dto.UserProfileDTO;
+import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController              // ← REQUIRED: Marks this as REST controller
 @RequestMapping("/api/users") // ← REQUIRED: Base path for all endpoints
@@ -48,6 +51,108 @@ public class UserController {
         return ResponseEntity.ok(user);
     }
 
+    // CRUD: Update User
+    @PutMapping("/{id}")
+    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User user) {
+        try {
+            return ResponseEntity.ok(userService.updateUser(id, user));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Delete User
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        try {
+            userService.deleteUser(id);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Create Saved Address
+    @PostMapping("/{userId}/addresses")
+    public ResponseEntity<SavedAddress> createSavedAddress(
+            @PathVariable Long userId,
+            @RequestBody SavedAddress savedAddress) {
+        try {
+            return ResponseEntity.ok(userService.createSavedAddress(userId, savedAddress));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Get All Saved Addresses
+    @GetMapping("/addresses")
+    public ResponseEntity<List<SavedAddress>> getAllSavedAddresses() {
+        return ResponseEntity.ok(userService.getAllSavedAddresses());
+    }
+
+    // CRUD: Get Saved Address by ID
+    @GetMapping("/addresses/{addressId}")
+    public ResponseEntity<SavedAddress> getSavedAddressById(@PathVariable Long addressId) {
+        try {
+            return ResponseEntity.ok(userService.getSavedAddressById(addressId));
+        } catch (RuntimeException e) {
+            if ("Address not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Update Saved Address
+    @PutMapping("/addresses/{addressId}")
+    public ResponseEntity<SavedAddress> updateSavedAddress(
+            @PathVariable Long addressId,
+            @RequestBody SavedAddress savedAddress) {
+        try {
+            return ResponseEntity.ok(userService.updateSavedAddress(addressId, savedAddress));
+        } catch (RuntimeException e) {
+            if ("Address not found".equals(e.getMessage()) || "User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // CRUD: Delete Saved Address
+    @DeleteMapping("/addresses/{addressId}")
+    public ResponseEntity<Void> deleteSavedAddress(@PathVariable Long addressId) {
+        try {
+            userService.deleteSavedAddress(addressId);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            if ("Address not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    // S1-F2: Put User Preferences
+    @PutMapping("/{id}/preferences")
+    public ResponseEntity<User> updatePreferences(@PathVariable long id,
+            @RequestBody Map<String, Object> updatedPreferences) {
+        try {
+            User updatedUser = userService.updateUserPreferences(id, updatedPreferences);
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     // S1-F3: Get User Booking Summary
     @GetMapping("/{id}/booking-summary")
     public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable Long id) {
@@ -58,6 +163,16 @@ public class UserController {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
             }
             throw e;
+        }
+    }
+
+    @GetMapping("/preferences/search")
+    public ResponseEntity<List<User>> getUsersByPreference(@RequestParam("key") String key,
+            @RequestParam("value") String value) {
+        try {
+            return ResponseEntity.ok(userService.getUsersByPreference(key, value));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -82,6 +197,32 @@ public class UserController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }
             throw e;
+        }
+    }
+
+    // S1-F8: Get User Profile with Addresses
+    @GetMapping("/{id}/profile")
+    public ResponseEntity<UserProfileDTO> getUserProfile(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(userService.getUserProfile(id));
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+            }
+            throw e;
+        }
+    }
+
+    // S1-F9: Find Users by Language Preference with Minimum Bookings
+    @GetMapping("/preferences/language")
+    public ResponseEntity<List<User>> getUsersByLanguagePreference(
+            @RequestParam String lang,
+            @RequestParam long minBookings) {
+        try {
+            return ResponseEntity.ok(
+                    userService.findUsersByLanguagePreferenceWithMinimumBookings(lang, minBookings));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -125,6 +266,5 @@ public class UserController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
-
 
 }
