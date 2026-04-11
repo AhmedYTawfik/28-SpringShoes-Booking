@@ -1,5 +1,6 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.provider.dto.UpdateAvailabilityRequest;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.service.ProviderService;
@@ -45,9 +46,11 @@ public class ProviderController {
         return ResponseEntity.ok("Provider deleted successfully");
     }
 
-    @PutMapping ("/{id}/availability")
-    public ResponseEntity<Provider> toggleAvailability(@PathVariable Long id) {
-        return ResponseEntity.ok(providerService.toggleAvailability(id));
+    @PutMapping("/{id}/availability")
+    public ResponseEntity<Void> updateAvailability(@PathVariable Long id,
+                                                   @RequestBody UpdateAvailabilityRequest request) {
+        providerService.updateAvailability(id, request.status());
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/pricing-tier")
