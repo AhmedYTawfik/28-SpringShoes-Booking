@@ -12,7 +12,7 @@ import java.util.List;
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
-    // Search invoices by status and date range using native SQL
+     // Search invoices by status and date range using native SQL
     // Returns invoices matching any non-null filter criteria
     @Query(value = """
         SELECT * FROM invoices i
@@ -26,4 +26,26 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
         @Param("startDate") LocalDateTime startDate,
         @Param("endDate") LocalDateTime endDate
     );
+
+    // S5-F4: check if an invoice already exists for a given booking
+    @Query(value = "SELECT EXISTS(SELECT 1 FROM invoices WHERE booking_id = :bookingId)", nativeQuery = true)
+    boolean existsByBookingId(@Param("bookingId") Long bookingId);
+
+    // S5-F4: fetch booking status and totalPrice from the shared bookings table
+    @Query(value = "SELECT status, total_price FROM bookings WHERE id = :bookingId", nativeQuery = true)
+    List<Object[]> findBookingDetails(@Param("bookingId") Long bookingId);
+
+    // S5-F6: aggregate COMPLETED and REFUNDED invoices within a date range
+    @Query(value = """
+            SELECT
+                COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN amount ELSE 0 END), 0),
+                COUNT(CASE WHEN status IN ('COMPLETED', 'REFUNDED') THEN 1 END),
+                COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END),
+                COALESCE(SUM(CASE WHEN status = 'REFUNDED' THEN amount ELSE 0 END), 0),
+                COALESCE(AVG(CASE WHEN status IN ('COMPLETED', 'REFUNDED') THEN amount END), 0)
+            FROM invoices
+            WHERE created_at >= :startDate AND created_at <= :endDate
+            """, nativeQuery = true)
+    Object[] getRevenueStats(@Param("startDate") LocalDateTime startDate,
+                             @Param("endDate") LocalDateTime endDate);
 }
