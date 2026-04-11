@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,7 +41,7 @@ public class ProviderService {
     //get by id
     public Provider getProviderById(Long id) {
         return providerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Provider not found with id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found with id: " + id));
     }
 
     public List<Provider> filterByPricingTier(
@@ -106,6 +107,29 @@ public class ProviderService {
                 totalEarnings,
                 averageBookingPrice
         );
+    }
+  
+    public Provider updateServiceDetails(Long id, Map<String, Object> updates) {
+        Provider provider = getProviderById(id);
+        Map<String, Object> existingDetails = provider.getServiceDetails();
+
+        if (existingDetails == null) {
+            existingDetails = new HashMap<>();
+        }
+        if (updates != null) {
+            existingDetails.putAll(updates);
+        }
+
+        provider.setServiceDetails(existingDetails);
+        return providerRepository.save(provider);
+    }
+  
+    public List<Provider> searchProviders(Provider.ProviderStatus status, Double minRating, Double maxRating) {
+        if (minRating != null && maxRating != null && minRating > maxRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
+        }
+
+        return providerRepository.searchProviders(status, minRating, maxRating);
     }
 
     // I am only writing once, but whatever
