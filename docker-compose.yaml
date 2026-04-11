@@ -26,5 +26,17 @@ services:
 #    depends_on:
 #      - postgres
 
+#  invoice-service:
+#    build: ./invoice-service
+#    ports:
+#      - "8085:8080"  # Host:Container
+#    environment:
+#      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/bookingdb
+#      - SPRING_DATASOURCE_USERNAME=postgres
+#      - SPRING_DATASOURCE_PASSWORD=postgres
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+
 volumes:
   pgdata:

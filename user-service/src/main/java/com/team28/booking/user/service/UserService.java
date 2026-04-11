@@ -1,5 +1,7 @@
 package com.team28.booking.user.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
@@ -9,6 +11,9 @@ import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Status;
 import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +23,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class UserService {
@@ -27,6 +33,10 @@ public class UserService {
 
     @Autowired
     private SavedAddressRepository savedAddressRepository;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     public User save(User user) {
         return userRepository.save(user);
@@ -152,6 +162,37 @@ public class UserService {
         return userRepository.searchUsers(searchName, searchEmail, searchRole);
     }
 
+    public User updateUserPreferences(Long UserId, Map<String, Object> updatedPreferences) {
+        User user = userRepository.findById(UserId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found"); // Will be caught and converted to 404
+        }
+
+        Map<String, Object> userPreferences = user.getPreferences();
+        for (String key : updatedPreferences.keySet()) {
+            userPreferences.put(key, updatedPreferences.get(key));
+        }
+
+        userRepository.save(user);
+        return user;
+    }
+
+    public List<User> getUsersByPreference(String key, String value) {
+        if (key == null || key.trim().isEmpty() || value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException("Preference key and value must not be blank");
+        }
+
+        Map<String, Object> filter = Map.of(key.trim(), value.trim());
+
+        try {
+            String jsonFilter = objectMapper.writeValueAsString(filter);
+            return userRepository.findByPreference(jsonFilter);
+        } catch (JsonProcessingException e) {
+            log.warn("failed to convert preference {} into json: {}", filter.toString(), e.getMessage());
+            throw new IllegalStateException("Failed to build preference filter", e);
+        }
+    }
+
     // S1-F4: Deactivate User Account (Transactional)
     @Transactional
     public User deactivateUser(Long userId) {
@@ -173,7 +214,6 @@ public class UserService {
         // 4. Save and return updated user
         return userRepository.save(user);
     }
-
 
     // S1-F6: Top Clients by Spending Report
     public List<TopClientDTO> getTopClientsBySpending(String startDate, String endDate, int limit) {
