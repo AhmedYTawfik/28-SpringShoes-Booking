@@ -52,11 +52,6 @@ public class User {
     @JsonManagedReference
     private List<SavedAddress> savedAddresses = new ArrayList<>();
 
-    // Enums as required by PDF Section 7.1.1
-    public enum Role {
-        CLIENT, ADMIN
-    }
-
     public enum Status {
         ACTIVE, DEACTIVATED
     }
