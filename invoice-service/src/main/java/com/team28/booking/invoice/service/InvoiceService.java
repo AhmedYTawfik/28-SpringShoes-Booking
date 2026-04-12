@@ -153,7 +153,6 @@ public class InvoiceService {
         existing.setMethod(updatedInvoice.getMethod());
         existing.setStatus(updatedInvoice.getStatus());
         existing.setTransactionDetails(updatedInvoice.getTransactionDetails());
-        existing.setCreatedAt(updatedInvoice.getCreatedAt());
         return invoiceRepository.save(existing);
     }
 
