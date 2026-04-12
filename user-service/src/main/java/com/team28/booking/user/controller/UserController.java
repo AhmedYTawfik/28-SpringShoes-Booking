@@ -99,19 +99,6 @@ public class UserController {
         return ResponseEntity.ok(userService.getAllSavedAddresses());
     }
 
-    // CRUD: Get Saved Addresses for User
-    @GetMapping("/{userId}/addresses")
-    public ResponseEntity<List<SavedAddress>> getSavedAddressesByUserId(@PathVariable Long userId) {
-        try {
-            return ResponseEntity.ok(userService.getSavedAddressesByUserId(userId));
-        } catch (RuntimeException e) {
-            if ("User not found".equals(e.getMessage())) {
-                return ResponseEntity.notFound().build();
-            }
-            throw e;
-        }
-    }
-
     // CRUD: Get Saved Address by ID
     @GetMapping("/addresses/{addressId}")
     public ResponseEntity<SavedAddress> getSavedAddressById(@PathVariable Long addressId) {
@@ -120,24 +107,6 @@ public class UserController {
         } catch (RuntimeException e) {
             if ("Address not found".equals(e.getMessage())) {
                 return ResponseEntity.notFound().build();
-            }
-            throw e;
-        }
-    }
-
-    // CRUD: Get Saved Address by ID for User
-    @GetMapping("/{userId}/addresses/{addressId}")
-    public ResponseEntity<SavedAddress> getSavedAddressById(
-            @PathVariable Long userId,
-            @PathVariable Long addressId) {
-        try {
-            return ResponseEntity.ok(userService.getSavedAddressById(userId, addressId));
-        } catch (RuntimeException e) {
-            if ("User not found".equals(e.getMessage()) || "Address not found".equals(e.getMessage())) {
-                return ResponseEntity.notFound().build();
-            }
-            if ("Address does not belong to this user".equals(e.getMessage())) {
-                return ResponseEntity.badRequest().build();
             }
             throw e;
         }
@@ -158,25 +127,6 @@ public class UserController {
         }
     }
 
-    // CRUD: Update Saved Address for User
-    @PutMapping("/{userId}/addresses/{addressId}")
-    public ResponseEntity<SavedAddress> updateSavedAddress(
-            @PathVariable Long userId,
-            @PathVariable Long addressId,
-            @RequestBody SavedAddress savedAddress) {
-        try {
-            return ResponseEntity.ok(userService.updateSavedAddress(userId, addressId, savedAddress));
-        } catch (RuntimeException e) {
-            if ("Address not found".equals(e.getMessage()) || "User not found".equals(e.getMessage())) {
-                return ResponseEntity.notFound().build();
-            }
-            if ("Address does not belong to this user".equals(e.getMessage())) {
-                return ResponseEntity.badRequest().build();
-            }
-            throw e;
-        }
-    }
-
     // CRUD: Delete Saved Address
     @DeleteMapping("/addresses/{addressId}")
     public ResponseEntity<Void> deleteSavedAddress(@PathVariable Long addressId) {
@@ -186,25 +136,6 @@ public class UserController {
         } catch (RuntimeException e) {
             if ("Address not found".equals(e.getMessage())) {
                 return ResponseEntity.notFound().build();
-            }
-            throw e;
-        }
-    }
-
-    // CRUD: Delete Saved Address for User
-    @DeleteMapping("/{userId}/addresses/{addressId}")
-    public ResponseEntity<Void> deleteSavedAddress(
-            @PathVariable Long userId,
-            @PathVariable Long addressId) {
-        try {
-            userService.deleteSavedAddress(userId, addressId);
-            return ResponseEntity.ok().build();
-        } catch (RuntimeException e) {
-            if ("User not found".equals(e.getMessage()) || "Address not found".equals(e.getMessage())) {
-                return ResponseEntity.notFound().build();
-            }
-            if ("Address does not belong to this user".equals(e.getMessage())) {
-                return ResponseEntity.badRequest().build();
             }
             throw e;
         }
@@ -246,13 +177,7 @@ public class UserController {
     }
 
     // S1-F7: Set Default Saved Address
-    @RequestMapping(
-            path = {
-                    "/{userId}/addresses/{addressId}/default",
-                    "/{userId}/addresses/{addressId}/set-default"
-            },
-            method = {RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.POST}
-    )
+    @PutMapping("/{userId}/addresses/{addressId}/default")
     public ResponseEntity<User> setDefaultSavedAddress(
             @PathVariable Long userId,
             @PathVariable Long addressId) {
