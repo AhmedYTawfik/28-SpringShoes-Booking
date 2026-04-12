@@ -54,10 +54,6 @@ public class User {
     @JsonManagedReference
     private List<SavedAddress> savedAddresses = new ArrayList<>();
 
-    public enum Status {
-        ACTIVE, DEACTIVATED
-    }
-
     // Constructors
     public User() {
     }

@@ -7,8 +7,8 @@ import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.SavedAddress;
+import com.team28.booking.user.model.Status;
 import com.team28.booking.user.model.User;
-import com.team28.booking.user.model.User.Status;
 import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
 
