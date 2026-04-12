@@ -1,14 +1,15 @@
 package com.team28.booking.invoice.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public record RevenueReportDTO(
         LocalDate startDate,
         LocalDate endDate,
-        Double totalRevenue,
+        BigDecimal totalRevenue,
         Long totalInvoices,
         Long completedInvoices,
-        Double refundedAmount,
-        Double netRevenue,
-        Double averageInvoiceAmount
+        BigDecimal refundedAmount,
+        BigDecimal netRevenue,
+        BigDecimal averageInvoiceAmount
 ) {}

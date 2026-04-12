@@ -6,6 +6,7 @@ import org.hibernate.type.SqlTypes;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,8 +28,8 @@ public class Discount {
     @Column(name = "discount_type", nullable = false)
     private DiscountType discountType;
 
-    @Column(name = "discount_value", nullable = false)
-    private Double discountValue;
+    @Column(name = "discount_value", nullable = false, precision = 10, scale = 2)
+    private BigDecimal discountValue;
 
     @Column(name = "max_uses", nullable = false)
     private Integer maxUses;
@@ -65,8 +66,8 @@ public class Discount {
     public DiscountType getDiscountType() { return discountType; }
     public void setDiscountType(DiscountType discountType) { this.discountType = discountType; }
 
-    public Double getDiscountValue() { return discountValue; }
-    public void setDiscountValue(Double discountValue) { this.discountValue = discountValue; }
+    public BigDecimal getDiscountValue() { return discountValue; }
+    public void setDiscountValue(BigDecimal discountValue) { this.discountValue = discountValue; }
 
     public Integer getMaxUses() { return maxUses; }
     public void setMaxUses(Integer maxUses) { this.maxUses = maxUses; }
