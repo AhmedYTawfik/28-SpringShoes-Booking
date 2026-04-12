@@ -1,10 +1,11 @@
 package com.team28.booking.invoice.dto;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 public record UserInvoiceSummaryDTO(
         Long userId,
         Integer totalInvoices,
-        Double totalAmount,
-        Map<String, Double> methodBreakdown
+        BigDecimal totalAmount,
+        Map<String, BigDecimal> methodBreakdown
 ) {}

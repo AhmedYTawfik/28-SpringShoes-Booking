@@ -1,14 +1,16 @@
 package com.team28.booking.invoice.dto;
 
+import java.math.BigDecimal;
+
 import com.team28.booking.invoice.model.Discount;
 
 public record DiscountUsageDTO(
 Long discountId,
 String code,
 Discount.DiscountType discountType,
-Double discountValue,
+BigDecimal discountValue,
 Integer timesUsed,
-Double totalDiscountGiven,
+BigDecimal totalDiscountGiven,
 Boolean active,
 Boolean expired
 ) {}

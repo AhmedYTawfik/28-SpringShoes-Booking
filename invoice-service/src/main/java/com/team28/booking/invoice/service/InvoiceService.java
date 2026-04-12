@@ -1,5 +1,7 @@
 package com.team28.booking.invoice.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -61,9 +63,9 @@ public class InvoiceService {
                 row.getDiscountId(),
                 row.getCode(),
                 Discount.DiscountType.valueOf(row.getDiscountType()),
-                row.getDiscountValue() == null ? 0.0 : row.getDiscountValue(),
+                row.getDiscountValue() != null ? row.getDiscountValue() : BigDecimal.ZERO,
                 row.getTimesUsed() == null ? 0 : row.getTimesUsed(),
-                row.getTotalDiscountGiven() == null ? 0.0 : row.getTotalDiscountGiven(),
+                row.getTotalDiscountGiven() != null ? row.getTotalDiscountGiven() : BigDecimal.ZERO,
                 row.getActive() != null && row.getActive(),
                 expired
             ));
@@ -106,13 +108,15 @@ public class InvoiceService {
             throw new BadRequestException("discount already applied");
         }
 
-        double discountApplied;
+        BigDecimal discountApplied;
         if (discount.getDiscountType() == Discount.DiscountType.PERCENTAGE) {
-            discountApplied = invoice.getAmount() * discount.getDiscountValue() / 100.0;
+            discountApplied = invoice.getAmount()
+                    .multiply(discount.getDiscountValue())
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         } else {
             discountApplied = discount.getDiscountValue();
         }
-        discountApplied = Math.min(discountApplied, invoice.getAmount());
+        discountApplied = discountApplied.min(invoice.getAmount());
 
         InvoiceDiscount invoiceDiscount = new InvoiceDiscount();
         invoiceDiscount.setInvoice(invoice);
@@ -170,14 +174,12 @@ public class InvoiceService {
                 .map(this::mapAppliedDiscount)
                 .toList();
 
-        double totalDiscount = invoice.getInvoiceDiscounts().stream()
+        BigDecimal totalDiscount = invoice.getInvoiceDiscounts().stream()
                 .map(InvoiceDiscount::getDiscountApplied)
                 .filter(Objects::nonNull)
-                .mapToDouble(Double::doubleValue)
-                .sum();
-
-        double originalAmount = invoice.getAmount() == null ? 0.0 : invoice.getAmount();
-        double finalAmount = originalAmount - totalDiscount;
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal originalAmount = invoice.getAmount() != null ? invoice.getAmount() : BigDecimal.ZERO;
+        BigDecimal finalAmount = originalAmount.subtract(totalDiscount);
 
         return new InvoiceDetailsDTO(
                 invoice.getId(),
@@ -246,18 +248,20 @@ public class InvoiceService {
 
         List<Object[]> results = invoiceRepository.getInvoiceSummaryByUserId(userId);
 
-        Map<String, Double> methodBreakdown = new HashMap<>();
+        Map<String, BigDecimal> methodBreakdown = new HashMap<>();
         int totalInvoices = 0;
-        double totalAmount = 0.0;
+        BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (Object[] row : results) {
             String method = (String) row[0];
             long count = ((Number) row[1]).longValue();
-            double amount = ((Number) row[2]).doubleValue();
+            BigDecimal amount = row[2] != null
+                    ? new BigDecimal(row[2].toString())
+                    : BigDecimal.ZERO;
 
             methodBreakdown.put(method, amount);
             totalInvoices += count;
-            totalAmount += amount;
+            totalAmount = totalAmount.add(amount);
         }
 
         return new UserInvoiceSummaryDTO(userId, totalInvoices, totalAmount, methodBreakdown);
@@ -284,7 +288,9 @@ public class InvoiceService {
             throw new BadRequestException("An invoice already exists for booking id: " + request.getBookingId());
         }
 
-        Double totalPrice = ((Number) booking[1]).doubleValue();
+        BigDecimal totalPrice = booking[1] != null
+                ? new BigDecimal(booking[1].toString())
+                : BigDecimal.ZERO;
 
         // 3. Build the invoice
         Invoice invoice = new Invoice();
@@ -318,12 +324,12 @@ public class InvoiceService {
 
         Object[] row = invoiceRepository.getRevenueStats(from, to);
 
-        double totalRevenue         = row[0] == null ? 0.0 : ((Number) row[0]).doubleValue();
-        long   totalInvoices        = row[1] == null ? 0L  : ((Number) row[1]).longValue();
-        long   completedInvoices    = row[2] == null ? 0L  : ((Number) row[2]).longValue();
-        double refundedAmount       = row[3] == null ? 0.0 : ((Number) row[3]).doubleValue();
-        double averageInvoiceAmount = row[4] == null ? 0.0 : ((Number) row[4]).doubleValue();
-        double netRevenue           = totalRevenue - refundedAmount;
+        BigDecimal totalRevenue         = row[0] != null ? new BigDecimal(row[0].toString()) : BigDecimal.ZERO;
+        long       totalInvoices        = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        long       completedInvoices    = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+        BigDecimal refundedAmount       = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
+        BigDecimal averageInvoiceAmount = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
+        BigDecimal netRevenue           = totalRevenue.subtract(refundedAmount);
 
         return new RevenueReportDTO(startDate, endDate, totalRevenue, totalInvoices,
                 completedInvoices, refundedAmount, netRevenue, averageInvoiceAmount);
