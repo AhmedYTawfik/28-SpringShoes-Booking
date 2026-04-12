@@ -1,6 +1,8 @@
 package com.team28.booking.user.service;
 
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
+import com.team28.booking.user.model.Role;
+import com.team28.booking.user.model.Status;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -26,16 +28,16 @@ class UserServiceTest {
         existingUser.setEmail("ahmed@example.com");
         existingUser.setPassword("old-pass");
         existingUser.setPhone("0100");
-        existingUser.setRole(User.Role.CLIENT);
-        existingUser.setStatus(User.Status.ACTIVE);
+        existingUser.setRole(Role.CLIENT);
+        existingUser.setStatus(Status.ACTIVE);
 
         User request = new User();
         request.setName("Ahmed Ali");
         request.setEmail("ahmed.ali@example.com");
         request.setPassword("new-pass");
         request.setPhone("0101");
-        request.setRole(User.Role.ADMIN);
-        request.setStatus(User.Status.DEACTIVATED);
+        request.setRole(Role.ADMIN);
+        request.setStatus(Status.DEACTIVATED);
         request.setPreferences(Map.of("language", "ar"));
 
         UserRepository userRepository = stubUserRepositoryForUpdate(existingUser);
@@ -48,8 +50,8 @@ class UserServiceTest {
         assertEquals("ahmed.ali@example.com", updated.getEmail());
         assertEquals("new-pass", updated.getPassword());
         assertEquals("0101", updated.getPhone());
-        assertEquals(User.Role.ADMIN, updated.getRole());
-        assertEquals(User.Status.DEACTIVATED, updated.getStatus());
+        assertEquals(Role.ADMIN, updated.getRole());
+        assertEquals(Status.DEACTIVATED, updated.getStatus());
         assertEquals("ar", updated.getPreferences().get("language"));
     }
 
