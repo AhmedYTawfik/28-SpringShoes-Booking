@@ -1,7 +1,10 @@
 package com.team28.booking.booking.controller;
 
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
+import com.team28.booking.booking.dto.ServiceDetailsDTO;
 import com.team28.booking.booking.model.Booking;
+import com.team28.booking.booking.model.BookingItem;
 import com.team28.booking.booking.service.BookingService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -246,6 +250,48 @@ class BookingControllerTest {
                 .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: 999"));
 
         mockMvc.perform(put("/api/bookings/999/complete"))
+    // --- S3-F8: POST /api/bookings/{id}/services ---
+
+    @Test
+    void addServices_validRequest_returnsOkWithBooking() throws Exception {
+        Booking mockBooking = new Booking();
+        mockBooking.setId(1L);
+        mockBooking.setStatus(Booking.Status.REQUESTED);
+
+        when(bookingService.addServicesToBooking(eq(1L), any())).thenReturn(mockBooking);
+
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"serviceName":"Extra Cleaning","duration":60,"price":100.0}]
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1));
+    }
+
+    @Test
+    void addServices_invalidInput_returnsBadRequest() throws Exception {
+        when(bookingService.addServicesToBooking(eq(1L), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service name is required"));
+
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"serviceName":"","duration":60,"price":100.0}]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addServices_bookingNotFound_returnsNotFound() throws Exception {
+        when(bookingService.addServicesToBooking(eq(99L), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        mockMvc.perform(post("/api/bookings/99/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"serviceName":"Extra Cleaning","duration":60,"price":100.0}]
+                                """))
                 .andExpect(status().isNotFound());
     }
 
@@ -256,5 +302,69 @@ class BookingControllerTest {
 
         mockMvc.perform(put("/api/bookings/1/complete"))
                 .andExpect(status().isBadRequest());
+    }
+                                 
+    @Test                          
+    void addServices_invalidBookingStatus_returnsBadRequest() throws Exception {
+        when(bookingService.addServicesToBooking(eq(1L), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Services can only be added when booking is REQUESTED or CONFIRMED"));
+
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"serviceName":"Extra Cleaning","duration":60,"price":100.0}]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addServices_emptyServicesList_returnsBadRequest() throws Exception {
+        when(bookingService.addServicesToBooking(eq(1L), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Services list must not be empty"));
+
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addServices_missingRequestBody_returnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+    }
+    // --- GET /api/bookings/{id}/details ---
+
+    @Test
+    void getBookingDetails_validId_returnsBookingDetails() throws Exception {
+        ServiceDetailsDTO service1 = new ServiceDetailsDTO(1L, 1, "Haircut", 60, BigDecimal.valueOf(50.0), BookingItem.Status.COMPLETED, Map.of());
+        BookingDetailsDTO detailsDTO = new BookingDetailsDTO(
+                100L, 10L, 5L, Booking.Status.CONFIRMED, BigDecimal.valueOf(50.0), Map.of("notes", "VIP"), List.of(service1), 1, 1);
+                
+        when(bookingService.getBookingDetails(100L)).thenReturn(detailsDTO);
+
+        mockMvc.perform(get("/api/bookings/100/details"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingId").value(100))
+                .andExpect(jsonPath("$.userId").value(10))
+                .andExpect(jsonPath("$.providerId").value(5))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.totalPrice").value(50.0))
+                .andExpect(jsonPath("$.metadata.notes").value("VIP"))
+                .andExpect(jsonPath("$.services.length()").value(1))
+                .andExpect(jsonPath("$.services[0].id").value(1))
+                .andExpect(jsonPath("$.services[0].serviceName").value("Haircut"))
+                .andExpect(jsonPath("$.totalServices").value(1))
+                .andExpect(jsonPath("$.completedServices").value(1));
+    }
+
+    @Test
+    void getBookingDetails_notFoundId_returnsNotFound() throws Exception {
+        when(bookingService.getBookingDetails(999L))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: 999"));
+
+        mockMvc.perform(get("/api/bookings/999/details"))
+                .andExpect(status().isNotFound());
     }
 }
