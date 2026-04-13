@@ -488,6 +488,8 @@ public class BookingServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         assertEquals("Services can only be added when booking is REQUESTED or CONFIRMED", ex.getReason());
         verify(bookingRepository, never()).save(any());
+    }
+
     @Test
     void getBookingDetails_notFound_throws404() {
         when(bookingRepository.findById(1L)).thenReturn(Optional.empty());

@@ -250,6 +250,9 @@ class BookingControllerTest {
                 .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: 999"));
 
         mockMvc.perform(put("/api/bookings/999/complete"))
+                .andExpect(status().isNotFound());
+    }
+
     // --- S3-F8: POST /api/bookings/{id}/services ---
 
     @Test
