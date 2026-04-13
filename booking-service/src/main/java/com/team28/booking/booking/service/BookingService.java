@@ -12,6 +12,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Comparator;
+import java.util.Optional;
+import com.team28.booking.booking.dto.BookingDetailsDTO;
+import com.team28.booking.booking.dto.ServiceDetailsDTO;
+import com.team28.booking.booking.model.BookingItem;
 
 @Service
 public class BookingService {
@@ -116,5 +121,42 @@ public class BookingService {
         }
 
         return bookingRepository.save(booking);
+    }
+
+    @Transactional(readOnly = true)
+    public BookingDetailsDTO getBookingDetails(Long id) {
+        Booking booking = getBookingById(id);
+
+        List<ServiceDetailsDTO> services = Optional.ofNullable(booking.getBookingServices())
+                .orElse(List.of())
+                .stream()
+                .sorted(Comparator.comparing(BookingItem::getServiceOrder))
+                .map(item -> new ServiceDetailsDTO(
+                        item.getId(),
+                        item.getServiceOrder(),
+                        item.getServiceName(),
+                        item.getDuration(),
+                        item.getPrice(),
+                        item.getStatus(),
+                        item.getMetadata()
+                ))
+                .toList();
+
+        int totalServices = services.size();
+        long completedServices = services.stream()
+                .filter(s -> s.status() == BookingItem.Status.COMPLETED)
+                .count();
+
+        return new BookingDetailsDTO(
+                booking.getId(),
+                booking.getUserId(),
+                booking.getProviderId(),
+                booking.getStatus(),
+                booking.getTotalPrice(),
+                booking.getMetadata(),
+                services,
+                totalServices,
+                completedServices
+        );
     }
 }
