@@ -1,7 +1,10 @@
 package com.team28.booking.booking.controller;
 
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
+import com.team28.booking.booking.dto.ServiceDetailsDTO;
 import com.team28.booking.booking.model.Booking;
+import com.team28.booking.booking.model.BookingItem;
 import com.team28.booking.booking.service.BookingService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -223,5 +227,39 @@ class BookingControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
+    }
+
+    // --- GET /api/bookings/{id}/details ---
+
+    @Test
+    void getBookingDetails_validId_returnsBookingDetails() throws Exception {
+        ServiceDetailsDTO service1 = new ServiceDetailsDTO(1L, 1, "Haircut", 60, BigDecimal.valueOf(50.0), BookingItem.Status.COMPLETED, Map.of());
+        BookingDetailsDTO detailsDTO = new BookingDetailsDTO(
+                100L, 10L, 5L, Booking.Status.CONFIRMED, BigDecimal.valueOf(50.0), Map.of("notes", "VIP"), List.of(service1), 1, 1);
+                
+        when(bookingService.getBookingDetails(100L)).thenReturn(detailsDTO);
+
+        mockMvc.perform(get("/api/bookings/100/details"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingId").value(100))
+                .andExpect(jsonPath("$.userId").value(10))
+                .andExpect(jsonPath("$.providerId").value(5))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.totalPrice").value(50.0))
+                .andExpect(jsonPath("$.metadata.notes").value("VIP"))
+                .andExpect(jsonPath("$.services.length()").value(1))
+                .andExpect(jsonPath("$.services[0].id").value(1))
+                .andExpect(jsonPath("$.services[0].serviceName").value("Haircut"))
+                .andExpect(jsonPath("$.totalServices").value(1))
+                .andExpect(jsonPath("$.completedServices").value(1));
+    }
+
+    @Test
+    void getBookingDetails_notFoundId_returnsNotFound() throws Exception {
+        when(bookingService.getBookingDetails(999L))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: 999"));
+
+        mockMvc.perform(get("/api/bookings/999/details"))
+                .andExpect(status().isNotFound());
     }
 }
