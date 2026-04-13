@@ -2,6 +2,7 @@ package com.team28.booking.booking.controller;
 
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
@@ -60,5 +61,10 @@ public class BookingController {
     @PutMapping("/{id}/cancel")
     public ResponseEntity<Booking> cancelBooking(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.cancelBooking(id));
+    }
+
+    @GetMapping("/{bookingId}/details")
+    public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(bookingService.getBookingDetails(bookingId));
     }
 }
