@@ -1,5 +1,6 @@
 package com.team28.booking.booking.service;
 
+import com.team28.booking.booking.dto.AddServiceItemDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
@@ -131,6 +132,59 @@ public class BookingService {
         return bookingRepository.save(booking);
     }
 
+    @Transactional
+    public Booking addServicesToBooking(Long bookingId, List<AddServiceItemDTO> services) {
+        if (services == null || services.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Services list must not be empty");
+        }
+
+        Booking booking = getBookingById(bookingId);
+
+        if (booking.getStatus() != Booking.Status.REQUESTED && booking.getStatus() != Booking.Status.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Services can only be added when booking is REQUESTED or CONFIRMED");
+        }
+
+        for (AddServiceItemDTO service : services) {
+            if (service == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service item must not be null");
+            }
+            if (service.serviceName() == null || service.serviceName().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service name is required");
+            }
+            if (service.duration() == null || service.duration() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service duration must be positive");
+            }
+            if (service.price() == null || service.price().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service price must be positive");
+            }
+        }
+
+        int maxOrder = booking.getBookingServices().stream()
+                .mapToInt(BookingItem::getServiceOrder)
+                .max()
+                .orElse(0);
+
+        for (AddServiceItemDTO serviceData : services) {
+            maxOrder++;
+            BookingItem item = new BookingItem();
+            item.setServiceName(serviceData.serviceName());
+            item.setDuration(serviceData.duration());
+            item.setPrice(serviceData.price());
+            item.setMetadata(serviceData.metadata());
+            item.setServiceOrder(maxOrder);
+            item.setStatus(BookingItem.Status.PENDING);
+            item.setBooking(booking);
+            booking.getBookingServices().add(item);
+        }
+
+        Booking savedBooking = bookingRepository.save(booking);
+
+        savedBooking.getBookingServices().sort(Comparator.comparing(BookingItem::getServiceOrder));
+
+        return savedBooking;
+    }
+  
     @Transactional(readOnly = true)
     public BookingDetailsDTO getBookingDetails(Long id) {
         Booking booking = getBookingById(id);
