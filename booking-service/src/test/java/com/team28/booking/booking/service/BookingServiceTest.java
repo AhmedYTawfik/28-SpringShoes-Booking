@@ -1,6 +1,8 @@
 package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.model.Booking;
+import com.team28.booking.booking.model.BookingItem;
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.repository.BookingRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -389,5 +391,78 @@ public class BookingServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         assertEquals("Services can only be added when booking is REQUESTED or CONFIRMED", ex.getReason());
         verify(bookingRepository, never()).save(any());
+    @Test
+    void getBookingDetails_notFound_throws404() {
+        when(bookingRepository.findById(1L)).thenReturn(Optional.empty());
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.getBookingDetails(1L));
+
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        verify(bookingRepository).findById(1L);
+    }
+
+    @Test
+    void getBookingDetails_success_3Services_mapsCorrectly() {
+        Booking bookingWithServices = new Booking();
+        bookingWithServices.setId(10L);
+        bookingWithServices.setStatus(Booking.Status.IN_PROGRESS);
+        bookingWithServices.setTotalPrice(BigDecimal.valueOf(100));
+
+        BookingItem item1 = new BookingItem();
+        item1.setId(101L);
+        item1.setServiceOrder(2);
+        item1.setServiceName("Service B");
+        item1.setStatus(BookingItem.Status.COMPLETED);
+
+        BookingItem item2 = new BookingItem();
+        item2.setId(102L);
+        item2.setServiceOrder(1);
+        item2.setServiceName("Service A");
+        item2.setStatus(BookingItem.Status.COMPLETED);
+
+        BookingItem item3 = new BookingItem();
+        item3.setId(103L);
+        item3.setServiceOrder(3);
+        item3.setServiceName("Service C");
+        item3.setStatus(BookingItem.Status.PENDING);
+
+        bookingWithServices.setBookingServices(List.of(item3, item1, item2));
+
+        when(bookingRepository.findById(10L)).thenReturn(Optional.of(bookingWithServices));
+
+        BookingDetailsDTO result = bookingService.getBookingDetails(10L);
+
+        assertEquals(10L, result.bookingId());
+        assertEquals(Booking.Status.IN_PROGRESS, result.status());
+        assertEquals(3, result.totalServices());
+        assertEquals(2, result.completedServices());
+        assertEquals(3, result.services().size());
+
+        // Validate order
+        assertEquals(102L, result.services().get(0).id()); // ServiceOrder 1
+        assertEquals("Service A", result.services().get(0).serviceName());
+        assertEquals(101L, result.services().get(1).id()); // ServiceOrder 2
+        assertEquals("Service B", result.services().get(1).serviceName());
+        assertEquals(103L, result.services().get(2).id()); // ServiceOrder 3
+        assertEquals("Service C", result.services().get(2).serviceName());
+    }
+
+    @Test
+    void getBookingDetails_noServices_mapsCorrectly() {
+        Booking bookingNoServices = new Booking();
+        bookingNoServices.setId(20L);
+        bookingNoServices.setStatus(Booking.Status.CONFIRMED);
+        bookingNoServices.setTotalPrice(BigDecimal.valueOf(50));
+        bookingNoServices.setBookingServices(List.of());
+
+        when(bookingRepository.findById(20L)).thenReturn(Optional.of(bookingNoServices));
+
+        BookingDetailsDTO result = bookingService.getBookingDetails(20L);
+
+        assertEquals(20L, result.bookingId());
+        assertEquals(0, result.totalServices());
+        assertEquals(0, result.completedServices());
+        assertTrue(result.services().isEmpty());
     }
 }

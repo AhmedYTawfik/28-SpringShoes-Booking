@@ -3,6 +3,7 @@ package com.team28.booking.booking.controller;
 import com.team28.booking.booking.dto.AddServiceItemDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
@@ -68,5 +69,10 @@ public class BookingController {
             @PathVariable Long id,
             @RequestBody List<AddServiceItemDTO> services) {
         return ResponseEntity.ok(bookingService.addServicesToBooking(id, services));
+    }
+  
+    @GetMapping("/{bookingId}/details")
+    public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(bookingService.getBookingDetails(bookingId));
     }
 }

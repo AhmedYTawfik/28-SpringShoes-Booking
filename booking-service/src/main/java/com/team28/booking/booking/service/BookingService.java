@@ -1,9 +1,11 @@
 package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.dto.AddServiceItemDTO;
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.dto.EstimateServiceItemDTO;
+import com.team28.booking.booking.dto.ServiceDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.model.BookingItem;
 import com.team28.booking.booking.repository.BookingRepository;
@@ -15,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class BookingService {
@@ -180,5 +183,40 @@ public class BookingService {
         savedBooking.getBookingServices().sort(Comparator.comparing(BookingItem::getServiceOrder));
 
         return savedBooking;
+    }
+  
+    @Transactional(readOnly = true)
+    public BookingDetailsDTO getBookingDetails(Long id) {
+        Booking booking = getBookingById(id);
+
+        List<ServiceDetailsDTO> services = Optional.ofNullable(booking.getBookingServices())
+                .orElse(List.of())
+                .stream()
+                .sorted(Comparator.comparing(BookingItem::getServiceOrder))
+                .map(item -> new ServiceDetailsDTO(
+                        item.getId(),
+                        item.getServiceOrder(),
+                        item.getServiceName(),
+                        item.getDuration(),
+                        item.getPrice(),
+                        item.getStatus(),
+                        item.getMetadata()))
+                .toList();
+
+        int totalServices = services.size();
+        int completedServices = (int) services.stream()
+                .filter(s -> s.status() == BookingItem.Status.COMPLETED)
+                .count();
+
+        return new BookingDetailsDTO(
+                booking.getId(),
+                booking.getUserId(),
+                booking.getProviderId(),
+                booking.getStatus(),
+                booking.getTotalPrice(),
+                booking.getMetadata(),
+                services,
+                totalServices,
+                completedServices);
     }
 }
