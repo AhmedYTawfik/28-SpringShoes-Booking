@@ -201,7 +201,29 @@ public class BookingServiceTest {
     // --- S3-F8: addServicesToBooking ---
 
     @Test
-    void testAddServicesToBooking_RequestedWithNoServices_Success() {
+    void testAddServicesToBooking_EmptyRequestList_Throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addServicesToBooking(1L, List.of()));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("Services list must not be empty", ex.getReason());
+        verify(bookingRepository, never()).findById(anyLong());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void testAddServicesToBooking_NullRequestList_Throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addServicesToBooking(1L, null));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("Services list must not be empty", ex.getReason());
+        verify(bookingRepository, never()).findById(anyLong());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void testAddServicesToBooking_InitialBookingHasNoServices_Success() {
         booking.setStatus(Booking.Status.REQUESTED);
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
         when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -307,6 +329,65 @@ public class BookingServiceTest {
                 () -> bookingService.addServicesToBooking(1L, List.of(invalidService)));
         
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void testAddServicesToBooking_NullServiceItem_Throws400() {
+        booking.setStatus(Booking.Status.REQUESTED);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+
+        List<com.team28.booking.booking.dto.AddServiceItemDTO> services = new java.util.ArrayList<>();
+        services.add(null);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addServicesToBooking(1L, services));
+        
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("Service item must not be null", ex.getReason());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void testAddServicesToBooking_NonExistentBooking_Throws404() {
+        when(bookingRepository.findById(99L)).thenReturn(Optional.empty());
+
+        com.team28.booking.booking.dto.AddServiceItemDTO s = new com.team28.booking.booking.dto.AddServiceItemDTO("S", 10, BigDecimal.TEN, null);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addServicesToBooking(99L, List.of(s)));
+
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void testAddServicesToBooking_InProgressStatus_Throws400() {
+        booking.setStatus(Booking.Status.IN_PROGRESS);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+
+        com.team28.booking.booking.dto.AddServiceItemDTO s = new com.team28.booking.booking.dto.AddServiceItemDTO("S", 10, BigDecimal.TEN, null);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addServicesToBooking(1L, List.of(s)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("Services can only be added when booking is REQUESTED or CONFIRMED", ex.getReason());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void testAddServicesToBooking_CancelledStatus_Throws400() {
+        booking.setStatus(Booking.Status.CANCELLED);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+
+        com.team28.booking.booking.dto.AddServiceItemDTO s = new com.team28.booking.booking.dto.AddServiceItemDTO("S", 10, BigDecimal.TEN, null);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addServicesToBooking(1L, List.of(s)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("Services can only be added when booking is REQUESTED or CONFIRMED", ex.getReason());
         verify(bookingRepository, never()).save(any());
     }
 }

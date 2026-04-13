@@ -224,4 +224,80 @@ class BookingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
     }
+
+    // --- S3-F8: POST /api/bookings/{id}/services ---
+
+    @Test
+    void addServices_validRequest_returnsOkWithBooking() throws Exception {
+        Booking mockBooking = new Booking();
+        mockBooking.setId(1L);
+        mockBooking.setStatus(Booking.Status.REQUESTED);
+
+        when(bookingService.addServicesToBooking(eq(1L), any())).thenReturn(mockBooking);
+
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"serviceName":"Extra Cleaning","duration":60,"price":100.0}]
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1));
+    }
+
+    @Test
+    void addServices_invalidInput_returnsBadRequest() throws Exception {
+        when(bookingService.addServicesToBooking(eq(1L), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service name is required"));
+
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"serviceName":"","duration":60,"price":100.0}]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addServices_bookingNotFound_returnsNotFound() throws Exception {
+        when(bookingService.addServicesToBooking(eq(99L), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        mockMvc.perform(post("/api/bookings/99/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"serviceName":"Extra Cleaning","duration":60,"price":100.0}]
+                                """))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void addServices_invalidBookingStatus_returnsBadRequest() throws Exception {
+        when(bookingService.addServicesToBooking(eq(1L), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Services can only be added when booking is REQUESTED or CONFIRMED"));
+
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"serviceName":"Extra Cleaning","duration":60,"price":100.0}]
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addServices_emptyServicesList_returnsBadRequest() throws Exception {
+        when(bookingService.addServicesToBooking(eq(1L), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Services list must not be empty"));
+
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addServices_missingRequestBody_returnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/bookings/1/services")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+    }
 }

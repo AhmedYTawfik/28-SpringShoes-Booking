@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -37,20 +36,27 @@ public class BookingService {
 
     public Booking getBookingById(Long id) {
         return bookingRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: " + id));
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: " + id));
     }
 
     public Booking updateBooking(Long id, Booking updated) {
         Booking existing = getBookingById(id);
 
-        if (updated.getUserId() != null) existing.setUserId(updated.getUserId());
+        if (updated.getUserId() != null)
+            existing.setUserId(updated.getUserId());
         existing.setProviderId(updated.getProviderId());
-        if (updated.getAppointmentDate() != null) existing.setAppointmentDate(updated.getAppointmentDate());
-        if (updated.getStartTime() != null) existing.setStartTime(updated.getStartTime());
-        if (updated.getEndTime() != null) existing.setEndTime(updated.getEndTime());
-        if (updated.getStatus() != null) existing.setStatus(updated.getStatus());
+        if (updated.getAppointmentDate() != null)
+            existing.setAppointmentDate(updated.getAppointmentDate());
+        if (updated.getStartTime() != null)
+            existing.setStartTime(updated.getStartTime());
+        if (updated.getEndTime() != null)
+            existing.setEndTime(updated.getEndTime());
+        if (updated.getStatus() != null)
+            existing.setStatus(updated.getStatus());
         existing.setTotalPrice(updated.getTotalPrice());
-        if (updated.getMetadata() != null) existing.setMetadata(updated.getMetadata());
+        if (updated.getMetadata() != null)
+            existing.setMetadata(updated.getMetadata());
         existing.setCompletedAt(updated.getCompletedAt());
 
         return bookingRepository.save(existing);
@@ -93,7 +99,7 @@ public class BookingService {
 
         return new BookingEstimateDTO(totalDuration, basePrice, estimatedPrice, demandMultiplier);
     }
-  
+
     @Transactional(readOnly = true)
     public List<Booking> searchByMetadata(String key, String value) {
         if (key == null || key.isBlank()) {
@@ -110,7 +116,8 @@ public class BookingService {
         Booking booking = getBookingById(id);
 
         if (booking.getStatus() != Booking.Status.REQUESTED && booking.getStatus() != Booking.Status.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking can only be cancelled if it is REQUESTED or CONFIRMED");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Booking can only be cancelled if it is REQUESTED or CONFIRMED");
         }
 
         booking.setStatus(Booking.Status.CANCELLED);
@@ -124,28 +131,30 @@ public class BookingService {
 
     @Transactional
     public Booking addServicesToBooking(Long bookingId, List<AddServiceItemDTO> services) {
+        if (services == null || services.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Services list must not be empty");
+        }
+
         Booking booking = getBookingById(bookingId);
 
         if (booking.getStatus() != Booking.Status.REQUESTED && booking.getStatus() != Booking.Status.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot add services to in-progress or completed bookings");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Services can only be added when booking is REQUESTED or CONFIRMED");
         }
 
-        if (services != null) {
-            for (AddServiceItemDTO service : services) {
-                if (service.serviceName() == null || service.serviceName().isBlank()) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service name is required");
-                }
-                if (service.duration() == null || service.duration() <= 0) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service duration must be positive");
-                }
-                if (service.price() == null || service.price().compareTo(BigDecimal.ZERO) <= 0) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service price must be positive");
-                }
+        for (AddServiceItemDTO service : services) {
+            if (service == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service item must not be null");
             }
-        }
-
-        if (booking.getBookingServices() == null) {
-            booking.setBookingServices(new ArrayList<>());
+            if (service.serviceName() == null || service.serviceName().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service name is required");
+            }
+            if (service.duration() == null || service.duration() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service duration must be positive");
+            }
+            if (service.price() == null || service.price().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service price must be positive");
+            }
         }
 
         int maxOrder = booking.getBookingServices().stream()
@@ -153,19 +162,17 @@ public class BookingService {
                 .max()
                 .orElse(0);
 
-        if (services != null) {
-            for (AddServiceItemDTO serviceData : services) {
-                maxOrder++;
-                BookingItem item = new BookingItem();
-                item.setServiceName(serviceData.serviceName());
-                item.setDuration(serviceData.duration());
-                item.setPrice(serviceData.price());
-                item.setMetadata(serviceData.metadata());
-                item.setServiceOrder(maxOrder);
-                item.setStatus(BookingItem.Status.PENDING);
-                item.setBooking(booking);
-                booking.getBookingServices().add(item);
-            }
+        for (AddServiceItemDTO serviceData : services) {
+            maxOrder++;
+            BookingItem item = new BookingItem();
+            item.setServiceName(serviceData.serviceName());
+            item.setDuration(serviceData.duration());
+            item.setPrice(serviceData.price());
+            item.setMetadata(serviceData.metadata());
+            item.setServiceOrder(maxOrder);
+            item.setStatus(BookingItem.Status.PENDING);
+            item.setBooking(booking);
+            booking.getBookingServices().add(item);
         }
 
         Booking savedBooking = bookingRepository.save(booking);
