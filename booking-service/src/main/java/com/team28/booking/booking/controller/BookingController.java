@@ -59,6 +59,11 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.searchByMetadata(key, value));
     }
   
+    @PutMapping("/{id}/complete")
+    public ResponseEntity<Booking> completeBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.completeBooking(id));
+    }
+
     @PutMapping("/{id}/cancel")
     public ResponseEntity<Booking> cancelBooking(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.cancelBooking(id));
