@@ -1,9 +1,12 @@
 package com.team28.booking.booking.service;
 
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.dto.EstimateServiceItemDTO;
+import com.team28.booking.booking.dto.ServiceDetailsDTO;
 import com.team28.booking.booking.model.Booking;
+import com.team28.booking.booking.model.BookingItem;
 import com.team28.booking.booking.repository.BookingRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -11,12 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
-import com.team28.booking.booking.dto.BookingDetailsDTO;
-import com.team28.booking.booking.dto.ServiceDetailsDTO;
-import com.team28.booking.booking.model.BookingItem;
 
 @Service
 public class BookingService {
@@ -38,20 +38,27 @@ public class BookingService {
 
     public Booking getBookingById(Long id) {
         return bookingRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: " + id));
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: " + id));
     }
 
     public Booking updateBooking(Long id, Booking updated) {
         Booking existing = getBookingById(id);
 
-        if (updated.getUserId() != null) existing.setUserId(updated.getUserId());
+        if (updated.getUserId() != null)
+            existing.setUserId(updated.getUserId());
         existing.setProviderId(updated.getProviderId());
-        if (updated.getAppointmentDate() != null) existing.setAppointmentDate(updated.getAppointmentDate());
-        if (updated.getStartTime() != null) existing.setStartTime(updated.getStartTime());
-        if (updated.getEndTime() != null) existing.setEndTime(updated.getEndTime());
-        if (updated.getStatus() != null) existing.setStatus(updated.getStatus());
+        if (updated.getAppointmentDate() != null)
+            existing.setAppointmentDate(updated.getAppointmentDate());
+        if (updated.getStartTime() != null)
+            existing.setStartTime(updated.getStartTime());
+        if (updated.getEndTime() != null)
+            existing.setEndTime(updated.getEndTime());
+        if (updated.getStatus() != null)
+            existing.setStatus(updated.getStatus());
         existing.setTotalPrice(updated.getTotalPrice());
-        if (updated.getMetadata() != null) existing.setMetadata(updated.getMetadata());
+        if (updated.getMetadata() != null)
+            existing.setMetadata(updated.getMetadata());
         existing.setCompletedAt(updated.getCompletedAt());
 
         return bookingRepository.save(existing);
@@ -94,7 +101,7 @@ public class BookingService {
 
         return new BookingEstimateDTO(totalDuration, basePrice, estimatedPrice, demandMultiplier);
     }
-  
+
     @Transactional(readOnly = true)
     public List<Booking> searchByMetadata(String key, String value) {
         if (key == null || key.isBlank()) {
@@ -111,7 +118,8 @@ public class BookingService {
         Booking booking = getBookingById(id);
 
         if (booking.getStatus() != Booking.Status.REQUESTED && booking.getStatus() != Booking.Status.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking can only be cancelled if it is REQUESTED or CONFIRMED");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Booking can only be cancelled if it is REQUESTED or CONFIRMED");
         }
 
         booking.setStatus(Booking.Status.CANCELLED);
@@ -138,12 +146,11 @@ public class BookingService {
                         item.getDuration(),
                         item.getPrice(),
                         item.getStatus(),
-                        item.getMetadata()
-                ))
+                        item.getMetadata()))
                 .toList();
 
         int totalServices = services.size();
-        long completedServices = services.stream()
+        int completedServices = (int) services.stream()
                 .filter(s -> s.status() == BookingItem.Status.COMPLETED)
                 .count();
 
@@ -156,7 +163,6 @@ public class BookingService {
                 booking.getMetadata(),
                 services,
                 totalServices,
-                completedServices
-        );
+                completedServices);
     }
 }
