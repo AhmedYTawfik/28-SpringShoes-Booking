@@ -253,6 +253,53 @@ class BookingControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void assignProvider_validRequest_returns200WithConfirmedStatus() throws Exception {
+        Booking assigned = new Booking();
+        assigned.setId(1L);
+        assigned.setProviderId(7L);
+        assigned.setStatus(Booking.Status.CONFIRMED);
+        when(bookingService.assignProvider(1L, 7L)).thenReturn(assigned);
+
+        mockMvc.perform(put("/api/bookings/1/assign").param("providerId", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.providerId").value(7));
+    }
+
+    @Test
+    void assignProvider_bookingNotFound_returns404() throws Exception {
+        when(bookingService.assignProvider(999L, 7L))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: 999"));
+
+        mockMvc.perform(put("/api/bookings/999/assign").param("providerId", "7"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void assignProvider_providerNotFound_returns404() throws Exception {
+        when(bookingService.assignProvider(1L, 999L))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found"));
+
+        mockMvc.perform(put("/api/bookings/1/assign").param("providerId", "999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void assignProvider_providerBusy_returns400() throws Exception {
+        when(bookingService.assignProvider(1L, 7L))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provider is not available"));
+
+        mockMvc.perform(put("/api/bookings/1/assign").param("providerId", "7"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void assignProvider_missingProviderId_returns400() throws Exception {
+        mockMvc.perform(put("/api/bookings/1/assign"))
+                .andExpect(status().isBadRequest());
+    }
+
     // --- S3-F8: POST /api/bookings/{id}/services ---
 
     @Test
