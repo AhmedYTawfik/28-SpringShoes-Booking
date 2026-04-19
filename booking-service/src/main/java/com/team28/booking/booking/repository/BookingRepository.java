@@ -39,4 +39,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     void createInvoiceForBooking(@Param("bookingId") Long bookingId,
                                   @Param("userId") Long userId,
                                   @Param("amount") java.math.BigDecimal amount);
+    @Query(value = "SELECT " +
+            "COUNT(*) as totalBookings, " +
+            "COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completedBookings, " +
+            "COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END) as cancelledBookings, " +
+            "COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_price END), 0) as totalRevenue, " +
+            "COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN total_price END), 0) as averageBookingPrice " +
+            "FROM bookings WHERE requested_at >= :startDate AND requested_at <= :endDate", nativeQuery = true)
+    Object[] getBookingAnalytics(@Param("startDate") java.time.LocalDateTime startDate, @Param("endDate") java.time.LocalDateTime endDate);
 }

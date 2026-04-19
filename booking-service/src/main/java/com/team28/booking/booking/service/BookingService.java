@@ -252,4 +252,37 @@ public class BookingService {
                 totalServices,
                 completedServices);
     }
+
+    @Transactional(readOnly = true)
+    public com.team28.booking.booking.dto.BookingAnalyticsDTO getAnalytics(java.time.LocalDate startDate, java.time.LocalDate endDate) {
+        java.time.LocalDateTime startDateTime = startDate.atStartOfDay();
+        java.time.LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
+
+        Object[] result = bookingRepository.getBookingAnalytics(startDateTime, endDateTime);
+        
+        Object[] row = result;
+        if (result.length > 0 && result[0] instanceof Object[]) {
+            row = (Object[]) result[0];
+        }
+        
+        long totalBookings = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        long completedBookings = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        long cancelledBookings = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+        double totalRevenue = row[3] != null ? ((Number) row[3]).doubleValue() : 0.0;
+        double averageBookingPrice = row[4] != null ? ((Number) row[4]).doubleValue() : 0.0;
+        
+        double completionRate = 0.0;
+        if (totalBookings > 0) {
+            completionRate = ((double) completedBookings / totalBookings) * 100.0;
+        }
+
+        return new com.team28.booking.booking.dto.BookingAnalyticsDTO(
+                totalBookings,
+                completedBookings,
+                cancelledBookings,
+                totalRevenue,
+                averageBookingPrice,
+                completionRate
+        );
+    }
 }
