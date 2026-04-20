@@ -252,4 +252,11 @@ public class BookingService {
                 totalServices,
                 completedServices);
     }
+
+    @Transactional(readOnly = true)
+    public List<Booking> searchBookings(String status, java.time.LocalDate startDate, java.time.LocalDate endDate) {
+        java.time.LocalDateTime startDateTime = startDate.atStartOfDay();
+        java.time.LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
+        return bookingRepository.searchBookingsByStatusAndDate(status, startDateTime, endDateTime);
+    }
 }

@@ -80,4 +80,12 @@ public class BookingController {
     public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long bookingId) {
         return ResponseEntity.ok(bookingService.getBookingDetails(bookingId));
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<Booking>> searchBookings(
+            @RequestParam(required = false) String status,
+            @RequestParam java.time.LocalDate startDate,
+            @RequestParam java.time.LocalDate endDate) {
+        return ResponseEntity.ok(bookingService.searchBookings(status, startDate, endDate));
+    }
 }

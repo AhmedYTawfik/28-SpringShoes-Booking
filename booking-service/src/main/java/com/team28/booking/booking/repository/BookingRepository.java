@@ -39,4 +39,13 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     void createInvoiceForBooking(@Param("bookingId") Long bookingId,
                                   @Param("userId") Long userId,
                                   @Param("amount") java.math.BigDecimal amount);
+
+    @Query(value = "SELECT * FROM bookings WHERE " +
+            "(:status IS NULL OR CAST(status AS text) = CAST(:status AS text)) AND " +
+            "requested_at >= :startDate AND requested_at <= :endDate " +
+            "ORDER BY requested_at DESC", nativeQuery = true)
+    List<Booking> searchBookingsByStatusAndDate(
+            @Param("status") String status,
+            @Param("startDate") java.time.LocalDateTime startDate,
+            @Param("endDate") java.time.LocalDateTime endDate);
 }
