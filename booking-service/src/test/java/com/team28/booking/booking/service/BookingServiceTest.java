@@ -55,7 +55,7 @@ public class BookingServiceTest {
 
         assertEquals(Booking.Status.COMPLETED, result.getStatus());
         assertNotNull(result.getCompletedAt());
-        verify(bookingRepository).updateProviderStatusToAvailable(99L);
+        verify(bookingRepository).updateProviderStatus(99L, "AVAILABLE");
         // Use a captor instead of eq() so the assertion is scale-insensitive (100 == 100.00)
         ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
         verify(bookingRepository).createInvoiceForBooking(eq(1L), eq(1L), amountCaptor.capture());
@@ -75,7 +75,7 @@ public class BookingServiceTest {
         Booking result = bookingService.completeBooking(1L);
 
         assertEquals(Booking.Status.COMPLETED, result.getStatus());
-        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("AVAILABLE"));
         verify(bookingRepository).createInvoiceForBooking(eq(1L), eq(1L), any(BigDecimal.class));
     }
 
@@ -106,7 +106,7 @@ public class BookingServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         // Nothing should be written when the guard rejects the request
         verify(bookingRepository, never()).save(any());
-        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("AVAILABLE"));
         verify(bookingRepository, never()).createInvoiceForBooking(any(), any(), any());
     }
 
@@ -120,7 +120,7 @@ public class BookingServiceTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(bookingRepository, never()).save(any());
-        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("AVAILABLE"));
         verify(bookingRepository, never()).createInvoiceForBooking(any(), any(), any());
     }
 
@@ -133,7 +133,7 @@ public class BookingServiceTest {
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         verify(bookingRepository, never()).save(any());
-        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("AVAILABLE"));
         verify(bookingRepository, never()).createInvoiceForBooking(any(), any(), any());
     }
 
@@ -151,7 +151,7 @@ public class BookingServiceTest {
         assertEquals(Booking.Status.CANCELLED, result.getStatus());
 
         // Assert provider status=AVAILABLE method is called
-        verify(bookingRepository, times(1)).updateProviderStatusToAvailable(99L);
+        verify(bookingRepository, times(1)).updateProviderStatus(99L, "AVAILABLE");
     }
 
     @Test
@@ -168,7 +168,7 @@ public class BookingServiceTest {
         assertEquals(Booking.Status.CANCELLED, result.getStatus());
 
         // Assert provider status=AVAILABLE method is called
-        verify(bookingRepository, times(1)).updateProviderStatusToAvailable(99L);
+        verify(bookingRepository, times(1)).updateProviderStatus(99L, "AVAILABLE");
     }
 
     @Test
@@ -182,7 +182,7 @@ public class BookingServiceTest {
         });
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("AVAILABLE"));
         verify(bookingRepository, never()).save(any(Booking.class));
     }
 
@@ -197,7 +197,7 @@ public class BookingServiceTest {
         });
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("AVAILABLE"));
         verify(bookingRepository, never()).save(any(Booking.class));
     }
 
@@ -212,8 +212,82 @@ public class BookingServiceTest {
         });
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(bookingRepository, never()).updateProviderStatusToAvailable(anyLong());
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("AVAILABLE"));
         verify(bookingRepository, never()).save(any(Booking.class));
+    }
+
+    @Test
+    void testAssignProvider_HappyPath_AssignsAndMarksProviderBusy() {
+        booking.setStatus(Booking.Status.REQUESTED);
+        booking.setProviderId(null);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.countProvidersById(7L)).thenReturn(1L);
+        when(bookingRepository.findProviderStatusById(7L)).thenReturn("AVAILABLE");
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Booking result = bookingService.assignProvider(1L, 7L);
+
+        assertEquals(Booking.Status.CONFIRMED, result.getStatus());
+        assertEquals(7L, result.getProviderId());
+        verify(bookingRepository).updateProviderStatus(7L, "BUSY");
+    }
+
+    @Test
+    void testAssignProvider_BookingNotRequested_Throws400() {
+        booking.setStatus(Booking.Status.CONFIRMED);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.assignProvider(1L, 7L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).countProvidersById(anyLong());
+        verify(bookingRepository, never()).save(any(Booking.class));
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("BUSY"));
+    }
+
+    @Test
+    void testAssignProvider_ProviderNotFound_Throws404() {
+        booking.setStatus(Booking.Status.REQUESTED);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.countProvidersById(999L)).thenReturn(0L);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.assignProvider(1L, 999L));
+
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        assertEquals("Provider not found", ex.getReason());
+        verify(bookingRepository, never()).findProviderStatusById(anyLong());
+        verify(bookingRepository, never()).save(any(Booking.class));
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("BUSY"));
+    }
+
+    @Test
+    void testAssignProvider_ProviderNotAvailable_Throws400() {
+        booking.setStatus(Booking.Status.REQUESTED);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.countProvidersById(7L)).thenReturn(1L);
+        when(bookingRepository.findProviderStatusById(7L)).thenReturn("BUSY");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.assignProvider(1L, 7L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("Provider is not available", ex.getReason());
+        verify(bookingRepository, never()).save(any(Booking.class));
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("BUSY"));
+    }
+
+    @Test
+    void testAssignProvider_BookingNotFound_Throws404() {
+        when(bookingRepository.findById(404L)).thenReturn(Optional.empty());
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.assignProvider(404L, 7L));
+
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        verify(bookingRepository, never()).countProvidersById(anyLong());
+        verify(bookingRepository, never()).updateProviderStatus(anyLong(), eq("BUSY"));
     }
 
     // --- S3-F5: searchByMetadata ---

@@ -69,6 +69,13 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.cancelBooking(id));
     }
 
+    @PutMapping("/{bookingId}/assign")
+    public ResponseEntity<Booking> assignProvider(
+            @PathVariable Long bookingId,
+            @RequestParam Long providerId) {
+        return ResponseEntity.ok(bookingService.assignProvider(bookingId, providerId));
+    }
+
     @PostMapping("/{id}/services")
     public ResponseEntity<Booking> addServices(
             @PathVariable Long id,

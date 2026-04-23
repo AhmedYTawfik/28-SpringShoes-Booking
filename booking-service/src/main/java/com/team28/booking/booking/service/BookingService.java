@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.team28.booking.booking.model.BookingItem;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -139,7 +138,7 @@ public class BookingService {
         // Order: update provider → insert invoice → save booking.
         // All three statements share this @Transactional scope; any failure rolls back all three atomically.
         if (booking.getProviderId() != null) {
-            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
+            bookingRepository.updateProviderStatus(booking.getProviderId(), "AVAILABLE");
         }
 
         bookingRepository.createInvoiceForBooking(booking.getId(), booking.getUserId(), booking.getTotalPrice());
@@ -159,10 +158,38 @@ public class BookingService {
         booking.setStatus(Booking.Status.CANCELLED);
 
         if (booking.getProviderId() != null) {
-            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
+            bookingRepository.updateProviderStatus(booking.getProviderId(), "AVAILABLE");
         }
 
         return bookingRepository.save(booking);
+    }
+
+    @Transactional
+    public Booking assignProvider(Long bookingId, Long providerId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: " + bookingId));
+
+        if (booking.getStatus() != Booking.Status.REQUESTED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be REQUESTED to assign a provider");
+        }
+
+        Long providerCount = bookingRepository.countProvidersById(providerId);
+        if (providerCount == null || providerCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        String providerStatus = bookingRepository.findProviderStatusById(providerId);
+        if (!"AVAILABLE".equals(providerStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provider is not available");
+        }
+
+        booking.setProviderId(providerId);
+        booking.setStatus(Booking.Status.CONFIRMED);
+        Booking savedBooking = bookingRepository.save(booking);
+
+        bookingRepository.updateProviderStatus(providerId, "BUSY");
+
+        return savedBooking;
     }
 
     @Transactional
