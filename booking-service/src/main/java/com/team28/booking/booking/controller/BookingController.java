@@ -1,14 +1,16 @@
 package com.team28.booking.booking.controller;
 
 import com.team28.booking.booking.dto.AddServiceItemDTO;
+import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
-import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -82,9 +84,9 @@ public class BookingController {
     }
 
     @GetMapping("/analytics")
-    public ResponseEntity<com.team28.booking.booking.dto.BookingAnalyticsDTO> getAnalytics(
-            @RequestParam java.time.LocalDate startDate,
-            @RequestParam java.time.LocalDate endDate) {
+    public ResponseEntity<BookingAnalyticsDTO> getAnalytics(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
         return ResponseEntity.ok(bookingService.getAnalytics(startDate, endDate));
     }
 }
