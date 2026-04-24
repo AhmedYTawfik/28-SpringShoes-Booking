@@ -9,6 +9,7 @@ import com.team28.booking.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -83,9 +84,9 @@ public class BookingController {
 
     @GetMapping("/search")
     public ResponseEntity<List<Booking>> searchBookings(
-            @RequestParam(required = false) String status,
-            @RequestParam java.time.LocalDate startDate,
-            @RequestParam java.time.LocalDate endDate) {
-        return ResponseEntity.ok(bookingService.searchBookings(status, startDate, endDate));
+            @RequestParam(required = false) Booking.Status status,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(bookingService.searchBookings(status != null ? status.name() : null, startDate, endDate));
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -41,11 +42,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                                   @Param("amount") java.math.BigDecimal amount);
 
     @Query(value = "SELECT * FROM bookings WHERE " +
-            "(:status IS NULL OR CAST(status AS text) = CAST(:status AS text)) AND " +
+            "(:status IS NULL OR status = :status) AND " +
             "requested_at >= :startDate AND requested_at <= :endDate " +
             "ORDER BY requested_at DESC", nativeQuery = true)
     List<Booking> searchBookingsByStatusAndDate(
             @Param("status") String status,
-            @Param("startDate") java.time.LocalDateTime startDate,
-            @Param("endDate") java.time.LocalDateTime endDate);
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
 }

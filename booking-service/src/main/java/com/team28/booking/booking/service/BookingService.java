@@ -16,7 +16,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.team28.booking.booking.model.BookingItem;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -254,9 +256,9 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
-    public List<Booking> searchBookings(String status, java.time.LocalDate startDate, java.time.LocalDate endDate) {
-        java.time.LocalDateTime startDateTime = startDate.atStartOfDay();
-        java.time.LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
+    public List<Booking> searchBookings(String status, LocalDate startDate, LocalDate endDate) {
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
         return bookingRepository.searchBookingsByStatusAndDate(status, startDateTime, endDateTime);
     }
 }
