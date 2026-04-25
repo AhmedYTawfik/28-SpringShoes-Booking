@@ -20,14 +20,20 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             nativeQuery = true)
     Long countActiveBookingsByProviderAndDate(@Param("providerId") Long providerId, @Param("date") LocalDate date);
 
+    @Query(value = "SELECT COUNT(*) FROM providers WHERE id = :providerId", nativeQuery = true)
+    Long countProvidersById(@Param("providerId") Long providerId);
+
+    @Query(value = "SELECT status FROM providers WHERE id = :providerId", nativeQuery = true)
+    String findProviderStatusById(@Param("providerId") Long providerId);
+
     // Cross-service write via shared PostgreSQL — no HTTP calls between services.
     // @Transactional is required on @Modifying methods; without it Spring throws TransactionRequiredException
     // if the caller is ever non-transactional. The service already provides a transaction, but annotating
     // here makes each method self-contained and safe regardless of the call site.
     @Modifying
     @Transactional
-    @Query(value = "UPDATE providers SET status = 'AVAILABLE' WHERE id = :providerId", nativeQuery = true)
-    void updateProviderStatusToAvailable(@Param("providerId") Long providerId);
+    @Query(value = "UPDATE providers SET status = :status WHERE id = :providerId", nativeQuery = true)
+    void updateProviderStatus(@Param("providerId") Long providerId, @Param("status") String status);
 
     @Query(value = "SELECT * FROM bookings WHERE metadata->>:key = :value", nativeQuery = true)
     List<Booking> findByMetadataKeyValue(@Param("key") String key, @Param("value") String value);
@@ -49,4 +55,13 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("status") String status,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
+
+    @Query(value = "SELECT " +
+            "COUNT(*) as totalBookings, " +
+            "COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completedBookings, " +
+            "COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END) as cancelledBookings, " +
+            "COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_price END), 0) as totalRevenue, " +
+            "COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN total_price END), 0) as averageBookingPrice " +
+            "FROM bookings WHERE requested_at >= :startDate AND requested_at <= :endDate", nativeQuery = true)
+    Object[] getBookingAnalytics(@Param("startDate") java.time.LocalDateTime startDate, @Param("endDate") java.time.LocalDateTime endDate);
 }

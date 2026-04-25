@@ -1,6 +1,7 @@
 package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.dto.AddServiceItemDTO;
+import com.team28.booking.booking.dto.BookingAnalyticsDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
@@ -14,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.team28.booking.booking.model.BookingItem;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -141,7 +141,7 @@ public class BookingService {
         // Order: update provider → insert invoice → save booking.
         // All three statements share this @Transactional scope; any failure rolls back all three atomically.
         if (booking.getProviderId() != null) {
-            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
+            bookingRepository.updateProviderStatus(booking.getProviderId(), "AVAILABLE");
         }
 
         bookingRepository.createInvoiceForBooking(booking.getId(), booking.getUserId(), booking.getTotalPrice());
@@ -161,10 +161,38 @@ public class BookingService {
         booking.setStatus(Booking.Status.CANCELLED);
 
         if (booking.getProviderId() != null) {
-            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
+            bookingRepository.updateProviderStatus(booking.getProviderId(), "AVAILABLE");
         }
 
         return bookingRepository.save(booking);
+    }
+
+    @Transactional
+    public Booking assignProvider(Long bookingId, Long providerId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with id: " + bookingId));
+
+        if (booking.getStatus() != Booking.Status.REQUESTED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be REQUESTED to assign a provider");
+        }
+
+        Long providerCount = bookingRepository.countProvidersById(providerId);
+        if (providerCount == null || providerCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        String providerStatus = bookingRepository.findProviderStatusById(providerId);
+        if (!"AVAILABLE".equals(providerStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provider is not available");
+        }
+
+        booking.setProviderId(providerId);
+        booking.setStatus(Booking.Status.CONFIRMED);
+        Booking savedBooking = bookingRepository.save(booking);
+
+        bookingRepository.updateProviderStatus(providerId, "BUSY");
+
+        return savedBooking;
     }
 
     @Transactional
@@ -260,5 +288,44 @@ public class BookingService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
         return bookingRepository.searchBookingsByStatusAndDate(status, startDateTime, endDateTime);
+    }
+
+    @Transactional(readOnly = true)
+    public com.team28.booking.booking.dto.BookingAnalyticsDTO getAnalytics(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "startDate must be on or before endDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        Object[] result = bookingRepository.getBookingAnalytics(startDateTime, endDateTime);
+
+        Object[] row = result;
+        if (result.length > 0 && result[0] instanceof Object[]) {
+            row = (Object[]) result[0];
+        }
+
+        long totalBookings = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        long completedBookings = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        long cancelledBookings = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+        BigDecimal totalRevenue = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
+        BigDecimal averageBookingPrice = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
+
+        double completionRate = 0.0;
+        if (totalBookings > 0) {
+            completionRate = ((double) completedBookings / totalBookings) * 100.0;
+        }
+
+        return new BookingAnalyticsDTO(
+                totalBookings,
+                completedBookings,
+                cancelledBookings,
+                totalRevenue,
+                averageBookingPrice,
+                completionRate
+        );
     }
 }
