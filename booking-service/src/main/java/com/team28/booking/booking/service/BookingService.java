@@ -284,34 +284,41 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
+    public List<Booking> searchBookings(String status, LocalDate startDate, LocalDate endDate) {
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+        return bookingRepository.searchBookingsByStatusAndDate(status, startDateTime, endDateTime);
+    }
+
+    @Transactional(readOnly = true)
     public com.team28.booking.booking.dto.BookingAnalyticsDTO getAnalytics(LocalDate startDate, LocalDate endDate) {
         if (startDate.isAfter(endDate)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "startDate must be on or before endDate");
         }
-        
+
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
-        
+
         Object[] result = bookingRepository.getBookingAnalytics(startDateTime, endDateTime);
-        
+
         Object[] row = result;
         if (result.length > 0 && result[0] instanceof Object[]) {
             row = (Object[]) result[0];
         }
-        
+
         long totalBookings = row[0] != null ? ((Number) row[0]).longValue() : 0L;
         long completedBookings = row[1] != null ? ((Number) row[1]).longValue() : 0L;
         long cancelledBookings = row[2] != null ? ((Number) row[2]).longValue() : 0L;
         BigDecimal totalRevenue = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
         BigDecimal averageBookingPrice = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
-        
+
         double completionRate = 0.0;
         if (totalBookings > 0) {
             completionRate = ((double) completedBookings / totalBookings) * 100.0;
         }
-        
+
         return new BookingAnalyticsDTO(
                 totalBookings,
                 completedBookings,

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -45,6 +46,16 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     void createInvoiceForBooking(@Param("bookingId") Long bookingId,
                                   @Param("userId") Long userId,
                                   @Param("amount") java.math.BigDecimal amount);
+
+    @Query(value = "SELECT * FROM bookings WHERE " +
+            "(:status IS NULL OR status = :status) AND " +
+            "requested_at >= :startDate AND requested_at <= :endDate " +
+            "ORDER BY requested_at DESC", nativeQuery = true)
+    List<Booking> searchBookingsByStatusAndDate(
+            @Param("status") String status,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
     @Query(value = "SELECT " +
             "COUNT(*) as totalBookings, " +
             "COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completedBookings, " +

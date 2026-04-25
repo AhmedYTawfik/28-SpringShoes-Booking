@@ -90,6 +90,14 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getBookingDetails(bookingId));
     }
 
+    @GetMapping("/search")
+    public ResponseEntity<List<Booking>> searchBookings(
+            @RequestParam(required = false) Booking.Status status,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(bookingService.searchBookings(status != null ? status.name() : null, startDate, endDate));
+    }
+
     @GetMapping("/analytics")
     public ResponseEntity<BookingAnalyticsDTO> getAnalytics(
             @RequestParam LocalDate startDate,
