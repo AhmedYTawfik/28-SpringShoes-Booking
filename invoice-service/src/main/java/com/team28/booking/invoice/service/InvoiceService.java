@@ -110,7 +110,8 @@ public class InvoiceService {
 
         BigDecimal discountApplied;
         if (discount.getDiscountType() == Discount.DiscountType.PERCENTAGE) {
-            discountApplied = invoice.getAmount()
+            BigDecimal invoiceAmount = invoice.getAmount();
+            discountApplied = (invoiceAmount != null ? invoiceAmount : BigDecimal.ZERO)
                     .multiply(discount.getDiscountValue())
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         } else {
