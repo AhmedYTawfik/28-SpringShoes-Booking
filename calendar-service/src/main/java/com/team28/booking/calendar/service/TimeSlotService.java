@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.service;
 
+import com.team28.booking.calendar.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.calendar.dto.AvailableProviderDTO;
 import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.dto.IdleProviderDTO;
@@ -29,10 +30,13 @@ public class TimeSlotService extends Observable {
 
     private final TimeSlotRepository timeSlotRepository;
     private final MongoEventLogger mongoEventLogger;
+    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
-    public TimeSlotService(TimeSlotRepository timeSlotRepository, MongoEventLogger mongoEventLogger) {
+    public TimeSlotService(TimeSlotRepository timeSlotRepository, MongoEventLogger mongoEventLogger,ObjectArrayDtoAdapter objectArrayDtoAdapter) {
         this.timeSlotRepository = timeSlotRepository;
         this.mongoEventLogger = mongoEventLogger;
+        this.objectArrayDtoAdapter = objectArrayDtoAdapter;
+
     }
 
     @PostConstruct
@@ -97,13 +101,7 @@ public class TimeSlotService extends Observable {
     public List<AvailableProviderDTO> findAvailableProviders(LocalDate date, String specialty) {
         List<Object[]> results = timeSlotRepository.findAvailableProvidersByDate(date, specialty);
         return results.stream()
-                .map(row -> new AvailableProviderDTO(
-                        ((Number) row[0]).longValue(),
-                        (String) row[1],
-                        (String) row[2],
-                        ((Number) row[3]).doubleValue(),
-                        ((Number) row[4]).longValue()
-                ))
+                .map(objectArrayDtoAdapter::toAvailableProviderDTO)
                 .toList();
     }
 
@@ -180,14 +178,14 @@ public class TimeSlotService extends Observable {
         List<IdleProviderProjection> results = timeSlotRepository.findIdleProviders(maxBookedSlots, sinceDate);
 
         return results.stream()
-                .map(row -> new IdleProviderDTO(
-                        row.getProviderId(),
-                        row.getProviderName(),
-                        row.getSpecialty(),
-                        row.getRating(),
-                        row.getBookedSlotsCount(),
-                        row.getTotalSlotsCount()
-                ))
+                .map(row -> IdleProviderDTO.builder()
+                        .providerId(row.getProviderId())
+                        .providerName(row.getProviderName())
+                        .specialty(row.getSpecialty())
+                        .rating(row.getRating())
+                        .bookedSlotsCount(row.getBookedSlotsCount())
+                        .totalSlotsCount(row.getTotalSlotsCount())
+                        .build())
                 .toList();
     }
 
@@ -197,16 +195,12 @@ public class TimeSlotService extends Observable {
         Object[] row = (Object[]) stats[0];
         Long totalSlots = ((Number) row[0]).longValue();
         Long bookedSlots = ((Number) row[1]).longValue();
-        Long availableSlots = ((Number) row[2]).longValue();
-
         Double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots * 100.0 : 0.0;
 
         String peakDay = timeSlotRepository.findPeakDay(providerId, startDate, endDate);
-        if (peakDay != null) {
-            peakDay = peakDay.trim();
-        }
+        if (peakDay != null) peakDay = peakDay.trim();
 
-        return new ProviderUtilizationDTO(providerId, totalSlots, bookedSlots, availableSlots, utilizationRate, peakDay);
+        return objectArrayDtoAdapter.toProviderUtilizationDTO(providerId, row, utilizationRate, peakDay);
     }  
 
     @Transactional
