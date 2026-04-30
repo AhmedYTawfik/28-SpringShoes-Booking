@@ -1,10 +1,12 @@
 package com.team28.booking.user.service;
 
+import com.team28.booking.user.cache.CacheInvalidator;
 import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Proxy;
@@ -39,6 +41,7 @@ class UserDefaultAddressServiceTest {
 
         ReflectionTestUtils.setField(userService, "userRepository", userRepository);
         ReflectionTestUtils.setField(userService, "savedAddressRepository", savedAddressRepository);
+        ReflectionTestUtils.setField(userService, "cacheInvalidator", Mockito.mock(CacheInvalidator.class));
 
         User updatedUser = userService.setDefaultSavedAddress(1L, 13L);
 
@@ -54,6 +57,7 @@ class UserDefaultAddressServiceTest {
         ReflectionTestUtils.setField(userService, "userRepository", stubUserRepository(Optional.empty()));
         ReflectionTestUtils.setField(userService, "savedAddressRepository",
                 stubSavedAddressRepository(Optional.empty()));
+        ReflectionTestUtils.setField(userService, "cacheInvalidator", Mockito.mock(CacheInvalidator.class));
 
         RuntimeException exception = assertThrows(
                 RuntimeException.class,
@@ -80,6 +84,7 @@ class UserDefaultAddressServiceTest {
         ReflectionTestUtils.setField(userService, "userRepository", stubUserRepository(Optional.of(owner)));
         ReflectionTestUtils.setField(userService, "savedAddressRepository",
                 stubSavedAddressRepository(Optional.of(foreignAddress)));
+        ReflectionTestUtils.setField(userService, "cacheInvalidator", Mockito.mock(CacheInvalidator.class));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,

@@ -3,12 +3,12 @@ package com.team28.booking.user.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team28.booking.user.adapter.ObjectArrayDtoAdapter;
+import com.team28.booking.user.cache.CacheInvalidator;
 import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.SavedAddress;
-import com.team28.booking.user.cache.CacheInvalidator;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Role;
 import com.team28.booking.user.model.User.Status;
@@ -21,6 +21,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,65 +66,38 @@ public class UserService extends Observable {
         register(mongoEventLogger);
     }
 
+    // ── writes ───────────────────────────────────────────────────────────────
+
     public User save(User user) {
         String pw = user.getPassword();
         if (pw != null && !pw.startsWith("$2")) {
             user.setPassword(passwordEncoder.encode(pw));
         }
         User saved = userRepository.save(user);
+        invalidateUserCaches(null);
         emitAfterCommit("USER_CREATED", userPayload(saved));
         return saved;
     }
 
-    public List<User> findAll() {
-        return userRepository.findAll();
-    }
-
-    public User findById(Long id) {
-        return userRepository.findById(id).orElse(null);
-    }
-
-    public UserProfileDTO getUserProfile(Long userId) {
-        User user = userRepository.findByIdWithSavedAddresses(userId).orElse(null);
+    public User updateUserPreferences(Long userId, Map<String, Object> updatedPreferences) {
+        User user = userRepository.findById(userId).orElse(null);
         if (user == null) {
             throw new RuntimeException("User not found");
         }
 
-        List<SavedAddressDTO> addressDTOs = new ArrayList<>();
-        for (SavedAddress savedAddress : user.getSavedAddresses()) {
-            addressDTOs.add(new SavedAddressDTO(
-                    savedAddress.getLabel(),
-                    savedAddress.getAddress(),
-                    savedAddress.getLatitude(),
-                    savedAddress.getLongitude(),
-                    savedAddress.getIsDefault(),
-                    savedAddress.getMetadata()
-            ));
+        Map<String, Object> userPreferences = user.getPreferences();
+        for (String key : updatedPreferences.keySet()) {
+            userPreferences.put(key, updatedPreferences.get(key));
         }
 
-        return UserProfileDTO.builder()
-                .userId(user.getId())
-                .name(user.getName())
-                .email(user.getEmail())
-                .phone(user.getPhone())
-                .preferences(user.getPreferences())
-                .savedAddresses(addressDTOs)
-                .totalAddresses((long) addressDTOs.size())
-                .build();
+        User saved = userRepository.save(user);
+        invalidateUserCaches(userId);
+        Map<String, Object> payload = userPayload(saved);
+        payload.put("preferences", saved.getPreferences());
+        emitAfterCommit("USER_UPDATED", payload);
+        return saved;
     }
 
-    public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
-        if (language == null || language.trim().isEmpty()) {
-            throw new IllegalArgumentException("Language must not be blank");
-        }
-
-        return userRepository.findUsersByLanguagePreferenceAndMinimumCompletedBookings(
-                language.trim(),
-                minBookings
-        );
-    }
-
-    // S1-F7: Set one saved address as default for the user.
     @Transactional
     public User setDefaultSavedAddress(Long userId, Long addressId) {
         User user = userRepository.findById(userId).orElse(null);
@@ -154,12 +128,139 @@ public class UserService extends Observable {
 
         targetAddress.setIsDefault(true);
         User saved = userRepository.save(user);
+        invalidateUserCaches(userId);
         Map<String, Object> payload = userPayload(saved);
         payload.put("addressId", addressId);
         emitAfterCommit("DEFAULT_ADDRESS_SET", payload);
         return saved;
     }
 
+    @Transactional
+    public User deactivateUser(Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        Long activeBookings = userRepository.countActiveBookings(userId);
+        if (activeBookings != null && activeBookings > 0) {
+            throw new IllegalStateException("User has active bookings");
+        }
+
+        user.setStatus(Status.DEACTIVATED);
+
+        User saved = userRepository.save(user);
+        invalidateUserCaches(userId);
+        emitAfterCommit("USER_DEACTIVATED", userPayload(saved));
+        return saved;
+    }
+
+    public void deleteUser(Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        Map<String, Object> payload = userPayload(user);
+        userRepository.delete(user);
+        invalidateUserCaches(userId);
+        emitAfterCommit("USER_DELETED", payload);
+    }
+
+    // CC-2: Change user role (ADMIN-only, gated by SecurityConfig)
+    public User changeRole(Long id, Role newRole) {
+        User user = userRepository.findById(id).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        Role oldRole = user.getRole();
+        user.setRole(newRole);
+        User saved = userRepository.save(user);
+
+        // Explicit entity-detail cache eviction (§4.4.4)
+        invalidateUserCaches(id);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("userId", id);
+        payload.put("oldRole", oldRole != null ? oldRole.name() : null);
+        payload.put("newRole", newRole.name());
+        // Observer writes auth_events to Mongo and triggers S1-F12::* wildcard deletion
+        emitAfterCommit("ROLE_CHANGED", payload);
+
+        return saved;
+    }
+
+    // ── reads (cached) ───────────────────────────────────────────────────────
+
+    public List<User> findAll() {
+        return userRepository.findAll();
+    }
+
+    /** CRUD GET-by-ID — 15 min TTL (§4.4.2). */
+    @Cacheable(cacheNames = "user-service::user", key = "#id")
+    public User findById(Long id) {
+        return userRepository.findById(id).orElse(null);
+    }
+
+    /** S1-F1: user profile with addresses — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F1", key = "#userId")
+    public UserProfileDTO getUserProfile(Long userId) {
+        User user = userRepository.findByIdWithSavedAddresses(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        List<SavedAddressDTO> addressDTOs = new ArrayList<>();
+        for (SavedAddress savedAddress : user.getSavedAddresses()) {
+            addressDTOs.add(new SavedAddressDTO(
+                    savedAddress.getLabel(),
+                    savedAddress.getAddress(),
+                    savedAddress.getLatitude(),
+                    savedAddress.getLongitude(),
+                    savedAddress.getIsDefault(),
+                    savedAddress.getMetadata()
+            ));
+        }
+
+        return UserProfileDTO.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .preferences(user.getPreferences())
+                .savedAddresses(addressDTOs)
+                .totalAddresses((long) addressDTOs.size())
+                .build();
+    }
+
+    /** S1-F3: search users by name/email/role — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F3",
+               key = "T(java.util.Objects).hash(#name, #email, #role)")
+    public List<User> searchUsers(String name, String email, String role) {
+        String searchName = (name == null || name.trim().isEmpty()) ? null : name;
+        String searchEmail = (email == null || email.trim().isEmpty()) ? null : email;
+        String searchRole = (role == null || role.trim().isEmpty()) ? null : role;
+
+        return userRepository.searchUsers(searchName, searchEmail, searchRole);
+    }
+
+    /** S1-F5: users by language preference — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F5",
+               key = "T(java.util.Objects).hash(#language, #minBookings)")
+    public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
+        if (language == null || language.trim().isEmpty()) {
+            throw new IllegalArgumentException("Language must not be blank");
+        }
+
+        return userRepository.findUsersByLanguagePreferenceAndMinimumCompletedBookings(
+                language.trim(),
+                minBookings
+        );
+    }
+
+    /** S1-F6: user booking summary — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F6", key = "#userId")
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) {
@@ -175,33 +276,9 @@ public class UserService extends Observable {
         return objectArrayDtoAdapter.toUserBookingSummaryDTO(summaryRow);
     }
 
-    // S1-F1: Search Users
-    public List<User> searchUsers(String name, String email, String role) {
-        String searchName = (name == null || name.trim().isEmpty()) ? null : name;
-        String searchEmail = (email == null || email.trim().isEmpty()) ? null : email;
-        String searchRole = (role == null || role.trim().isEmpty()) ? null : role;
-
-        return userRepository.searchUsers(searchName, searchEmail, searchRole);
-    }
-
-    public User updateUserPreferences(Long UserId, Map<String, Object> updatedPreferences) {
-        User user = userRepository.findById(UserId).orElse(null);
-        if (user == null) {
-            throw new RuntimeException("User not found"); // Will be caught and converted to 404
-        }
-
-        Map<String, Object> userPreferences = user.getPreferences();
-        for (String key : updatedPreferences.keySet()) {
-            userPreferences.put(key, updatedPreferences.get(key));
-        }
-
-        User saved = userRepository.save(user);
-        Map<String, Object> payload = userPayload(saved);
-        payload.put("preferences", saved.getPreferences());
-        emitAfterCommit("USER_UPDATED", payload);
-        return saved;
-    }
-
+    /** S1-F8: users by JSON preference key-value — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F8",
+               key = "T(java.util.Objects).hash(#key, #value)")
     public List<User> getUsersByPreference(String key, String value) {
         if (key == null || key.trim().isEmpty() || value == null || value.trim().isEmpty()) {
             throw new IllegalArgumentException("Preference key and value must not be blank");
@@ -218,85 +295,40 @@ public class UserService extends Observable {
         }
     }
 
-    // S1-F4: Deactivate User Account (Transactional)
-    @Transactional
-    public User deactivateUser(Long userId) {
-        // 1. Find user - throw 404 if not found
-        User user = userRepository.findById(userId).orElse(null);
-        if (user == null) {
-            throw new RuntimeException("User not found"); // Will be caught and converted to 404
-        }
-
-        // 2. Check no active bookings exist - throw 400 if active bookings found
-        Long activeBookings = userRepository.countActiveBookings(userId);
-        if (activeBookings != null && activeBookings > 0) {
-            throw new IllegalStateException("User has active bookings");
-        }
-
-        // 3. Set status to DEACTIVATED
-        user.setStatus(Status.DEACTIVATED);
-
-        // 4. Save and return updated user
-        User saved = userRepository.save(user);
-        emitAfterCommit("USER_DEACTIVATED", userPayload(saved));
-        return saved;
-    }
-
-    public void deleteUser(Long userId) {
-        User user = userRepository.findById(userId).orElse(null);
-        if (user == null) {
-            throw new RuntimeException("User not found");
-        }
-
-        Map<String, Object> payload = userPayload(user);
-        userRepository.delete(user);
-        emitAfterCommit("USER_DELETED", payload);
-    }
-
-    // CC-2: Change user role (ADMIN-only, gated by SecurityConfig)
-    public User changeRole(Long id, Role newRole) {
-        User user = userRepository.findById(id).orElse(null);
-        if (user == null) {
-            throw new RuntimeException("User not found");
-        }
-
-        Role oldRole = user.getRole();
-        user.setRole(newRole);
-        User saved = userRepository.save(user);
-
-        // Explicit entity-detail cache eviction (§4.4.4)
-        cacheInvalidator.deleteKey("user-service::user::" + id);
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("userId", id);
-        payload.put("oldRole", oldRole != null ? oldRole.name() : null);
-        payload.put("newRole", newRole.name());
-        // Observer writes auth_events to Mongo and triggers S1-F12::* wildcard deletion
-        emitAfterCommit("ROLE_CHANGED", payload);
-
-        return saved;
-    }
-
-    // S1-F6: Top Clients by Spending Report
+    /** S1-F9: top clients by spending report — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F9",
+               key = "T(java.util.Objects).hash(#startDate, #endDate, #limit)")
     public List<TopClientDTO> getTopClientsBySpending(String startDate, String endDate, int limit) {
-        // Validate dates
         validateDateRange(startDate, endDate);
 
-        // Format dates for SQL (add time component)
         String startDateTime = startDate + " 00:00:00";
         String endDateTime = endDate + " 23:59:59";
 
-        // Execute native query
         List<Object[]> results = userRepository.findTopClientsBySpending(
                 startDateTime, endDateTime, limit);
 
-        // Map Object[] results to DTOs
         List<TopClientDTO> topClients = new ArrayList<>();
         for (Object[] row : results) {
             topClients.add(objectArrayDtoAdapter.toTopClientDTO(row));
         }
 
         return topClients;
+    }
+
+    // ── internal helpers ─────────────────────────────────────────────────────
+
+    /** Invalidate entity detail + all feature caches on any user write (§4.4.4). */
+    private void invalidateUserCaches(Long id) {
+        if (id != null) {
+            cacheInvalidator.deleteKey("user-service::user::" + id);
+            cacheInvalidator.deleteKey("user-service::S1-F1::" + id);
+            cacheInvalidator.deleteKey("user-service::S1-F6::" + id);
+        }
+        cacheInvalidator.wildcardDelete("user-service::S1-F3::*");
+        cacheInvalidator.wildcardDelete("user-service::S1-F5::*");
+        cacheInvalidator.wildcardDelete("user-service::S1-F8::*");
+        cacheInvalidator.wildcardDelete("user-service::S1-F9::*");
+        cacheInvalidator.wildcardDelete("user-service::S1-F10::*");
     }
 
     private void validateDateRange(String startDate, String endDate) {
@@ -312,22 +344,6 @@ public class UserService extends Observable {
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd");
         }
-    }
-
-    private BigDecimal toBigDecimal(Object value) {
-        if (value == null) {
-            return BigDecimal.ZERO;
-        }
-
-        if (value instanceof BigDecimal bigDecimal) {
-            return bigDecimal;
-        }
-
-        if (value instanceof Number number) {
-            return BigDecimal.valueOf(number.doubleValue());
-        }
-
-        return new BigDecimal(value.toString());
     }
 
     private void emitAfterCommit(String action, Map<String, Object> payload) {
@@ -351,5 +367,4 @@ public class UserService extends Observable {
         payload.put("status", user.getStatus() != null ? user.getStatus().name() : null);
         return payload;
     }
-
 }
