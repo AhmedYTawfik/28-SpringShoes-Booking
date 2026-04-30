@@ -2,6 +2,7 @@ package com.team28.booking.user.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team28.booking.user.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
@@ -9,25 +10,31 @@ import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Status;
+import com.team28.booking.user.observer.MongoEventLogger;
+import com.team28.booking.user.observer.Observable;
 import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
 
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @Service
-public class UserService {
+public class UserService extends Observable {
 
     @Autowired
     private UserRepository userRepository;
@@ -38,16 +45,27 @@ public class UserService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private ObjectArrayDtoAdapter objectArrayDtoAdapter;
+    private MongoEventLogger mongoEventLogger;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
+
+    @PostConstruct
+    void registerObservers() {
+        register(mongoEventLogger);
+    }
 
     public User save(User user) {
         String pw = user.getPassword();
         if (pw != null && !pw.startsWith("$2")) {
             user.setPassword(passwordEncoder.encode(pw));
         }
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        emitAfterCommit("USER_CREATED", userPayload(saved));
+        return saved;
     }
 
     public List<User> findAll() {
@@ -128,7 +146,11 @@ public class UserService {
         }
 
         targetAddress.setIsDefault(true);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        Map<String, Object> payload = userPayload(saved);
+        payload.put("addressId", addressId);
+        emitAfterCommit("DEFAULT_ADDRESS_SET", payload);
+        return saved;
     }
 
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
@@ -139,26 +161,11 @@ public class UserService {
 
         Object[] summaryRow = userRepository.findUserBookingSummary(userId);
         if (summaryRow == null) {
-            return UserBookingSummaryDTO.builder()
-                    .userId(user.getId())
-                    .name(user.getName())
-                    .totalBookings(0L)
-                    .completedBookings(0L)
-                    .cancelledBookings(0L)
-                    .totalSpent(BigDecimal.ZERO)
-                    .averageBookingPrice(BigDecimal.ZERO)
-                    .build();
+            return new UserBookingSummaryDTO(
+                    user.getId(), user.getName(), 0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO);
         }
 
-        return UserBookingSummaryDTO.builder()
-                .userId(((Number) summaryRow[0]).longValue())
-                .name((String) summaryRow[1])
-                .totalBookings(((Number) summaryRow[2]).longValue())
-                .completedBookings(((Number) summaryRow[3]).longValue())
-                .cancelledBookings(((Number) summaryRow[4]).longValue())
-                .totalSpent(toBigDecimal(summaryRow[5]))
-                .averageBookingPrice(toBigDecimal(summaryRow[6]))
-                .build();
+        return objectArrayDtoAdapter.toUserBookingSummaryDTO(summaryRow);
     }
 
     // S1-F1: Search Users
@@ -181,8 +188,11 @@ public class UserService {
             userPreferences.put(key, updatedPreferences.get(key));
         }
 
-        userRepository.save(user);
-        return user;
+        User saved = userRepository.save(user);
+        Map<String, Object> payload = userPayload(saved);
+        payload.put("preferences", saved.getPreferences());
+        emitAfterCommit("USER_UPDATED", payload);
+        return saved;
     }
 
     public List<User> getUsersByPreference(String key, String value) {
@@ -220,7 +230,20 @@ public class UserService {
         user.setStatus(Status.DEACTIVATED);
 
         // 4. Save and return updated user
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        emitAfterCommit("USER_DEACTIVATED", userPayload(saved));
+        return saved;
+    }
+
+    public void deleteUser(Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        Map<String, Object> payload = userPayload(user);
+        userRepository.delete(user);
+        emitAfterCommit("USER_DELETED", payload);
     }
 
     // S1-F6: Top Clients by Spending Report
@@ -239,12 +262,7 @@ public class UserService {
         // Map Object[] results to DTOs
         List<TopClientDTO> topClients = new ArrayList<>();
         for (Object[] row : results) {
-            topClients.add(TopClientDTO.builder()
-                    .userId(((Number) row[0]).longValue())
-                    .name((String) row[1])
-                    .totalSpent(((Number) row[2]).doubleValue())
-                    .bookingCount(((Number) row[3]).longValue())
-                    .build());
+            topClients.add(objectArrayDtoAdapter.toTopClientDTO(row));
         }
 
         return topClients;
@@ -279,6 +297,28 @@ public class UserService {
         }
 
         return new BigDecimal(value.toString());
+    }
+
+    private void emitAfterCommit(String action, Map<String, Object> payload) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notifyObservers(action, payload);
+                }
+            });
+        } else {
+            notifyObservers(action, payload);
+        }
+    }
+
+    private Map<String, Object> userPayload(User user) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("userId", user.getId());
+        payload.put("email", user.getEmail());
+        payload.put("role", user.getRole() != null ? user.getRole().name() : null);
+        payload.put("status", user.getStatus() != null ? user.getStatus().name() : null);
+        return payload;
     }
 
 }
