@@ -13,6 +13,7 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
@@ -37,13 +38,16 @@ public class InvoiceService {
     private final InvoiceRepository invoiceRepository;
     private final DiscountRepository discountRepository;
     private final InvoiceDiscountRepository invoiceDiscountRepository;
+    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
-                          InvoiceDiscountRepository invoiceDiscountRepository) {
+                          InvoiceDiscountRepository invoiceDiscountRepository,
+                          ObjectArrayDtoAdapter objectArrayDtoAdapter) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
         this.invoiceDiscountRepository = invoiceDiscountRepository;
+        this.objectArrayDtoAdapter = objectArrayDtoAdapter;
     }
 
     // ── Top Used Discounts Report ────────────────────────────────────────────
@@ -248,24 +252,7 @@ public class InvoiceService {
         }
 
         List<Object[]> results = invoiceRepository.getInvoiceSummaryByUserId(userId);
-
-        Map<String, BigDecimal> methodBreakdown = new HashMap<>();
-        int totalInvoices = 0;
-        BigDecimal totalAmount = BigDecimal.ZERO;
-
-        for (Object[] row : results) {
-            String method = (String) row[0];
-            long count = ((Number) row[1]).longValue();
-            BigDecimal amount = row[2] != null
-                    ? new BigDecimal(row[2].toString())
-                    : BigDecimal.ZERO;
-
-            methodBreakdown.put(method, amount);
-            totalInvoices += count;
-            totalAmount = totalAmount.add(amount);
-        }
-
-        return new UserInvoiceSummaryDTO(userId, totalInvoices, totalAmount, methodBreakdown);
+        return objectArrayDtoAdapter.toUserInvoiceSummaryDTO(userId, results);
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
@@ -325,16 +312,7 @@ public class InvoiceService {
         LocalDateTime to   = endDate.atTime(23, 59, 59);
 
         Object[] row = invoiceRepository.getRevenueStats(from, to);
-
-        BigDecimal totalRevenue         = row[0] != null ? new BigDecimal(row[0].toString()) : BigDecimal.ZERO;
-        long       totalInvoices        = row[1] != null ? ((Number) row[1]).longValue() : 0L;
-        long       completedInvoices    = row[2] != null ? ((Number) row[2]).longValue() : 0L;
-        BigDecimal refundedAmount       = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
-        BigDecimal averageInvoiceAmount = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
-        BigDecimal netRevenue           = totalRevenue.subtract(refundedAmount);
-
-        return new RevenueReportDTO(startDate, endDate, totalRevenue, totalInvoices,
-                completedInvoices, refundedAmount, netRevenue, averageInvoiceAmount);
+        return objectArrayDtoAdapter.toRevenueReportDTO(startDate, endDate, row);
     }
 
     // ── S5-F7: Retry Failed Invoice ──────────────────────────────────────────
