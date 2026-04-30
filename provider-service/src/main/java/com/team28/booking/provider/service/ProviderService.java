@@ -124,13 +124,13 @@ public class ProviderService {
             }
         }
 
-        return new ProviderEarningsDTO(
-                provider.getId(),
-                provider.getName(),
-                totalBookings,
-                totalEarnings,
-                averageBookingPrice
-        );
+        return ProviderEarningsDTO.builder()
+                .providerId(provider.getId())
+                .name(provider.getName())
+                .totalBookings(totalBookings)
+                .totalEarnings(totalEarnings)
+                .averageBookingPrice(averageBookingPrice)
+                .build();
     }
   
     public Provider updateServiceDetails(Long id, Map<String, Object> updates) {
