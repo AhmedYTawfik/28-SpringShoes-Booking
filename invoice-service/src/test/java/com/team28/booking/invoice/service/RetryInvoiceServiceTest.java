@@ -12,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -41,7 +42,7 @@ class RetryInvoiceServiceTest {
         failedInvoice = new Invoice();
         failedInvoice.setStatus(Invoice.InvoiceStatus.FAILED);
         failedInvoice.setMethod(Invoice.PaymentMethod.CREDIT_CARD);
-        failedInvoice.setAmount(200.0);
+        failedInvoice.setAmount(BigDecimal.valueOf(200.0));
         failedInvoice.setCreatedAt(LocalDateTime.now());
 
         Map<String, Object> details = new HashMap<>();
