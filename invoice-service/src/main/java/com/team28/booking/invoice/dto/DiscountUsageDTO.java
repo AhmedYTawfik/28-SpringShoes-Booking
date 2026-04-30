@@ -13,4 +13,6 @@ Integer timesUsed,
 BigDecimal totalDiscountGiven,
 Boolean active,
 Boolean expired
-) {}
+) {
+    public static DiscountUsageDTOBuilder builder() { return new DiscountUsageDTOBuilder(); }
+}
