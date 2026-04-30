@@ -87,7 +87,12 @@ public class BookingService {
 
         BigDecimal estimatedPrice = basePrice.multiply(demandMultiplier);
 
-        return new BookingEstimateDTO(totalDuration, basePrice, estimatedPrice, demandMultiplier);
+        return BookingEstimateDTO.builder()
+                .totalDuration(totalDuration)
+                .basePrice(basePrice)
+                .estimatedPrice(estimatedPrice)
+                .demandMultiplier(demandMultiplier)
+                .build();
     }
   
     @Transactional(readOnly = true)
