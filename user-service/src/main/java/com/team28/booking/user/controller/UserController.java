@@ -1,6 +1,7 @@
 package com.team28.booking.user.controller;
 
 import com.team28.booking.user.dto.TopClientDTO;
+import com.team28.booking.user.dto.UpdateRoleRequest;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.User;
@@ -49,6 +50,32 @@ public class UserController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(user);
+    }
+
+    // CC-2: Change user role (ADMIN-only — gated by SecurityConfig + RoleAuthorizationHandler).
+    // Token-staleness accepted limitation: the promoted/demoted user's existing JWT keeps its
+    // old role claim until the 24h expiry. No token-revocation list is introduced (§9.2).
+    @PutMapping("/{id}/role")
+    public ResponseEntity<User> updateRole(@PathVariable Long id,
+                                           @RequestBody UpdateRoleRequest request) {
+        if (request.getRole() == null || request.getRole().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        User.Role newRole;
+        try {
+            newRole = User.Role.valueOf(request.getRole().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            User updated = userService.changeRole(id, newRole);
+            return ResponseEntity.ok(updated);
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
     }
 
     // CRUD: Delete User
