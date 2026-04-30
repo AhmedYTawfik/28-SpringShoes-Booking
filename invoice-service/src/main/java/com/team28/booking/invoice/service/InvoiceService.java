@@ -13,6 +13,7 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
@@ -44,15 +45,17 @@ public class InvoiceService extends Observable {
     private final DiscountRepository discountRepository;
     private final InvoiceDiscountRepository invoiceDiscountRepository;
     private final MongoEventLogger mongoEventLogger;
+    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
                           InvoiceDiscountRepository invoiceDiscountRepository,
-                          MongoEventLogger mongoEventLogger) {
-        this.invoiceRepository = invoiceRepository;
-        this.discountRepository = discountRepository;
-        this.invoiceDiscountRepository = invoiceDiscountRepository;
-        this.mongoEventLogger = mongoEventLogger;
+                          MongoEventLogger mongoEventLogger, ObjectArrayDtoAdapter objectArrayDtoAdapter) {
+                                  this.invoiceRepository = invoiceRepository;
+                                  this.discountRepository = discountRepository;
+                                  this.invoiceDiscountRepository = invoiceDiscountRepository;
+                                  this.mongoEventLogger = mongoEventLogger;
+                                  this.objectArrayDtoAdapter = objectArrayDtoAdapter;
     }
 
     @PostConstruct
@@ -73,16 +76,16 @@ public class InvoiceService extends Observable {
 
         for (DiscountUsageProjection row : rows) {
             boolean expired = row.getExpiryDate() != null && row.getExpiryDate().isBefore(now);
-            result.add(new DiscountUsageDTO(
-                row.getDiscountId(),
-                row.getCode(),
-                Discount.DiscountType.valueOf(row.getDiscountType()),
-                row.getDiscountValue() != null ? row.getDiscountValue() : BigDecimal.ZERO,
-                row.getTimesUsed() == null ? 0 : row.getTimesUsed(),
-                row.getTotalDiscountGiven() != null ? row.getTotalDiscountGiven() : BigDecimal.ZERO,
-                row.getActive() != null && row.getActive(),
-                expired
-            ));
+            result.add(DiscountUsageDTO.builder()
+                .discountId(row.getDiscountId())
+                .code(row.getCode())
+                .discountType(Discount.DiscountType.valueOf(row.getDiscountType()))
+                .discountValue(row.getDiscountValue() != null ? row.getDiscountValue() : BigDecimal.ZERO)
+                .timesUsed(row.getTimesUsed() == null ? 0 : row.getTimesUsed())
+                .totalDiscountGiven(row.getTotalDiscountGiven() != null ? row.getTotalDiscountGiven() : BigDecimal.ZERO)
+                .active(row.getActive() != null && row.getActive())
+                .expired(expired)
+                .build());
         }
 
         return result;
@@ -202,18 +205,18 @@ public class InvoiceService extends Observable {
         BigDecimal originalAmount = invoice.getAmount() != null ? invoice.getAmount() : BigDecimal.ZERO;
         BigDecimal finalAmount = originalAmount.subtract(totalDiscount);
 
-        return new InvoiceDetailsDTO(
-                invoice.getId(),
-                invoice.getBookingId(),
-                invoice.getUserId(),
-                originalAmount,
-                invoice.getMethod(),
-                invoice.getStatus(),
-                invoice.getTransactionDetails(),
-                appliedDiscounts,
-                totalDiscount,
-                finalAmount
-        );
+        return InvoiceDetailsDTO.builder()
+                .invoiceId(invoice.getId())
+                .bookingId(invoice.getBookingId())
+                .userId(invoice.getUserId())
+                .originalAmount(originalAmount)
+                .method(invoice.getMethod())
+                .status(invoice.getStatus())
+                .transactionDetails(invoice.getTransactionDetails())
+                .appliedDiscounts(appliedDiscounts)
+                .totalDiscount(totalDiscount)
+                .finalAmount(finalAmount)
+                .build();
     }
 
     private AppliedDiscountDTO mapAppliedDiscount(InvoiceDiscount invoiceDiscount) {
@@ -272,24 +275,7 @@ public class InvoiceService extends Observable {
         }
 
         List<Object[]> results = invoiceRepository.getInvoiceSummaryByUserId(userId);
-
-        Map<String, BigDecimal> methodBreakdown = new HashMap<>();
-        int totalInvoices = 0;
-        BigDecimal totalAmount = BigDecimal.ZERO;
-
-        for (Object[] row : results) {
-            String method = (String) row[0];
-            long count = ((Number) row[1]).longValue();
-            BigDecimal amount = row[2] != null
-                    ? new BigDecimal(row[2].toString())
-                    : BigDecimal.ZERO;
-
-            methodBreakdown.put(method, amount);
-            totalInvoices += count;
-            totalAmount = totalAmount.add(amount);
-        }
-
-        return new UserInvoiceSummaryDTO(userId, totalInvoices, totalAmount, methodBreakdown);
+        return objectArrayDtoAdapter.toUserInvoiceSummaryDTO(userId, results);
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
@@ -349,16 +335,7 @@ public class InvoiceService extends Observable {
         LocalDateTime to   = endDate.atTime(23, 59, 59);
 
         Object[] row = invoiceRepository.getRevenueStats(from, to);
-
-        BigDecimal totalRevenue         = row[0] != null ? new BigDecimal(row[0].toString()) : BigDecimal.ZERO;
-        long       totalInvoices        = row[1] != null ? ((Number) row[1]).longValue() : 0L;
-        long       completedInvoices    = row[2] != null ? ((Number) row[2]).longValue() : 0L;
-        BigDecimal refundedAmount       = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
-        BigDecimal averageInvoiceAmount = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
-        BigDecimal netRevenue           = totalRevenue.subtract(refundedAmount);
-
-        return new RevenueReportDTO(startDate, endDate, totalRevenue, totalInvoices,
-                completedInvoices, refundedAmount, netRevenue, averageInvoiceAmount);
+        return objectArrayDtoAdapter.toRevenueReportDTO(startDate, endDate, row);
     }
 
     // ── S5-F7: Retry Failed Invoice ──────────────────────────────────────────

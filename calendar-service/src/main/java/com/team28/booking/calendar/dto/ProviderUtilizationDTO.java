@@ -7,4 +7,6 @@ public record ProviderUtilizationDTO(
         Long availableSlots,
         Double utilizationRate,
         String peakDay
-) {}
+) {
+    public static ProviderUtilizationDTOBuilder builder() { return new ProviderUtilizationDTOBuilder(); }
+}

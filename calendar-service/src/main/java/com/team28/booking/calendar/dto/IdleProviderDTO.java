@@ -8,4 +8,5 @@ public record IdleProviderDTO(
         Long bookedSlotsCount,
         Long totalSlotsCount
 ) {
+    public static IdleProviderDTOBuilder builder() { return new IdleProviderDTOBuilder(); }
 }

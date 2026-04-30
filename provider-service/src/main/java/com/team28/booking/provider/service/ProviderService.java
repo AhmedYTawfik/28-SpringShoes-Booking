@@ -1,13 +1,19 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
+import com.team28.booking.provider.observer.MongoEventLogger;
+import com.team28.booking.provider.observer.Observable;
 import com.team28.booking.provider.repository.ProviderRepository;
+import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -15,24 +21,41 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 
 @Service
-public class ProviderService {
+public class ProviderService extends Observable {
     private final ProviderRepository providerRepository;
     private final ProviderCertificationService certificationService;
+    private final MongoEventLogger mongoEventLogger;
+    private final CacheInvalidationService cacheInvalidationService;
+    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
     public ProviderService(
             ProviderRepository providerRepository,
-            ProviderCertificationService certificationService
-    ) {
-        this.providerRepository = providerRepository;
-        this.certificationService = certificationService;
+            ProviderCertificationService certificationService,
+            MongoEventLogger mongoEventLogger,
+            CacheInvalidationService cacheInvalidationService,
+            ObjectArrayDtoAdapter objectArrayDtoAdapter
+                ) {
+                    this.providerRepository = providerRepository;
+                    this.certificationService = certificationService;
+                    this.mongoEventLogger = mongoEventLogger;
+                    this.cacheInvalidationService = cacheInvalidationService;
+                    this.objectArrayDtoAdapter = objectArrayDtoAdapter;
+    }
+
+    @PostConstruct
+    void registerObservers() {
+        register(mongoEventLogger);
     }
 
     //create
     public Provider createProvider(Provider provider) {
         ensureServiceDetailsDescription(provider);
-        return providerRepository.save(provider);
+        Provider saved = providerRepository.save(provider);
+        emitAfterCommit("PROVIDER_CREATED", providerPayload(saved));
+        return saved;
     }
 
     //get all
@@ -63,18 +86,27 @@ public class ProviderService {
         existingProvider.setSpecialty(updatedProvider.getSpecialty());
         existingProvider.setStatus(updatedProvider.getStatus());
         //TODO:updating ratings like this isn't correct (for the sake of eny anam will leave it now)
+        boolean ratingChanged = !Objects.equals(existingProvider.getRating(), updatedProvider.getRating())
+                || !Objects.equals(existingProvider.getTotalRatings(), updatedProvider.getTotalRatings());
         existingProvider.setRating(updatedProvider.getRating());
         existingProvider.setTotalRatings(updatedProvider.getTotalRatings());
         existingProvider.setServiceDetails(updatedProvider.getServiceDetails());
         ensureServiceDetailsDescription(existingProvider);
 
-        return providerRepository.save(existingProvider);
+        Provider saved = providerRepository.save(existingProvider);
+        if (ratingChanged) {
+            cacheInvalidationService.invalidateProviderRating(saved.getId());
+            emitAfterCommit("RATING_RECORDED", providerPayload(saved));
+        }
+        return saved;
     }
 
     //delete
     public void deleteProvider(Long id) {
         Provider provider = getProviderById(id);
+        Map<String, Object> payload = providerPayload(provider);
         providerRepository.delete(provider);
+        emitAfterCommit("PROVIDER_DELETED", payload);
     }
 
     @Transactional
@@ -95,7 +127,8 @@ public class ProviderService {
         }
 
         provider.setStatus(newStatus);
-        providerRepository.save(provider);
+        Provider saved = providerRepository.save(provider);
+        emitAfterCommit("AVAILABILITY_TOGGLED", providerPayload(saved));
     }
   
     public ProviderEarningsDTO getProviderEarningsSummary(Long providerId, LocalDate startDate, LocalDate endDate) {
@@ -105,32 +138,8 @@ public class ProviderService {
         }
 
         List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
-
-        Long totalBookings = 0L;
-        Double totalEarnings = 0.0;
-        Double averageBookingPrice = 0.0;
-
-        if (!results.isEmpty()) {
-            Object[] row = results.get(0);
-
-            if (row[0] != null) {
-                totalBookings = ((Number) row[0]).longValue();
-            }
-            if (row[1] != null) {
-                totalEarnings = ((Number) row[1]).doubleValue();
-            }
-            if (row[2] != null) {
-                averageBookingPrice = ((Number) row[2]).doubleValue();
-            }
-        }
-
-        return new ProviderEarningsDTO(
-                provider.getId(),
-                provider.getName(),
-                totalBookings,
-                totalEarnings,
-                averageBookingPrice
-        );
+        Object[] row = results.isEmpty() ? new Object[]{null, null, null} : results.get(0);
+        return objectArrayDtoAdapter.toProviderEarningsDTO(provider.getId(), provider.getName(), row);
     }
   
     public Provider updateServiceDetails(Long id, Map<String, Object> updates) {
@@ -146,7 +155,11 @@ public class ProviderService {
 
         provider.setServiceDetails(existingDetails);
         ensureServiceDetailsDescription(provider);
-        return providerRepository.save(provider);
+        Provider saved = providerRepository.save(provider);
+        Map<String, Object> payload = providerPayload(saved);
+        payload.put("serviceDetails", saved.getServiceDetails());
+        emitAfterCommit("SERVICE_DETAILS_UPDATED", payload);
+        return saved;
     }
 
     public static String descriptionOrEmpty(Map<String,Object> serviceDetails) {
@@ -201,6 +214,34 @@ public class ProviderService {
         metadata.put("verifiedBy", verifiedBy.verifier());
         certificationService.updateCertification(certificationId, providerCertification);
 
+        Map<String, Object> payload = providerPayload(provider);
+        payload.put("certificationId", certificationId);
+        payload.put("verifiedBy", verifiedBy.verifier());
+        emitAfterCommit("CERTIFICATION_VERIFIED", payload);
         return provider;
+    }
+
+    private void emitAfterCommit(String action, Map<String, Object> payload) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notifyObservers(action, payload);
+                }
+            });
+        } else {
+            notifyObservers(action, payload);
+        }
+    }
+
+    private Map<String, Object> providerPayload(Provider provider) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("providerId", provider.getId());
+        payload.put("name", provider.getName());
+        payload.put("specialty", provider.getSpecialty());
+        payload.put("status", provider.getStatus() != null ? provider.getStatus().name() : null);
+        payload.put("rating", provider.getRating());
+        payload.put("totalRatings", provider.getTotalRatings());
+        return payload;
     }
 }
