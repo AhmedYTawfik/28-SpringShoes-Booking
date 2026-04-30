@@ -1,6 +1,8 @@
 package com.team28.booking.booking.service;
 
+import com.team28.booking.booking.cache.CacheInvalidator;
 import com.team28.booking.booking.model.Booking;
+import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.repository.BookingRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,12 @@ public class BookingServiceTest {
 
     @Mock
     private BookingRepository bookingRepository;
+
+    @Mock
+    private MongoEventLogger mongoEventLogger;
+
+    @Mock
+    private CacheInvalidator cacheInvalidator;
 
     @InjectMocks
     private BookingService bookingService;
