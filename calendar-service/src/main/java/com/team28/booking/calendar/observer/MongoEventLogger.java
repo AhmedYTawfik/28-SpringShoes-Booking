@@ -1,5 +1,6 @@
 package com.team28.booking.calendar.observer;
 
+import com.team28.booking.calendar.cache.CacheInvalidator;
 import com.team28.booking.calendar.factory.EventFactory;
 import com.team28.booking.calendar.factory.EventType;
 import com.team28.booking.calendar.factory.MongoEvent;
@@ -12,23 +13,31 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class MongoEventLogger implements EntityObserver {
 
     private static final Logger log = LoggerFactory.getLogger(MongoEventLogger.class);
 
+    private static final Set<String> INVALIDATING_ACTIONS = Set.of(
+            "SLOT_CREATED", "BATCH_SLOTS_CREATED", "OLD_SLOTS_PURGED",
+            "TIME_SLOT_CREATED", "TIME_SLOT_UPDATED", "TIME_SLOT_DELETED"
+    );
+
     private final EventFactory factory;
     private final MongoTemplate mongoTemplate;
+    private final CacheInvalidator cacheInvalidator;
 
     @Value("${spring.application.name}")
     private String appName;
 
     private EventType boundType;
 
-    public MongoEventLogger(EventFactory factory, MongoTemplate mongoTemplate) {
+    public MongoEventLogger(EventFactory factory, MongoTemplate mongoTemplate, CacheInvalidator cacheInvalidator) {
         this.factory = factory;
         this.mongoTemplate = mongoTemplate;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @PostConstruct
@@ -57,6 +66,10 @@ public class MongoEventLogger implements EntityObserver {
             }
             MongoEvent event = factory.createEvent(boundType, params);
             mongoTemplate.save(event);
+            if (INVALIDATING_ACTIONS.contains(eventType)) {
+                cacheInvalidator.wildcardDelete("calendar-service::S4-F10::*");
+                cacheInvalidator.wildcardDelete("calendar-service::S4-F12::*");
+            }
         } catch (Exception ex) {
             log.warn("MongoEventLogger failed for {} action={}: {}", boundType, eventType, ex.getMessage());
             // intentional: do NOT rethrow — §3.3 failure policy

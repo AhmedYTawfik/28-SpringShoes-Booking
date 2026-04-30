@@ -1,6 +1,7 @@
 package com.team28.booking.calendar.service;
 
 import com.team28.booking.calendar.adapter.ObjectArrayDtoAdapter;
+import com.team28.booking.calendar.cache.CacheInvalidator;
 import com.team28.booking.calendar.dto.AvailableProviderDTO;
 import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.dto.IdleProviderDTO;
@@ -10,6 +11,7 @@ import com.team28.booking.calendar.observer.MongoEventLogger;
 import com.team28.booking.calendar.observer.Observable;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
 import jakarta.annotation.PostConstruct;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,12 +33,16 @@ public class TimeSlotService extends Observable {
     private final TimeSlotRepository timeSlotRepository;
     private final MongoEventLogger mongoEventLogger;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
+    private final CacheInvalidator cacheInvalidator;
 
-    public TimeSlotService(TimeSlotRepository timeSlotRepository, MongoEventLogger mongoEventLogger,ObjectArrayDtoAdapter objectArrayDtoAdapter) {
+    public TimeSlotService(TimeSlotRepository timeSlotRepository,
+                           MongoEventLogger mongoEventLogger,
+                           ObjectArrayDtoAdapter objectArrayDtoAdapter,
+                           CacheInvalidator cacheInvalidator) {
         this.timeSlotRepository = timeSlotRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
-
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @PostConstruct
@@ -44,12 +50,13 @@ public class TimeSlotService extends Observable {
         register(mongoEventLogger);
     }
 
+    // ── writes ───────────────────────────────────────────────────────────────
+
     public TimeSlot createTimeSlot(TimeSlot timeSlot) {
         timeSlot.setCreatedAt(LocalDateTime.now());
-        if (timeSlot.getAvailable() == null) {
-            timeSlot.setAvailable(true);
-        }
+        if (timeSlot.getAvailable() == null) timeSlot.setAvailable(true);
         TimeSlot saved = timeSlotRepository.save(timeSlot);
+        invalidateSlotCaches(null);
         emitAfterCommit("TIME_SLOT_CREATED", timeSlotPayload(saved));
         return saved;
     }
@@ -58,11 +65,10 @@ public class TimeSlotService extends Observable {
         validateProviderExists(providerId);
         validateTimeRange(timeSlot);
         timeSlot.setProviderId(providerId);
-        if (timeSlot.getAvailable() == null) {
-            timeSlot.setAvailable(true);
-        }
+        if (timeSlot.getAvailable() == null) timeSlot.setAvailable(true);
         timeSlot.setCreatedAt(LocalDateTime.now());
         TimeSlot saved = timeSlotRepository.save(timeSlot);
+        invalidateSlotCaches(null);
         emitAfterCommit("SLOT_CREATED", timeSlotPayload(saved));
         return saved;
     }
@@ -78,7 +84,6 @@ public class TimeSlotService extends Observable {
             if (timeSlot == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "timeSlots must not contain null entries");
             }
-
             validateTimeRange(timeSlot);
             timeSlot.setProviderId(providerId);
             timeSlot.setAvailable(true);
@@ -87,6 +92,7 @@ public class TimeSlotService extends Observable {
         }
 
         List<TimeSlot> saved = timeSlotRepository.saveAll(slotsToSave);
+        invalidateSlotCaches(null);
         Map<String, Object> payload = new HashMap<>();
         payload.put("providerId", providerId);
         payload.put("count", saved.size());
@@ -94,48 +100,10 @@ public class TimeSlotService extends Observable {
         return saved.size();
     }
 
-    public List<TimeSlot> getAllTimeSlots() {
-        return timeSlotRepository.findAll();
-    }
-
-    public List<AvailableProviderDTO> findAvailableProviders(LocalDate date, String specialty) {
-        List<Object[]> results = timeSlotRepository.findAvailableProvidersByDate(date, specialty);
-        return results.stream()
-                .map(objectArrayDtoAdapter::toAvailableProviderDTO)
-                .toList();
-    }
-
-    public TimeSlot getTimeSlotById(Long id) {
-        return timeSlotRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "TimeSlot not found with id: " + id));
-    }
-
-    public TimeSlot getLatestTimeSlot(Long providerId) {
-        Long providerCount = timeSlotRepository.countProviderById(providerId);
-        if (providerCount == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
-        }
-
-        return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "No time slots found for provider"));
-    }
-
-    public List<TimeSlot> getHistory(LocalDate startDate, LocalDate endDate, Long providerId) {
-        if (startDate.isAfter(endDate)) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "startDate must be before or equal to endDate");
-        }
-
-        return timeSlotRepository.findByDateRangeAndProvider(startDate, endDate, providerId);
-    }
-
     public TimeSlot updateTimeSlot(Long id, TimeSlot updated) {
-        TimeSlot existing = getTimeSlotById(id);
+        TimeSlot existing = findById(id);
         if (updated.getId() != null && !id.equals(updated.getId())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "TimeSlot ID in request body must match path ID");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TimeSlot ID in request body must match path ID");
         }
         existing.setDate(updated.getDate());
         existing.setStartTime(updated.getStartTime());
@@ -143,17 +111,72 @@ public class TimeSlotService extends Observable {
         existing.setAvailable(updated.getAvailable());
         existing.setMetadata(updated.getMetadata());
         TimeSlot saved = timeSlotRepository.save(existing);
+        invalidateSlotCaches(id);
         emitAfterCommit("TIME_SLOT_UPDATED", timeSlotPayload(saved));
         return saved;
     }
 
     public void deleteTimeSlot(Long id) {
-        TimeSlot existing = getTimeSlotById(id);
+        TimeSlot existing = findById(id);
         Map<String, Object> payload = timeSlotPayload(existing);
         timeSlotRepository.delete(existing);
+        invalidateSlotCaches(id);
         emitAfterCommit("TIME_SLOT_DELETED", payload);
     }
 
+    @Transactional
+    public Map<String, Integer> purgeOldSlots(int olderThanDays) {
+        if (olderThanDays < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "olderThanDays must be greater than or equal to 0");
+        }
+        LocalDate cutoffDate = LocalDate.now().minusDays(olderThanDays);
+        int deletedCount = timeSlotRepository.countByDateBefore(cutoffDate);
+        timeSlotRepository.deleteByDateBefore(cutoffDate);
+        // purge invalidates all slot feature caches (§4.4.4)
+        invalidateSlotCaches(null);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("cutoffDate", cutoffDate.toString());
+        payload.put("deletedCount", deletedCount);
+        emitAfterCommit("OLD_SLOTS_PURGED", payload);
+        return Map.of("deletedCount", deletedCount);
+    }
+
+    // ── reads (cached) ───────────────────────────────────────────────────────
+
+    /** CRUD GET-by-ID — 15 min TTL (§4.4.2). List NOT cached. */
+    @Cacheable(cacheNames = "calendar-service::time-slot", key = "#id")
+    @Transactional(readOnly = true)
+    public TimeSlot getTimeSlotById(Long id) {
+        return findById(id);
+    }
+
+    /** S4-F1: latest slot for provider — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "calendar-service::S4-F1", key = "#providerId")
+    @Transactional(readOnly = true)
+    public TimeSlot getLatestTimeSlot(Long providerId) {
+        Long providerCount = timeSlotRepository.countProviderById(providerId);
+        if (providerCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+        return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No time slots found for provider"));
+    }
+
+    /** S4-F3: available providers DTO — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "calendar-service::S4-F3",
+               key = "T(java.util.Objects).hash(#date, #specialty)")
+    @Transactional(readOnly = true)
+    public List<AvailableProviderDTO> findAvailableProviders(LocalDate date, String specialty) {
+        List<Object[]> results = timeSlotRepository.findAvailableProvidersByDate(date, specialty);
+        return results.stream()
+                .map(objectArrayDtoAdapter::toAvailableProviderDTO)
+                .toList();
+    }
+
+    /** S4-F5: JSONB metadata search — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "calendar-service::S4-F5",
+               key = "T(java.util.Objects).hash(#key, #operator, #value)")
+    @Transactional(readOnly = true)
     public List<TimeSlot> searchByMetadata(String key, String operator, String value) {
         return switch (operator.toLowerCase(Locale.ROOT)) {
             case "eq" -> timeSlotRepository.findByMetadataEquals(key, value);
@@ -164,19 +187,46 @@ public class TimeSlotService extends Observable {
         };
     }
 
+    /** S4-F6: history report — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "calendar-service::S4-F6",
+               key = "T(java.util.Objects).hash(#startDate, #endDate, #providerId)")
+    @Transactional(readOnly = true)
+    public List<TimeSlot> getHistory(LocalDate startDate, LocalDate endDate, Long providerId) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before or equal to endDate");
+        }
+        return timeSlotRepository.findByDateRangeAndProvider(startDate, endDate, providerId);
+    }
+
+    /** S4-F8: utilization DTO — 15 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "calendar-service::S4-F8",
+               key = "T(java.util.Objects).hash(#providerId, #startDate, #endDate)")
+    @Transactional(readOnly = true)
+    public ProviderUtilizationDTO getUtilization(Long providerId, LocalDate startDate, LocalDate endDate) {
+        validateProviderExists(providerId);
+        Object[] stats = timeSlotRepository.getUtilizationStats(providerId, startDate, endDate);
+        Object[] row = (Object[]) stats[0];
+        Long totalSlots = ((Number) row[0]).longValue();
+        Long bookedSlots = ((Number) row[1]).longValue();
+        Double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots * 100.0 : 0.0;
+        String peakDay = timeSlotRepository.findPeakDay(providerId, startDate, endDate);
+        if (peakDay != null) peakDay = peakDay.trim();
+        return objectArrayDtoAdapter.toProviderUtilizationDTO(providerId, row, utilizationRate, peakDay);
+    }
+
+    /** S4-F9: idle providers — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "calendar-service::S4-F9",
+               key = "T(java.util.Objects).hash(#maxBookedSlots, #sinceDays)")
+    @Transactional(readOnly = true)
     public List<IdleProviderDTO> findIdleProviders(int maxBookedSlots, int sinceDays) {
         if (maxBookedSlots < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "maxBookedSlots must be greater than or equal to 0");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "maxBookedSlots must be greater than or equal to 0");
         }
         if (sinceDays < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "sinceDays must be greater than or equal to 0");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sinceDays must be greater than or equal to 0");
         }
-
         LocalDate sinceDate = LocalDate.now().minusDays(sinceDays);
         List<IdleProviderProjection> results = timeSlotRepository.findIdleProviders(maxBookedSlots, sinceDate);
-
         return results.stream()
                 .map(row -> IdleProviderDTO.builder()
                         .providerId(row.getProviderId())
@@ -189,43 +239,37 @@ public class TimeSlotService extends Observable {
                 .toList();
     }
 
-    public ProviderUtilizationDTO getUtilization(Long providerId, LocalDate startDate, LocalDate endDate) {
-        validateProviderExists(providerId);
-        Object[] stats = timeSlotRepository.getUtilizationStats(providerId, startDate, endDate);
-        Object[] row = (Object[]) stats[0];
-        Long totalSlots = ((Number) row[0]).longValue();
-        Long bookedSlots = ((Number) row[1]).longValue();
-        Double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots * 100.0 : 0.0;
+    public List<TimeSlot> getAllTimeSlots() {
+        return timeSlotRepository.findAll();
+    }
 
-        String peakDay = timeSlotRepository.findPeakDay(providerId, startDate, endDate);
-        if (peakDay != null) peakDay = peakDay.trim();
+    // ── internal helpers ─────────────────────────────────────────────────────
 
-        return objectArrayDtoAdapter.toProviderUtilizationDTO(providerId, row, utilizationRate, peakDay);
-    }  
+    /** Non-cached DB fetch used by all write paths (§4.4.4). */
+    TimeSlot findById(Long id) {
+        return timeSlotRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "TimeSlot not found with id: " + id));
+    }
 
-    @Transactional
-    public Map<String, Integer> purgeOldSlots(int olderThanDays) {
-        if (olderThanDays < 0) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "olderThanDays must be greater than or equal to 0");
+    /** Invalidate entity detail + all feature caches on any time-slot write (§4.4.4). */
+    private void invalidateSlotCaches(Long id) {
+        if (id != null) {
+            cacheInvalidator.deleteKey("calendar-service::time-slot::" + id);
         }
-
-        LocalDate cutoffDate = LocalDate.now().minusDays(olderThanDays);
-        int deletedCount = timeSlotRepository.countByDateBefore(cutoffDate);
-        timeSlotRepository.deleteByDateBefore(cutoffDate);
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("cutoffDate", cutoffDate.toString());
-        payload.put("deletedCount", deletedCount);
-        emitAfterCommit("OLD_SLOTS_PURGED", payload);
-        return Map.of("deletedCount", deletedCount);
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F1::*");
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F3::*");
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F5::*");
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F6::*");
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F8::*");
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F9::*");
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F10::*");
     }
 
     private void validateTimeRange(TimeSlot timeSlot) {
         if (timeSlot.getStartTime() == null
                 || timeSlot.getEndTime() == null
                 || !timeSlot.getStartTime().isBefore(timeSlot.getEndTime())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "startTime must be before endTime");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startTime must be before endTime");
         }
     }
 

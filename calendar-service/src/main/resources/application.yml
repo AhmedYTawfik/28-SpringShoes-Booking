@@ -37,6 +37,10 @@ spring:
     local-datacenter: ${CASSANDRA_LOCAL_DATACENTER:datacenter1}
     keyspace-name: ${CASSANDRA_KEYSPACE:bookingks}
     schema-action: CREATE_IF_NOT_EXISTS
+  cache:
+    type: redis
+    redis:
+      use-key-prefix: false
 
 jwt:
   secret: ${JWT_SECRET:fJ8z2vK6yQ3pX9mR4wT5sN7bE1uI0aH8oL2cD6gV4eK3=}
