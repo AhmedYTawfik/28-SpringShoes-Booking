@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class ProviderService {
@@ -30,6 +31,7 @@ public class ProviderService {
 
     //create
     public Provider createProvider(Provider provider) {
+        ensureServiceDetailsDescription(provider);
         return providerRepository.save(provider);
     }
 
@@ -64,6 +66,7 @@ public class ProviderService {
         existingProvider.setRating(updatedProvider.getRating());
         existingProvider.setTotalRatings(updatedProvider.getTotalRatings());
         existingProvider.setServiceDetails(updatedProvider.getServiceDetails());
+        ensureServiceDetailsDescription(existingProvider);
 
         return providerRepository.save(existingProvider);
     }
@@ -142,7 +145,24 @@ public class ProviderService {
         }
 
         provider.setServiceDetails(existingDetails);
+        ensureServiceDetailsDescription(provider);
         return providerRepository.save(provider);
+    }
+
+    public static String descriptionOrEmpty(Map<String,Object> serviceDetails) {
+        return Optional.ofNullable(serviceDetails)
+                .map(m -> m.get("description")).map(Object::toString).orElse("");
+    }
+
+    private static void ensureServiceDetailsDescription(Provider provider) {
+        Map<String, Object> serviceDetails = provider.getServiceDetails();
+        if (serviceDetails == null) {
+            serviceDetails = new HashMap<>();
+        } else {
+            serviceDetails = new HashMap<>(serviceDetails);
+        }
+        serviceDetails.put("description", descriptionOrEmpty(serviceDetails));
+        provider.setServiceDetails(serviceDetails);
     }
   
     public List<Provider> searchProviders(Provider.ProviderStatus status, Double minRating, Double maxRating) {
