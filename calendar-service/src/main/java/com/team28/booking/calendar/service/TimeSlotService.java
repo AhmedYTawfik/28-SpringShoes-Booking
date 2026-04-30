@@ -151,14 +151,14 @@ public class TimeSlotService {
         List<IdleProviderProjection> results = timeSlotRepository.findIdleProviders(maxBookedSlots, sinceDate);
 
         return results.stream()
-                .map(row -> new IdleProviderDTO(
-                        row.getProviderId(),
-                        row.getProviderName(),
-                        row.getSpecialty(),
-                        row.getRating(),
-                        row.getBookedSlotsCount(),
-                        row.getTotalSlotsCount()
-                ))
+                .map(row -> IdleProviderDTO.builder()
+                        .providerId(row.getProviderId())
+                        .providerName(row.getProviderName())
+                        .specialty(row.getSpecialty())
+                        .rating(row.getRating())
+                        .bookedSlotsCount(row.getBookedSlotsCount())
+                        .totalSlotsCount(row.getTotalSlotsCount())
+                        .build())
                 .toList();
     }
 
