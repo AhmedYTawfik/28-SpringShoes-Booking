@@ -7,4 +7,5 @@ public record AvailableProviderDTO(
         Double rating,
         Long availableSlots
 ) {
+    public static AvailableProviderDTOBuilder builder() { return new AvailableProviderDTOBuilder(); }
 }

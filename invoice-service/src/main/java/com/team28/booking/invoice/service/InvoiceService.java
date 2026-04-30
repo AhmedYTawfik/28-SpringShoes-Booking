@@ -13,6 +13,7 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
@@ -26,24 +27,40 @@ import com.team28.booking.invoice.model.Discount;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
 import com.team28.booking.invoice.model.InvoiceDiscount;
+import com.team28.booking.invoice.observer.MongoEventLogger;
+import com.team28.booking.invoice.observer.Observable;
 import com.team28.booking.invoice.repository.DiscountRepository;
 import com.team28.booking.invoice.repository.DiscountUsageProjection;
 import com.team28.booking.invoice.repository.InvoiceDiscountRepository;
 import com.team28.booking.invoice.repository.InvoiceRepository;
 
+import jakarta.annotation.PostConstruct;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 @Service
-public class InvoiceService {
+public class InvoiceService extends Observable {
 
     private final InvoiceRepository invoiceRepository;
     private final DiscountRepository discountRepository;
     private final InvoiceDiscountRepository invoiceDiscountRepository;
+    private final MongoEventLogger mongoEventLogger;
+    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
-                          InvoiceDiscountRepository invoiceDiscountRepository) {
-        this.invoiceRepository = invoiceRepository;
-        this.discountRepository = discountRepository;
-        this.invoiceDiscountRepository = invoiceDiscountRepository;
+                          InvoiceDiscountRepository invoiceDiscountRepository,
+                          MongoEventLogger mongoEventLogger, ObjectArrayDtoAdapter objectArrayDtoAdapter) {
+                                  this.invoiceRepository = invoiceRepository;
+                                  this.discountRepository = discountRepository;
+                                  this.invoiceDiscountRepository = invoiceDiscountRepository;
+                                  this.mongoEventLogger = mongoEventLogger;
+                                  this.objectArrayDtoAdapter = objectArrayDtoAdapter;
+    }
+
+    @PostConstruct
+    void registerObservers() {
+        register(mongoEventLogger);
     }
 
     // ── Top Used Discounts Report ────────────────────────────────────────────
@@ -59,16 +76,16 @@ public class InvoiceService {
 
         for (DiscountUsageProjection row : rows) {
             boolean expired = row.getExpiryDate() != null && row.getExpiryDate().isBefore(now);
-            result.add(new DiscountUsageDTO(
-                row.getDiscountId(),
-                row.getCode(),
-                Discount.DiscountType.valueOf(row.getDiscountType()),
-                row.getDiscountValue() != null ? row.getDiscountValue() : BigDecimal.ZERO,
-                row.getTimesUsed() == null ? 0 : row.getTimesUsed(),
-                row.getTotalDiscountGiven() != null ? row.getTotalDiscountGiven() : BigDecimal.ZERO,
-                row.getActive() != null && row.getActive(),
-                expired
-            ));
+            result.add(DiscountUsageDTO.builder()
+                .discountId(row.getDiscountId())
+                .code(row.getCode())
+                .discountType(Discount.DiscountType.valueOf(row.getDiscountType()))
+                .discountValue(row.getDiscountValue() != null ? row.getDiscountValue() : BigDecimal.ZERO)
+                .timesUsed(row.getTimesUsed() == null ? 0 : row.getTimesUsed())
+                .totalDiscountGiven(row.getTotalDiscountGiven() != null ? row.getTotalDiscountGiven() : BigDecimal.ZERO)
+                .active(row.getActive() != null && row.getActive())
+                .expired(expired)
+                .build());
         }
 
         return result;
@@ -131,6 +148,10 @@ public class InvoiceService {
         discountRepository.save(discount);
 
         invoice.getInvoiceDiscounts().add(invoiceDiscount);
+        Map<String, Object> payload = invoicePayload(invoice);
+        payload.put("discountId", discountId);
+        payload.put("discountApplied", discountApplied);
+        emitAfterCommit("DISCOUNT_APPLIED", payload);
         return invoice;
     }
 
@@ -162,9 +183,11 @@ public class InvoiceService {
     }
 
     public void deleteInvoice(Long id) {
-        invoiceRepository.findById(id)
+        Invoice invoice = invoiceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
+        Map<String, Object> payload = invoicePayload(invoice);
         invoiceRepository.deleteById(id);
+        emitAfterCommit("INVOICE_DELETED", payload);
     }
     
     public InvoiceDetailsDTO getInvoiceDetails(Long invoiceId) {
@@ -182,18 +205,18 @@ public class InvoiceService {
         BigDecimal originalAmount = invoice.getAmount() != null ? invoice.getAmount() : BigDecimal.ZERO;
         BigDecimal finalAmount = originalAmount.subtract(totalDiscount);
 
-        return new InvoiceDetailsDTO(
-                invoice.getId(),
-                invoice.getBookingId(),
-                invoice.getUserId(),
-                originalAmount,
-                invoice.getMethod(),
-                invoice.getStatus(),
-                invoice.getTransactionDetails(),
-                appliedDiscounts,
-                totalDiscount,
-                finalAmount
-        );
+        return InvoiceDetailsDTO.builder()
+                .invoiceId(invoice.getId())
+                .bookingId(invoice.getBookingId())
+                .userId(invoice.getUserId())
+                .originalAmount(originalAmount)
+                .method(invoice.getMethod())
+                .status(invoice.getStatus())
+                .transactionDetails(invoice.getTransactionDetails())
+                .appliedDiscounts(appliedDiscounts)
+                .totalDiscount(totalDiscount)
+                .finalAmount(finalAmount)
+                .build();
     }
 
     private AppliedDiscountDTO mapAppliedDiscount(InvoiceDiscount invoiceDiscount) {
@@ -238,7 +261,11 @@ public class InvoiceService {
         transactionDetails.put("refundedAt", LocalDateTime.now().toString());
         invoice.setTransactionDetails(transactionDetails);
 
-        return invoiceRepository.save(invoice);
+        Invoice saved = invoiceRepository.save(invoice);
+        Map<String, Object> payload = invoicePayload(saved);
+        payload.put("details", Map.of("refundReason", reason));
+        emitAfterCommit("REFUNDED", payload);
+        return saved;
     }
 
     public UserInvoiceSummaryDTO getUserInvoiceSummary(Long userId) {
@@ -248,30 +275,18 @@ public class InvoiceService {
         }
 
         List<Object[]> results = invoiceRepository.getInvoiceSummaryByUserId(userId);
-
-        Map<String, BigDecimal> methodBreakdown = new HashMap<>();
-        int totalInvoices = 0;
-        BigDecimal totalAmount = BigDecimal.ZERO;
-
-        for (Object[] row : results) {
-            String method = (String) row[0];
-            long count = ((Number) row[1]).longValue();
-            BigDecimal amount = row[2] != null
-                    ? new BigDecimal(row[2].toString())
-                    : BigDecimal.ZERO;
-
-            methodBreakdown.put(method, amount);
-            totalInvoices += count;
-            totalAmount = totalAmount.add(amount);
-        }
-
-        return new UserInvoiceSummaryDTO(userId, totalInvoices, totalAmount, methodBreakdown);
+        return objectArrayDtoAdapter.toUserInvoiceSummaryDTO(userId, results);
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
 
     @Transactional
     public Invoice processInvoiceForBooking(ProcessInvoiceRequest request) {
+        return processInvoiceForBooking(request, false);
+    }
+
+    @Transactional
+    public Invoice processInvoiceForBooking(ProcessInvoiceRequest request, boolean simulateFailure) {
         // 1. Fetch booking from the shared bookings table (cross-service native SQL)
         List<Object[]> rows = invoiceRepository.findBookingDetails(request.getBookingId());
         if (rows == null || rows.isEmpty()) {
@@ -307,11 +322,29 @@ public class InvoiceService {
         details.put("cancellationFee", 0);
         invoice.setTransactionDetails(details);
 
-        // 4. Simulate processing — mark completed immediately
-        invoice.setStatus(Invoice.InvoiceStatus.COMPLETED);
-        details.put("completedAt", LocalDateTime.now().toString());
+        if (simulateFailure) {
+            invoice.setStatus(Invoice.InvoiceStatus.FAILED);
+            details.put("failedAt", LocalDateTime.now().toString());
+            details.put("reason", "simulated_gateway_failure");
 
-        return invoiceRepository.save(invoice);
+            Invoice failed = invoiceRepository.save(invoice);
+            Map<String, Object> payload = invoicePayload(failed);
+            payload.put("details", Map.of("reason", "simulated_gateway_failure"));
+            emitAfterCommit("FAILED", payload);
+            return failed;
+        }
+
+        invoice.setStatus(Invoice.InvoiceStatus.PENDING);
+        Invoice created = invoiceRepository.save(invoice);
+        emitAfterCommit("CREATED", invoicePayload(created));
+
+        created.setStatus(Invoice.InvoiceStatus.COMPLETED);
+        details.put("completedAt", LocalDateTime.now().toString());
+        created.setTransactionDetails(details);
+
+        Invoice completed = invoiceRepository.save(created);
+        emitAfterCommit("COMPLETED", invoicePayload(completed));
+        return completed;
     }
 
     // ── S5-F6: Revenue Report by Date Range ─────────────────────────────────
@@ -325,16 +358,7 @@ public class InvoiceService {
         LocalDateTime to   = endDate.atTime(23, 59, 59);
 
         Object[] row = invoiceRepository.getRevenueStats(from, to);
-
-        BigDecimal totalRevenue         = row[0] != null ? new BigDecimal(row[0].toString()) : BigDecimal.ZERO;
-        long       totalInvoices        = row[1] != null ? ((Number) row[1]).longValue() : 0L;
-        long       completedInvoices    = row[2] != null ? ((Number) row[2]).longValue() : 0L;
-        BigDecimal refundedAmount       = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
-        BigDecimal averageInvoiceAmount = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
-        BigDecimal netRevenue           = totalRevenue.subtract(refundedAmount);
-
-        return new RevenueReportDTO(startDate, endDate, totalRevenue, totalInvoices,
-                completedInvoices, refundedAmount, netRevenue, averageInvoiceAmount);
+        return objectArrayDtoAdapter.toRevenueReportDTO(startDate, endDate, row);
     }
 
     // ── S5-F7: Retry Failed Invoice ──────────────────────────────────────────
@@ -368,6 +392,34 @@ public class InvoiceService {
         invoice.setStatus(Invoice.InvoiceStatus.COMPLETED);
         details.put("completedAt", LocalDateTime.now().toString());
 
-        return invoiceRepository.save(invoice);
+        Invoice saved = invoiceRepository.save(invoice);
+        Map<String, Object> payload = invoicePayload(saved);
+        payload.put("retryCount", retryCount);
+        emitAfterCommit("RETRY_ATTEMPTED", payload);
+        return saved;
+    }
+
+    protected void emitAfterCommit(String action, Map<String, Object> payload) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notifyObservers(action, payload);
+                }
+            });
+        } else {
+            notifyObservers(action, payload);
+        }
+    }
+
+    protected Map<String, Object> invoicePayload(Invoice invoice) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("invoiceId", invoice.getId());
+        payload.put("bookingId", invoice.getBookingId());
+        payload.put("userId", invoice.getUserId());
+        payload.put("method", invoice.getMethod() != null ? invoice.getMethod().name() : null);
+        payload.put("status", invoice.getStatus() != null ? invoice.getStatus().name() : null);
+        payload.put("amount", invoice.getAmount());
+        return payload;
     }
 }

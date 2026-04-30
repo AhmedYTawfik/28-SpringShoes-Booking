@@ -8,4 +8,5 @@ public record BookingEstimateDTO(
         BigDecimal estimatedPrice,
         BigDecimal demandMultiplier
 ) {
+    public static BookingEstimateDTOBuilder builder() { return new BookingEstimateDTOBuilder(); }
 }

@@ -1,5 +1,6 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
@@ -29,19 +30,23 @@ public class ProviderService extends Observable {
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidationService cacheInvalidationService;
     private final IndexingService indexingService;
+    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
     public ProviderService(
             ProviderRepository providerRepository,
             ProviderCertificationService certificationService,
             MongoEventLogger mongoEventLogger,
             CacheInvalidationService cacheInvalidationService,
-            IndexingService indexingService
+            IndexingService indexingService,
+            ObjectArrayDtoAdapter objectArrayDtoAdapter
+
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidationService = cacheInvalidationService;
         this.indexingService = indexingService;
+        this.objectArrayDtoAdapter = objectArrayDtoAdapter;             
     }
 
     @PostConstruct
@@ -138,32 +143,8 @@ public class ProviderService extends Observable {
         }
 
         List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
-
-        Long totalBookings = 0L;
-        Double totalEarnings = 0.0;
-        Double averageBookingPrice = 0.0;
-
-        if (!results.isEmpty()) {
-            Object[] row = results.get(0);
-
-            if (row[0] != null) {
-                totalBookings = ((Number) row[0]).longValue();
-            }
-            if (row[1] != null) {
-                totalEarnings = ((Number) row[1]).doubleValue();
-            }
-            if (row[2] != null) {
-                averageBookingPrice = ((Number) row[2]).doubleValue();
-            }
-        }
-
-        return new ProviderEarningsDTO(
-                provider.getId(),
-                provider.getName(),
-                totalBookings,
-                totalEarnings,
-                averageBookingPrice
-        );
+        Object[] row = results.isEmpty() ? new Object[]{null, null, null} : results.get(0);
+        return objectArrayDtoAdapter.toProviderEarningsDTO(provider.getId(), provider.getName(), row);
     }
   
     public Provider updateServiceDetails(Long id, Map<String, Object> updates) {
