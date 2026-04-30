@@ -1,8 +1,10 @@
 package com.team28.booking.invoice.service;
 
+import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.exception.ResourceNotFoundException;
 import com.team28.booking.invoice.model.Discount;
 import com.team28.booking.invoice.repository.DiscountRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -11,30 +13,32 @@ import java.util.List;
 public class DiscountService {
 
     private final DiscountRepository discountRepository;
+    private final CacheInvalidator cacheInvalidator;
 
-    public DiscountService(DiscountRepository discountRepository) {
+    public DiscountService(DiscountRepository discountRepository, CacheInvalidator cacheInvalidator) {
         this.discountRepository = discountRepository;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
-    // Create
     public Discount createDiscount(Discount discount) {
-        return discountRepository.save(discount);
+        Discount saved = discountRepository.save(discount);
+        cacheInvalidator.wildcardDelete("invoice-service::discount::*");
+        return saved;
     }
 
-    // Read by ID
+    /** CRUD GET-by-ID — 15 min TTL (§4.4.2). */
+    @Cacheable(cacheNames = "invoice-service::discount", key = "#id")
     public Discount getDiscountById(Long id) {
         return discountRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Discount not found with id: " + id));
     }
 
-    // Read all
     public List<Discount> getAllDiscounts() {
         return discountRepository.findAll();
     }
 
-    // Update
     public Discount updateDiscount(Long id, Discount updatedDiscount) {
-        Discount existing = getDiscountById(id);
+        Discount existing = findById(id);
         existing.setCode(updatedDiscount.getCode());
         existing.setDiscountType(updatedDiscount.getDiscountType());
         existing.setDiscountValue(updatedDiscount.getDiscountValue());
@@ -43,13 +47,20 @@ public class DiscountService {
         existing.setExpiryDate(updatedDiscount.getExpiryDate());
         existing.setActive(updatedDiscount.getActive());
         existing.setMetadata(updatedDiscount.getMetadata());
-        return discountRepository.save(existing);
+        Discount saved = discountRepository.save(existing);
+        cacheInvalidator.deleteKey("invoice-service::discount::" + id);
+        return saved;
     }
 
-    // Delete
     public void deleteDiscount(Long id) {
-        discountRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Discount not found with id: " + id));
+        findById(id);
         discountRepository.deleteById(id);
+        cacheInvalidator.deleteKey("invoice-service::discount::" + id);
+    }
+
+    /** Non-cached DB fetch used by all write paths (§4.4.4). */
+    Discount findById(Long id) {
+        return discountRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Discount not found with id: " + id));
     }
 }

@@ -21,7 +21,8 @@ public class MongoEventLogger implements EntityObserver {
     private static final Logger log = LoggerFactory.getLogger(MongoEventLogger.class);
 
     private static final Set<String> INVALIDATING_ACTIONS = Set.of(
-            "USER_CREATED", "USER_UPDATED", "USER_DEACTIVATED", "USER_DELETED", "DEFAULT_ADDRESS_SET"
+            "USER_CREATED", "USER_UPDATED", "USER_DEACTIVATED", "USER_DELETED",
+            "DEFAULT_ADDRESS_SET", "ROLE_CHANGED"
     );
 
     private final EventFactory factory;

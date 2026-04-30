@@ -10,6 +10,7 @@ import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
+import com.team28.booking.user.model.User.Role;
 import com.team28.booking.user.model.User.Status;
 import com.team28.booking.user.observer.MongoEventLogger;
 import com.team28.booking.user.observer.Observable;
@@ -164,6 +165,30 @@ public class UserService extends Observable {
         userRepository.delete(user);
         invalidateUserCaches(userId);
         emitAfterCommit("USER_DELETED", payload);
+    }
+
+    // CC-2: Change user role (ADMIN-only, gated by SecurityConfig)
+    public User changeRole(Long id, Role newRole) {
+        User user = userRepository.findById(id).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        Role oldRole = user.getRole();
+        user.setRole(newRole);
+        User saved = userRepository.save(user);
+
+        // Explicit entity-detail cache eviction (§4.4.4)
+        invalidateUserCaches(id);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("userId", id);
+        payload.put("oldRole", oldRole != null ? oldRole.name() : null);
+        payload.put("newRole", newRole.name());
+        // Observer writes auth_events to Mongo and triggers S1-F12::* wildcard deletion
+        emitAfterCommit("ROLE_CHANGED", payload);
+
+        return saved;
     }
 
     // ── reads (cached) ───────────────────────────────────────────────────────
