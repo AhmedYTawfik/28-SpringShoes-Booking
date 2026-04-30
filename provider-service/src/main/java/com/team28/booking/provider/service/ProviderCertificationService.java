@@ -1,9 +1,11 @@
 package com.team28.booking.provider.service;
 
+import com.team28.booking.provider.cache.CacheInvalidator;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.provider.repository.ProviderCertificationRepository;
 import com.team28.booking.provider.repository.ProviderRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -12,35 +14,38 @@ import java.util.List;
 public class ProviderCertificationService {
     private final ProviderCertificationRepository providerCertificationRepository;
     private final ProviderRepository providerRepository;
+    private final CacheInvalidator cacheInvalidator;
 
-    public ProviderCertificationService(ProviderCertificationRepository providerCertificationRepository, ProviderRepository providerRepository) {
+    public ProviderCertificationService(ProviderCertificationRepository providerCertificationRepository,
+                                        ProviderRepository providerRepository,
+                                        CacheInvalidator cacheInvalidator) {
         this.providerCertificationRepository = providerCertificationRepository;
         this.providerRepository = providerRepository;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
-    //create
     public ProviderCertification createCertification(Long providerId, ProviderCertification certification) {
         Provider provider = providerRepository.findById(providerId)
                 .orElseThrow(() -> new RuntimeException("Provider not found with id: " + providerId));
-
         certification.setProvider(provider);
-        return providerCertificationRepository.save(certification);
+        ProviderCertification saved = providerCertificationRepository.save(certification);
+        cacheInvalidator.wildcardDelete("provider-service::provider-certification::*");
+        return saved;
     }
 
-    //get all
     public List<ProviderCertification> getAllCertifications() {
         return providerCertificationRepository.findAll();
     }
 
-    //get by id
+    /** CRUD GET-by-ID — 15 min TTL (§4.4.2). */
+    @Cacheable(cacheNames = "provider-service::provider-certification", key = "#id")
     public ProviderCertification getCertificationById(Long id) {
         return providerCertificationRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Certification not found with id: " + id));
     }
 
-    //update
     public ProviderCertification updateCertification(Long id, ProviderCertification updatedCertification) {
-        ProviderCertification existingCertification = getCertificationById(id);
+        ProviderCertification existingCertification = findById(id);
 
         existingCertification.setType(updatedCertification.getType());
         existingCertification.setDocumentUrl(updatedCertification.getDocumentUrl());
@@ -48,16 +53,24 @@ public class ProviderCertificationService {
         existingCertification.setVerified(updatedCertification.getVerified());
         existingCertification.setMetadata(updatedCertification.getMetadata());
 
-        return providerCertificationRepository.save(existingCertification);
+        ProviderCertification saved = providerCertificationRepository.save(existingCertification);
+        cacheInvalidator.deleteKey("provider-service::provider-certification::" + id);
+        return saved;
     }
 
-    //delete
     public void deleteCertification(Long id) {
-        ProviderCertification certification = getCertificationById(id);
+        ProviderCertification certification = findById(id);
         providerCertificationRepository.delete(certification);
+        cacheInvalidator.deleteKey("provider-service::provider-certification::" + id);
     }
 
     public boolean verifyCertificateAdmin(Long id) {
         return providerCertificationRepository.verifyVerifierIsAdmin(id);
+    }
+
+    /** Non-cached DB fetch used by all write paths (§4.4.4). */
+    ProviderCertification findById(Long id) {
+        return providerCertificationRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Certification not found with id: " + id));
     }
 }

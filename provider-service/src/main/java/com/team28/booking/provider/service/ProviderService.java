@@ -1,6 +1,7 @@
 package com.team28.booking.provider.service;
 
 import com.team28.booking.provider.adapter.ObjectArrayDtoAdapter;
+import com.team28.booking.provider.cache.CacheInvalidator;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
@@ -10,6 +11,7 @@ import com.team28.booking.provider.observer.Observable;
 import com.team28.booking.provider.repository.ProviderRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -20,8 +22,8 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class ProviderService extends Observable {
@@ -31,6 +33,7 @@ public class ProviderService extends Observable {
     private final CacheInvalidationService cacheInvalidationService;
     private final IndexingService indexingService;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
+    private final CacheInvalidator cacheInvalidator;
 
     public ProviderService(
             ProviderRepository providerRepository,
@@ -38,15 +41,16 @@ public class ProviderService extends Observable {
             MongoEventLogger mongoEventLogger,
             CacheInvalidationService cacheInvalidationService,
             IndexingService indexingService,
-            ObjectArrayDtoAdapter objectArrayDtoAdapter
-
+            ObjectArrayDtoAdapter objectArrayDtoAdapter,
+            CacheInvalidator cacheInvalidator
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidationService = cacheInvalidationService;
         this.indexingService = indexingService;
-        this.objectArrayDtoAdapter = objectArrayDtoAdapter;             
+        this.objectArrayDtoAdapter = objectArrayDtoAdapter;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @PostConstruct
@@ -54,43 +58,25 @@ public class ProviderService extends Observable {
         register(mongoEventLogger);
     }
 
-    //create
+    // ── writes ───────────────────────────────────────────────────────────────
+
     public Provider createProvider(Provider provider) {
         ensureServiceDetailsDescription(provider);
         Provider saved = providerRepository.save(provider);
+        invalidateProviderCaches(null);
         emitAfterCommit("PROVIDER_CREATED", providerPayload(saved));
         indexingService.indexProvider(saved, "auto_crud_create");
         return saved;
     }
 
-    //get all
-    public List<Provider> getAllProviders() {
-        return providerRepository.findAll();
-    }
-
-    //get by id
-    public Provider getProviderById(Long id) {
-        return providerRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found with id: " + id));
-    }
-
-    public List<Provider> filterByPricingTier(
-            String tier, Provider.ProviderStatus status
-    ) {
-        if (status == null) return providerRepository.findByTier(tier);
-        else return providerRepository.findByTierAndStatus(tier, status.name());
-    }
-
-    //update
     public Provider updateProvider(Long id, Provider updatedProvider) {
-        Provider existingProvider = getProviderById(id);
+        Provider existingProvider = findById(id);
 
         existingProvider.setName(updatedProvider.getName());
         existingProvider.setEmail(updatedProvider.getEmail());
         existingProvider.setPhone(updatedProvider.getPhone());
         existingProvider.setSpecialty(updatedProvider.getSpecialty());
         existingProvider.setStatus(updatedProvider.getStatus());
-        //TODO:updating ratings like this isn't correct (for the sake of eny anam will leave it now)
         boolean ratingChanged = !Objects.equals(existingProvider.getRating(), updatedProvider.getRating())
                 || !Objects.equals(existingProvider.getTotalRatings(), updatedProvider.getTotalRatings());
         existingProvider.setRating(updatedProvider.getRating());
@@ -99,6 +85,7 @@ public class ProviderService extends Observable {
         ensureServiceDetailsDescription(existingProvider);
 
         Provider saved = providerRepository.save(existingProvider);
+        invalidateProviderCaches(id);
         if (ratingChanged) {
             cacheInvalidationService.invalidateProviderRating(saved.getId());
             emitAfterCommit("RATING_RECORDED", providerPayload(saved));
@@ -107,16 +94,16 @@ public class ProviderService extends Observable {
         return saved;
     }
 
-    //delete
     public void deleteProvider(Long id) {
-        Provider provider = getProviderById(id);
+        Provider provider = findById(id);
         providerRepository.delete(provider);
+        invalidateProviderCaches(id);
         indexingService.deleteProvider(provider);
     }
 
     @Transactional
     public void updateAvailability(Long providerId, Provider.ProviderStatus newStatus) {
-        Provider provider = getProviderById(providerId);
+        Provider provider = findById(providerId);
 
         if (newStatus == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Status is required");
@@ -133,22 +120,12 @@ public class ProviderService extends Observable {
 
         provider.setStatus(newStatus);
         Provider saved = providerRepository.save(provider);
+        invalidateProviderCaches(providerId);
         emitAfterCommit("AVAILABILITY_TOGGLED", providerPayload(saved));
     }
-  
-    public ProviderEarningsDTO getProviderEarningsSummary(Long providerId, LocalDate startDate, LocalDate endDate) {
-        Provider provider = getProviderById(providerId);
-        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
-        }
 
-        List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
-        Object[] row = results.isEmpty() ? new Object[]{null, null, null} : results.get(0);
-        return objectArrayDtoAdapter.toProviderEarningsDTO(provider.getId(), provider.getName(), row);
-    }
-  
     public Provider updateServiceDetails(Long id, Map<String, Object> updates) {
-        Provider provider = getProviderById(id);
+        Provider provider = findById(id);
         Map<String, Object> existingDetails = provider.getServiceDetails();
 
         if (existingDetails == null) {
@@ -161,43 +138,19 @@ public class ProviderService extends Observable {
         provider.setServiceDetails(existingDetails);
         ensureServiceDetailsDescription(provider);
         Provider saved = providerRepository.save(provider);
+        invalidateProviderCaches(id);
         Map<String, Object> payload = providerPayload(saved);
         payload.put("serviceDetails", saved.getServiceDetails());
         emitAfterCommit("SERVICE_DETAILS_UPDATED", payload);
         return saved;
     }
 
-    public static String descriptionOrEmpty(Map<String,Object> serviceDetails) {
-        return Optional.ofNullable(serviceDetails)
-                .map(m -> m.get("description")).map(Object::toString).orElse("");
-    }
-
-    private static void ensureServiceDetailsDescription(Provider provider) {
-        Map<String, Object> serviceDetails = provider.getServiceDetails();
-        if (serviceDetails == null) {
-            serviceDetails = new HashMap<>();
-        } else {
-            serviceDetails = new HashMap<>(serviceDetails);
-        }
-        serviceDetails.put("description", descriptionOrEmpty(serviceDetails));
-        provider.setServiceDetails(serviceDetails);
-    }
-  
-    public List<Provider> searchProviders(Provider.ProviderStatus status, Double minRating, Double maxRating) {
-        if (minRating != null && maxRating != null && minRating > maxRating) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
-        }
-
-        return providerRepository.searchProviders(status, minRating, maxRating);
-    }
-
-    // I am only writing once, but whatever
     @Transactional
     public Provider verifyCertificate(Long providerId, Long certificationId, VerifiedBy verifiedBy) {
         Provider provider;
         ProviderCertification providerCertification;
         try {
-            provider = getProviderById(providerId);
+            provider = findById(providerId);
             providerCertification = certificationService.getCertificationById(certificationId);
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
@@ -224,6 +177,86 @@ public class ProviderService extends Observable {
         payload.put("verifiedBy", verifiedBy.verifier());
         emitAfterCommit("CERTIFICATION_VERIFIED", payload);
         return provider;
+    }
+
+    // ── reads (cached) ───────────────────────────────────────────────────────
+
+    public List<Provider> getAllProviders() {
+        return providerRepository.findAll();
+    }
+
+    /** CRUD GET-by-ID — 15 min TTL (§4.4.2). */
+    @Cacheable(cacheNames = "provider-service::provider", key = "#id")
+    public Provider getProviderById(Long id) {
+        return findById(id);
+    }
+
+    /** S2-F5: filter by pricing tier — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "provider-service::S2-F5",
+               key = "T(java.util.Objects).hash(#tier, #status)")
+    public List<Provider> filterByPricingTier(String tier, Provider.ProviderStatus status) {
+        if (status == null) return providerRepository.findByTier(tier);
+        else return providerRepository.findByTierAndStatus(tier, status.name());
+    }
+
+    /** S2-F1: search providers — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "provider-service::S2-F1",
+               key = "T(java.util.Objects).hash(#status, #minRating, #maxRating)")
+    public List<Provider> searchProviders(Provider.ProviderStatus status, Double minRating, Double maxRating) {
+        if (minRating != null && maxRating != null && minRating > maxRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
+        }
+        return providerRepository.searchProviders(status, minRating, maxRating);
+    }
+
+    /** S2-F3: provider earnings summary — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "provider-service::S2-F3",
+               key = "T(java.util.Objects).hash(#providerId, #startDate, #endDate)")
+    public ProviderEarningsDTO getProviderEarningsSummary(Long providerId, LocalDate startDate, LocalDate endDate) {
+        Provider provider = findById(providerId);
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
+        }
+        List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
+        Object[] row = results.isEmpty() ? new Object[]{null, null, null} : results.get(0);
+        return objectArrayDtoAdapter.toProviderEarningsDTO(provider.getId(), provider.getName(), row);
+    }
+
+    // ── internal helpers ─────────────────────────────────────────────────────
+
+    /** Non-cached DB fetch used by all write paths (§4.4.4). */
+    Provider findById(Long id) {
+        return providerRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found with id: " + id));
+    }
+
+    /** Invalidate entity detail + all feature caches on any provider write (§4.4.4). */
+    private void invalidateProviderCaches(Long id) {
+        if (id != null) {
+            cacheInvalidator.deleteKey("provider-service::provider::" + id);
+        }
+        cacheInvalidator.wildcardDelete("provider-service::S2-F1::*");
+        cacheInvalidator.wildcardDelete("provider-service::S2-F3::*");
+        cacheInvalidator.wildcardDelete("provider-service::S2-F5::*");
+        cacheInvalidator.wildcardDelete("provider-service::S2-F6::*");
+        cacheInvalidator.wildcardDelete("provider-service::S2-F9::*");
+        cacheInvalidator.wildcardDelete("provider-service::S2-F10::*");
+    }
+
+    public static String descriptionOrEmpty(Map<String, Object> serviceDetails) {
+        return Optional.ofNullable(serviceDetails)
+                .map(m -> m.get("description")).map(Object::toString).orElse("");
+    }
+
+    private static void ensureServiceDetailsDescription(Provider provider) {
+        Map<String, Object> serviceDetails = provider.getServiceDetails();
+        if (serviceDetails == null) {
+            serviceDetails = new HashMap<>();
+        } else {
+            serviceDetails = new HashMap<>(serviceDetails);
+        }
+        serviceDetails.put("description", descriptionOrEmpty(serviceDetails));
+        provider.setServiceDetails(serviceDetails);
     }
 
     private void emitAfterCommit(String action, Map<String, Object> payload) {
