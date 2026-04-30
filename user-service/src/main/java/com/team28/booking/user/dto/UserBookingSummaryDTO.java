@@ -11,4 +11,5 @@ public record UserBookingSummaryDTO(
         BigDecimal totalSpent,
         BigDecimal averageBookingPrice
 ) {
+    public static UserBookingSummaryDTOBuilder builder() { return new UserBookingSummaryDTOBuilder(); }
 }
