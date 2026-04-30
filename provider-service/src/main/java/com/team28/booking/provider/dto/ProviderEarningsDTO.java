@@ -6,4 +6,6 @@ public record ProviderEarningsDTO(
         Long totalBookings,
         Double totalEarnings,
         Double averageBookingPrice
-) {}
+) {
+    public static ProviderEarningsDTOBuilder builder() { return new ProviderEarningsDTOBuilder(); }
+}
