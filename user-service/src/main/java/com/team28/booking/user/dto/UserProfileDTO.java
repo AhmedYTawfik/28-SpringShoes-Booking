@@ -12,4 +12,5 @@ public record UserProfileDTO(
         List<SavedAddressDTO> savedAddresses,
         Long totalAddresses
 ) {
+    public static UserProfileDTOBuilder builder() { return new UserProfileDTOBuilder(); }
 }
