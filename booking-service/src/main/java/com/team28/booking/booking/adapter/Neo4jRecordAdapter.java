@@ -34,8 +34,10 @@ public class Neo4jRecordAdapter {
 
     public <T> T adapt(UserNode node, Class<T> targetType) {
         if (node == null) return null;
+        if (node.getUserId() == null)
+            throw new IllegalArgumentException("UserNode has null userId, cannot adapt");
         Map<String, Object> record = Map.of(
-                "userId", node.getUserId() != null ? node.getUserId() : 0L
+                "userId", node.getUserId()
         );
         return adapt(record, targetType);
     }
