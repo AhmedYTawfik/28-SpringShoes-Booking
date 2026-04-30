@@ -1,0 +1,43 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: calendar-service
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.cassandra.autoconfigure.CassandraAutoConfiguration
+      - org.springframework.boot.cassandra.autoconfigure.health.CassandraHealthContributorAutoConfiguration
+      - org.springframework.boot.cassandra.autoconfigure.health.CassandraReactiveHealthContributorAutoConfiguration
+      - org.springframework.boot.data.cassandra.autoconfigure.DataCassandraAutoConfiguration
+      - org.springframework.boot.data.cassandra.autoconfigure.DataCassandraReactiveAutoConfiguration
+      - org.springframework.boot.data.cassandra.autoconfigure.DataCassandraReactiveRepositoriesAutoConfiguration
+      - org.springframework.boot.data.cassandra.autoconfigure.DataCassandraRepositoriesAutoConfiguration
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redispass}
+    mongodb:
+      uri: mongodb://${MONGO_USERNAME:root}:${MONGO_PASSWORD:rootpass}@${MONGO_HOST:mongo}:${MONGO_PORT:27017}/${MONGO_DATABASE:bookingmongo}?authSource=admin
+  cassandra:
+    contact-points: ${CASSANDRA_CONTACT_POINTS:cassandra}
+    port: ${CASSANDRA_PORT:9042}
+    local-datacenter: ${CASSANDRA_LOCAL_DATACENTER:datacenter1}
+    keyspace-name: ${CASSANDRA_KEYSPACE:bookingks}
+    schema-action: CREATE_IF_NOT_EXISTS
+
+jwt:
+  secret: ${JWT_SECRET:fJ8z2vK6yQ3pX9mR4wT5sN7bE1uI0aH8oL2cD6gV4eK3=}
+  expiration: 86400000
