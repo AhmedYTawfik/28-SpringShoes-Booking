@@ -24,7 +24,9 @@ public class BookingItemService {
         Booking booking = bookingService.getBookingById(bookingId);
         bookingItem.setId(null);
         bookingItem.setBooking(booking);
-        return bookingItemRepository.save(bookingItem);
+        BookingItem saved = bookingItemRepository.save(bookingItem);
+        bookingService.emitServicesAdded(booking, saved.getId());
+        return saved;
     }
 
     public List<BookingItem> getAllBookingItems() {
