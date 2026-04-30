@@ -2,6 +2,7 @@ package com.team28.booking.user.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team28.booking.user.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
@@ -37,6 +38,9 @@ public class UserService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -140,25 +144,10 @@ public class UserService {
         Object[] summaryRow = userRepository.findUserBookingSummary(userId);
         if (summaryRow == null) {
             return new UserBookingSummaryDTO(
-                    user.getId(),
-                    user.getName(),
-                    0L,
-                    0L,
-                    0L,
-                    BigDecimal.ZERO,
-                    BigDecimal.ZERO
-            );
+                    user.getId(), user.getName(), 0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO);
         }
 
-        return new UserBookingSummaryDTO(
-                ((Number) summaryRow[0]).longValue(),
-                (String) summaryRow[1],
-                ((Number) summaryRow[2]).longValue(),
-                ((Number) summaryRow[3]).longValue(),
-                ((Number) summaryRow[4]).longValue(),
-                toBigDecimal(summaryRow[5]),
-                toBigDecimal(summaryRow[6])
-        );
+        return objectArrayDtoAdapter.toUserBookingSummaryDTO(summaryRow);
     }
 
     // S1-F1: Search Users
@@ -239,12 +228,7 @@ public class UserService {
         // Map Object[] results to DTOs
         List<TopClientDTO> topClients = new ArrayList<>();
         for (Object[] row : results) {
-            TopClientDTO dto = new TopClientDTO();
-            dto.setUserId(((Number) row[0]).longValue());
-            dto.setName((String) row[1]);
-            dto.setTotalSpent(((Number) row[2]).doubleValue());
-            dto.setBookingCount(((Number) row[3]).longValue());
-            topClients.add(dto);
+            topClients.add(objectArrayDtoAdapter.toTopClientDTO(row));
         }
 
         return topClients;
