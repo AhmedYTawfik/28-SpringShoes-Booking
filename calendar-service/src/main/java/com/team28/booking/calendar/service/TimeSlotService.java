@@ -75,13 +75,13 @@ public class TimeSlotService {
     public List<AvailableProviderDTO> findAvailableProviders(LocalDate date, String specialty) {
         List<Object[]> results = timeSlotRepository.findAvailableProvidersByDate(date, specialty);
         return results.stream()
-                .map(row -> new AvailableProviderDTO(
-                        ((Number) row[0]).longValue(),
-                        (String) row[1],
-                        (String) row[2],
-                        ((Number) row[3]).doubleValue(),
-                        ((Number) row[4]).longValue()
-                ))
+                .map(row -> AvailableProviderDTO.builder()
+                        .providerId(((Number) row[0]).longValue())
+                        .providerName((String) row[1])
+                        .specialty((String) row[2])
+                        .rating(((Number) row[3]).doubleValue())
+                        .availableSlots(((Number) row[4]).longValue())
+                        .build())
                 .toList();
     }
 
@@ -154,14 +154,14 @@ public class TimeSlotService {
         List<IdleProviderProjection> results = timeSlotRepository.findIdleProviders(maxBookedSlots, sinceDate);
 
         return results.stream()
-                .map(row -> new IdleProviderDTO(
-                        row.getProviderId(),
-                        row.getProviderName(),
-                        row.getSpecialty(),
-                        row.getRating(),
-                        row.getBookedSlotsCount(),
-                        row.getTotalSlotsCount()
-                ))
+                .map(row -> IdleProviderDTO.builder()
+                        .providerId(row.getProviderId())
+                        .providerName(row.getProviderName())
+                        .specialty(row.getSpecialty())
+                        .rating(row.getRating())
+                        .bookedSlotsCount(row.getBookedSlotsCount())
+                        .totalSlotsCount(row.getTotalSlotsCount())
+                        .build())
                 .toList();
     }
 
@@ -180,7 +180,14 @@ public class TimeSlotService {
             peakDay = peakDay.trim();
         }
 
-        return new ProviderUtilizationDTO(providerId, totalSlots, bookedSlots, availableSlots, utilizationRate, peakDay);
+        return ProviderUtilizationDTO.builder()
+                .providerId(providerId)
+                .totalSlots(totalSlots)
+                .bookedSlots(bookedSlots)
+                .availableSlots(availableSlots)
+                .utilizationRate(utilizationRate)
+                .peakDay(peakDay)
+                .build();
     }  
 
     @Transactional
