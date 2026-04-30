@@ -6,28 +6,42 @@ import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.dto.IdleProviderDTO;
 import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
+import com.team28.booking.calendar.observer.MongoEventLogger;
+import com.team28.booking.calendar.observer.Observable;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
+import jakarta.annotation.PostConstruct;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 @Service
-public class TimeSlotService {
+public class TimeSlotService extends Observable {
 
     private final TimeSlotRepository timeSlotRepository;
+    private final MongoEventLogger mongoEventLogger;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
-    public TimeSlotService(TimeSlotRepository timeSlotRepository, ObjectArrayDtoAdapter objectArrayDtoAdapter) {
+    public TimeSlotService(TimeSlotRepository timeSlotRepository, MongoEventLogger mongoEventLogger,ObjectArrayDtoAdapter objectArrayDtoAdapter) {
         this.timeSlotRepository = timeSlotRepository;
+        this.mongoEventLogger = mongoEventLogger;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
+
+    }
+
+    @PostConstruct
+    void registerObservers() {
+        register(mongoEventLogger);
     }
 
     public TimeSlot createTimeSlot(TimeSlot timeSlot) {
@@ -35,7 +49,9 @@ public class TimeSlotService {
         if (timeSlot.getAvailable() == null) {
             timeSlot.setAvailable(true);
         }
-        return timeSlotRepository.save(timeSlot);
+        TimeSlot saved = timeSlotRepository.save(timeSlot);
+        emitAfterCommit("TIME_SLOT_CREATED", timeSlotPayload(saved));
+        return saved;
     }
 
     public TimeSlot createTimeSlotForProvider(Long providerId, TimeSlot timeSlot) {
@@ -46,7 +62,9 @@ public class TimeSlotService {
             timeSlot.setAvailable(true);
         }
         timeSlot.setCreatedAt(LocalDateTime.now());
-        return timeSlotRepository.save(timeSlot);
+        TimeSlot saved = timeSlotRepository.save(timeSlot);
+        emitAfterCommit("SLOT_CREATED", timeSlotPayload(saved));
+        return saved;
     }
 
     @Transactional
@@ -68,7 +86,12 @@ public class TimeSlotService {
             slotsToSave.add(timeSlot);
         }
 
-        return timeSlotRepository.saveAll(slotsToSave).size();
+        List<TimeSlot> saved = timeSlotRepository.saveAll(slotsToSave);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("providerId", providerId);
+        payload.put("count", saved.size());
+        emitAfterCommit("BATCH_SLOTS_CREATED", payload);
+        return saved.size();
     }
 
     public List<TimeSlot> getAllTimeSlots() {
@@ -119,12 +142,16 @@ public class TimeSlotService {
         existing.setEndTime(updated.getEndTime());
         existing.setAvailable(updated.getAvailable());
         existing.setMetadata(updated.getMetadata());
-        return timeSlotRepository.save(existing);
+        TimeSlot saved = timeSlotRepository.save(existing);
+        emitAfterCommit("TIME_SLOT_UPDATED", timeSlotPayload(saved));
+        return saved;
     }
 
     public void deleteTimeSlot(Long id) {
         TimeSlot existing = getTimeSlotById(id);
+        Map<String, Object> payload = timeSlotPayload(existing);
         timeSlotRepository.delete(existing);
+        emitAfterCommit("TIME_SLOT_DELETED", payload);
     }
 
     public List<TimeSlot> searchByMetadata(String key, String operator, String value) {
@@ -186,6 +213,10 @@ public class TimeSlotService {
         LocalDate cutoffDate = LocalDate.now().minusDays(olderThanDays);
         int deletedCount = timeSlotRepository.countByDateBefore(cutoffDate);
         timeSlotRepository.deleteByDateBefore(cutoffDate);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("cutoffDate", cutoffDate.toString());
+        payload.put("deletedCount", deletedCount);
+        emitAfterCommit("OLD_SLOTS_PURGED", payload);
         return Map.of("deletedCount", deletedCount);
     }
 
@@ -208,5 +239,29 @@ public class TimeSlotService {
         if (timeSlots == null || timeSlots.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "timeSlots must not be empty");
         }
+    }
+
+    private void emitAfterCommit(String action, Map<String, Object> payload) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notifyObservers(action, payload);
+                }
+            });
+        } else {
+            notifyObservers(action, payload);
+        }
+    }
+
+    private Map<String, Object> timeSlotPayload(TimeSlot timeSlot) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("timeSlotId", timeSlot.getId());
+        payload.put("providerId", timeSlot.getProviderId());
+        payload.put("date", timeSlot.getDate() != null ? timeSlot.getDate().toString() : null);
+        payload.put("startTime", timeSlot.getStartTime() != null ? timeSlot.getStartTime().toString() : null);
+        payload.put("endTime", timeSlot.getEndTime() != null ? timeSlot.getEndTime().toString() : null);
+        payload.put("available", timeSlot.getAvailable());
+        return payload;
     }
 }
