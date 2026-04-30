@@ -304,6 +304,7 @@ public class InvoiceService {
         Map<String, Object> details = new HashMap<>();
         details.put("gateway", "internal");
         details.put("initiatedAt", LocalDateTime.now().toString());
+        details.put("cancellationFee", 0);
         invoice.setTransactionDetails(details);
 
         // 4. Simulate processing — mark completed immediately

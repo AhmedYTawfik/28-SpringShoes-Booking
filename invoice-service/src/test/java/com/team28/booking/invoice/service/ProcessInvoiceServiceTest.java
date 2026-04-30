@@ -68,6 +68,7 @@ class ProcessInvoiceServiceTest {
         assertThat(result.getMethod()).isEqualTo(Invoice.PaymentMethod.CREDIT_CARD);
         assertThat(result.getTransactionDetails()).containsKey("completedAt");
         assertThat(result.getTransactionDetails()).containsKey("gateway");
+        assertThat(result.getTransactionDetails()).containsEntry("cancellationFee", 0);
         verify(invoiceRepository).save(any(Invoice.class));
     }
 
