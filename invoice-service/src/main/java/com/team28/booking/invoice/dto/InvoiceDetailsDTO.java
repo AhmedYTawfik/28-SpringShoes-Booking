@@ -17,4 +17,6 @@ public record InvoiceDetailsDTO(
         List<AppliedDiscountDTO> appliedDiscounts,
         BigDecimal totalDiscount,
         BigDecimal finalAmount
-) {}
+) {
+    public static InvoiceDetailsDTOBuilder builder() { return new InvoiceDetailsDTOBuilder(); }
+}

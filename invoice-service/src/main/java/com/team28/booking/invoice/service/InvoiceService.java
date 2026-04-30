@@ -59,16 +59,16 @@ public class InvoiceService {
 
         for (DiscountUsageProjection row : rows) {
             boolean expired = row.getExpiryDate() != null && row.getExpiryDate().isBefore(now);
-            result.add(new DiscountUsageDTO(
-                row.getDiscountId(),
-                row.getCode(),
-                Discount.DiscountType.valueOf(row.getDiscountType()),
-                row.getDiscountValue() != null ? row.getDiscountValue() : BigDecimal.ZERO,
-                row.getTimesUsed() == null ? 0 : row.getTimesUsed(),
-                row.getTotalDiscountGiven() != null ? row.getTotalDiscountGiven() : BigDecimal.ZERO,
-                row.getActive() != null && row.getActive(),
-                expired
-            ));
+            result.add(DiscountUsageDTO.builder()
+                .discountId(row.getDiscountId())
+                .code(row.getCode())
+                .discountType(Discount.DiscountType.valueOf(row.getDiscountType()))
+                .discountValue(row.getDiscountValue() != null ? row.getDiscountValue() : BigDecimal.ZERO)
+                .timesUsed(row.getTimesUsed() == null ? 0 : row.getTimesUsed())
+                .totalDiscountGiven(row.getTotalDiscountGiven() != null ? row.getTotalDiscountGiven() : BigDecimal.ZERO)
+                .active(row.getActive() != null && row.getActive())
+                .expired(expired)
+                .build());
         }
 
         return result;
@@ -182,18 +182,18 @@ public class InvoiceService {
         BigDecimal originalAmount = invoice.getAmount() != null ? invoice.getAmount() : BigDecimal.ZERO;
         BigDecimal finalAmount = originalAmount.subtract(totalDiscount);
 
-        return new InvoiceDetailsDTO(
-                invoice.getId(),
-                invoice.getBookingId(),
-                invoice.getUserId(),
-                originalAmount,
-                invoice.getMethod(),
-                invoice.getStatus(),
-                invoice.getTransactionDetails(),
-                appliedDiscounts,
-                totalDiscount,
-                finalAmount
-        );
+        return InvoiceDetailsDTO.builder()
+                .invoiceId(invoice.getId())
+                .bookingId(invoice.getBookingId())
+                .userId(invoice.getUserId())
+                .originalAmount(originalAmount)
+                .method(invoice.getMethod())
+                .status(invoice.getStatus())
+                .transactionDetails(invoice.getTransactionDetails())
+                .appliedDiscounts(appliedDiscounts)
+                .totalDiscount(totalDiscount)
+                .finalAmount(finalAmount)
+                .build();
     }
 
     private AppliedDiscountDTO mapAppliedDiscount(InvoiceDiscount invoiceDiscount) {
@@ -265,7 +265,12 @@ public class InvoiceService {
             totalAmount = totalAmount.add(amount);
         }
 
-        return new UserInvoiceSummaryDTO(userId, totalInvoices, totalAmount, methodBreakdown);
+        return UserInvoiceSummaryDTO.builder()
+                .userId(userId)
+                .totalInvoices(totalInvoices)
+                .totalAmount(totalAmount)
+                .methodBreakdown(methodBreakdown)
+                .build();
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
@@ -333,8 +338,16 @@ public class InvoiceService {
         BigDecimal averageInvoiceAmount = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
         BigDecimal netRevenue           = totalRevenue.subtract(refundedAmount);
 
-        return new RevenueReportDTO(startDate, endDate, totalRevenue, totalInvoices,
-                completedInvoices, refundedAmount, netRevenue, averageInvoiceAmount);
+        return RevenueReportDTO.builder()
+                .startDate(startDate)
+                .endDate(endDate)
+                .totalRevenue(totalRevenue)
+                .totalInvoices(totalInvoices)
+                .completedInvoices(completedInvoices)
+                .refundedAmount(refundedAmount)
+                .netRevenue(netRevenue)
+                .averageInvoiceAmount(averageInvoiceAmount)
+                .build();
     }
 
     // ── S5-F7: Retry Failed Invoice ──────────────────────────────────────────

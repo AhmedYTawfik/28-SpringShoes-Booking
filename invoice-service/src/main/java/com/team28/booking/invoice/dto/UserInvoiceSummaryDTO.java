@@ -8,4 +8,6 @@ public record UserInvoiceSummaryDTO(
         Integer totalInvoices,
         BigDecimal totalAmount,
         Map<String, BigDecimal> methodBreakdown
-) {}
+) {
+    public static UserInvoiceSummaryDTOBuilder builder() { return new UserInvoiceSummaryDTOBuilder(); }
+}
