@@ -13,6 +13,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 
@@ -61,7 +62,7 @@ class ProcessInvoiceServiceTest {
         Invoice result = invoiceService.processInvoiceForBooking(request);
 
         assertThat(result.getStatus()).isEqualTo(Invoice.InvoiceStatus.COMPLETED);
-        assertThat(result.getAmount()).isEqualTo(450.0);
+        assertThat(result.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(450.0));
         assertThat(result.getBookingId()).isEqualTo(1L);
         assertThat(result.getUserId()).isEqualTo(10L);
         assertThat(result.getMethod()).isEqualTo(Invoice.PaymentMethod.CREDIT_CARD);
@@ -79,7 +80,7 @@ class ProcessInvoiceServiceTest {
 
         Invoice result = invoiceService.processInvoiceForBooking(request);
 
-        assertThat(result.getAmount()).isEqualTo(999.99);
+        assertThat(result.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(999.99));
     }
 
     // ── booking not found ─────────────────────────────────────────────────────
