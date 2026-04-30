@@ -107,8 +107,14 @@ public class InvoiceController {
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
 
     @PostMapping("/process")
-    public ResponseEntity<Invoice> processInvoiceForBooking(@RequestBody ProcessInvoiceRequest request) {
-        return ResponseEntity.status(201).body(invoiceService.processInvoiceForBooking(request));
+    public ResponseEntity<Invoice> processInvoiceForBooking(
+            @RequestBody ProcessInvoiceRequest request,
+            @RequestParam(defaultValue = "false") boolean simulateFailure) {
+        Invoice invoice = invoiceService.processInvoiceForBooking(request, simulateFailure);
+        if (simulateFailure) {
+            return ResponseEntity.ok(invoice);
+        }
+        return ResponseEntity.status(201).body(invoice);
     }
 
     // ── S5-F6: Revenue Report by Date Range ─────────────────────────────────

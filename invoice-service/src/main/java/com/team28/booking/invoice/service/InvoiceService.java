@@ -296,6 +296,11 @@ public class InvoiceService extends Observable {
 
     @Transactional
     public Invoice processInvoiceForBooking(ProcessInvoiceRequest request) {
+        return processInvoiceForBooking(request, false);
+    }
+
+    @Transactional
+    public Invoice processInvoiceForBooking(ProcessInvoiceRequest request, boolean simulateFailure) {
         // 1. Fetch booking from the shared bookings table (cross-service native SQL)
         List<Object[]> rows = invoiceRepository.findBookingDetails(request.getBookingId());
         if (rows == null || rows.isEmpty()) {
@@ -331,11 +336,29 @@ public class InvoiceService extends Observable {
         details.put("cancellationFee", 0);
         invoice.setTransactionDetails(details);
 
-        // 4. Simulate processing — mark completed immediately
-        invoice.setStatus(Invoice.InvoiceStatus.COMPLETED);
-        details.put("completedAt", LocalDateTime.now().toString());
+        if (simulateFailure) {
+            invoice.setStatus(Invoice.InvoiceStatus.FAILED);
+            details.put("failedAt", LocalDateTime.now().toString());
+            details.put("reason", "simulated_gateway_failure");
 
-        return invoiceRepository.save(invoice);
+            Invoice failed = invoiceRepository.save(invoice);
+            Map<String, Object> payload = invoicePayload(failed);
+            payload.put("details", Map.of("reason", "simulated_gateway_failure"));
+            emitAfterCommit("FAILED", payload);
+            return failed;
+        }
+
+        invoice.setStatus(Invoice.InvoiceStatus.PENDING);
+        Invoice created = invoiceRepository.save(invoice);
+        emitAfterCommit("CREATED", invoicePayload(created));
+
+        created.setStatus(Invoice.InvoiceStatus.COMPLETED);
+        details.put("completedAt", LocalDateTime.now().toString());
+        created.setTransactionDetails(details);
+
+        Invoice completed = invoiceRepository.save(created);
+        emitAfterCommit("COMPLETED", invoicePayload(completed));
+        return completed;
     }
 
     // ── S5-F6: Revenue Report by Date Range ─────────────────────────────────
