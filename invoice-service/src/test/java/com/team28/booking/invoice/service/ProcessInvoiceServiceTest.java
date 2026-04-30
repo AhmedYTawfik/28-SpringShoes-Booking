@@ -1,5 +1,6 @@
 package com.team28.booking.invoice.service;
 
+import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.exception.BadRequestException;
 import com.team28.booking.invoice.exception.ResourceNotFoundException;
@@ -30,6 +31,9 @@ class ProcessInvoiceServiceTest {
 
     @Mock
     private InvoiceRepository invoiceRepository;
+
+    @Mock
+    private CacheInvalidator cacheInvalidator;
 
     @InjectMocks
     private InvoiceService invoiceService;

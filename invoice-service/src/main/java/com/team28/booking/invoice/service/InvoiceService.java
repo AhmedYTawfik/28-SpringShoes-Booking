@@ -10,10 +10,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter;
+import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
@@ -46,16 +48,20 @@ public class InvoiceService extends Observable {
     private final InvoiceDiscountRepository invoiceDiscountRepository;
     private final MongoEventLogger mongoEventLogger;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
+    private final CacheInvalidator cacheInvalidator;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
                           InvoiceDiscountRepository invoiceDiscountRepository,
-                          MongoEventLogger mongoEventLogger, ObjectArrayDtoAdapter objectArrayDtoAdapter) {
-                                  this.invoiceRepository = invoiceRepository;
-                                  this.discountRepository = discountRepository;
-                                  this.invoiceDiscountRepository = invoiceDiscountRepository;
-                                  this.mongoEventLogger = mongoEventLogger;
-                                  this.objectArrayDtoAdapter = objectArrayDtoAdapter;
+                          MongoEventLogger mongoEventLogger,
+                          ObjectArrayDtoAdapter objectArrayDtoAdapter,
+                          CacheInvalidator cacheInvalidator) {
+        this.invoiceRepository = invoiceRepository;
+        this.discountRepository = discountRepository;
+        this.invoiceDiscountRepository = invoiceDiscountRepository;
+        this.mongoEventLogger = mongoEventLogger;
+        this.objectArrayDtoAdapter = objectArrayDtoAdapter;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @PostConstruct
@@ -95,8 +101,7 @@ public class InvoiceService extends Observable {
 
     @Transactional
     public Invoice applyDiscountToInvoice(Long invoiceId, Long discountId) {
-        Invoice invoice = invoiceRepository.findById(invoiceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + invoiceId));
+        Invoice invoice = findById(invoiceId);
 
         if (invoice.getStatus() == Invoice.InvoiceStatus.COMPLETED
                 || invoice.getStatus() == Invoice.InvoiceStatus.REFUNDED) {
@@ -146,6 +151,7 @@ public class InvoiceService extends Observable {
 
         discount.setCurrentUses(currentUses + 1);
         discountRepository.save(discount);
+        invalidateInvoiceCaches(invoiceId);
 
         invoice.getInvoiceDiscounts().add(invoiceDiscount);
         Map<String, Object> payload = invoicePayload(invoice);
@@ -158,12 +164,15 @@ public class InvoiceService extends Observable {
     // ── CRUD ────────────────────────────────────────────────────────────────
 
     public Invoice createInvoice(Invoice invoice) {
-        return invoiceRepository.save(invoice);
+        Invoice saved = invoiceRepository.save(invoice);
+        invalidateInvoiceCaches(null);
+        return saved;
     }
 
+    /** CRUD GET-by-ID — 15 min TTL (§4.4.2). */
+    @Cacheable(cacheNames = "invoice-service::invoice", key = "#id")
     public Invoice getInvoiceById(Long id) {
-        return invoiceRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
+        return findById(id);
     }
 
     public List<Invoice> getAllInvoices() {
@@ -171,7 +180,7 @@ public class InvoiceService extends Observable {
     }
 
     public Invoice updateInvoice(Long id, Invoice updatedInvoice) {
-        Invoice existing = getInvoiceById(id);
+        Invoice existing = findById(id);
         existing.setBookingId(updatedInvoice.getBookingId());
         existing.setUserId(updatedInvoice.getUserId());
         existing.setAmount(updatedInvoice.getAmount());
@@ -179,17 +188,21 @@ public class InvoiceService extends Observable {
         existing.setStatus(updatedInvoice.getStatus());
         existing.setTransactionDetails(updatedInvoice.getTransactionDetails());
         existing.setCreatedAt(updatedInvoice.getCreatedAt());
-        return invoiceRepository.save(existing);
+        Invoice saved = invoiceRepository.save(existing);
+        invalidateInvoiceCaches(id);
+        return saved;
     }
 
     public void deleteInvoice(Long id) {
-        Invoice invoice = invoiceRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
+        Invoice invoice = findById(id);
         Map<String, Object> payload = invoicePayload(invoice);
         invoiceRepository.deleteById(id);
+        invalidateInvoiceCaches(id);
         emitAfterCommit("INVOICE_DELETED", payload);
     }
-    
+
+    /** S5-F8: invoice details with applied discounts — 15 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "invoice-service::S5-F8", key = "#invoiceId")
     public InvoiceDetailsDTO getInvoiceDetails(Long invoiceId) {
         Invoice invoice = invoiceRepository.findByIdWithDiscounts(invoiceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + invoiceId));
@@ -219,18 +232,9 @@ public class InvoiceService extends Observable {
                 .build();
     }
 
-    private AppliedDiscountDTO mapAppliedDiscount(InvoiceDiscount invoiceDiscount) {
-        Discount discount = invoiceDiscount.getDiscount();
-        return new AppliedDiscountDTO(
-                discount != null ? discount.getCode() : null,
-                discount != null ? discount.getDiscountType() : null,
-                invoiceDiscount.getDiscountApplied(),
-                invoiceDiscount.getAppliedAt()
-        );
-    }
-
-    // Search invoices by status and date range
-    // Converts enum to string for native SQL query
+    /** S5-F1: search invoices by status/date — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "invoice-service::S5-F1",
+               key = "T(java.util.Objects).hash(#status, #startDate, #endDate)")
     public List<Invoice> searchInvoices(InvoiceStatus status, LocalDateTime startDate, LocalDateTime endDate) {
         if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new BadRequestException("startDate must not be after endDate");
@@ -245,7 +249,7 @@ public class InvoiceService extends Observable {
             throw new BadRequestException("Refund reason must not be blank");
         }
 
-        Invoice invoice = getInvoiceById(invoiceId);
+        Invoice invoice = findById(invoiceId);
 
         if (invoice.getStatus() != InvoiceStatus.COMPLETED) {
             throw new BadRequestException("Invoice must be COMPLETED to process refund");
@@ -262,12 +266,15 @@ public class InvoiceService extends Observable {
         invoice.setTransactionDetails(transactionDetails);
 
         Invoice saved = invoiceRepository.save(invoice);
+        invalidateInvoiceCaches(invoiceId);
         Map<String, Object> payload = invoicePayload(saved);
         payload.put("details", Map.of("refundReason", reason));
         emitAfterCommit("REFUNDED", payload);
         return saved;
     }
 
+    /** S5-F3: user invoice summary — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "invoice-service::S5-F3", key = "#userId")
     public UserInvoiceSummaryDTO getUserInvoiceSummary(Long userId) {
         Long userExists = invoiceRepository.findUserById(userId);
         if (userExists == null) {
@@ -287,7 +294,6 @@ public class InvoiceService extends Observable {
 
     @Transactional
     public Invoice processInvoiceForBooking(ProcessInvoiceRequest request, boolean simulateFailure) {
-        // 1. Fetch booking from the shared bookings table (cross-service native SQL)
         List<Object[]> rows = invoiceRepository.findBookingDetails(request.getBookingId());
         if (rows == null || rows.isEmpty()) {
             throw new ResourceNotFoundException("Booking not found with id: " + request.getBookingId());
@@ -299,7 +305,6 @@ public class InvoiceService extends Observable {
             throw new BadRequestException("Booking must be COMPLETED before processing an invoice");
         }
 
-        // 2. Ensure no invoice already exists for this booking
         if (invoiceRepository.existsByBookingId(request.getBookingId())) {
             throw new BadRequestException("An invoice already exists for booking id: " + request.getBookingId());
         }
@@ -308,7 +313,6 @@ public class InvoiceService extends Observable {
                 ? new BigDecimal(booking[1].toString())
                 : BigDecimal.ZERO;
 
-        // 3. Build the invoice
         Invoice invoice = new Invoice();
         invoice.setBookingId(request.getBookingId());
         invoice.setUserId(request.getUserId());
@@ -328,6 +332,7 @@ public class InvoiceService extends Observable {
             details.put("reason", "simulated_gateway_failure");
 
             Invoice failed = invoiceRepository.save(invoice);
+            invalidateInvoiceCaches(null);
             Map<String, Object> payload = invoicePayload(failed);
             payload.put("details", Map.of("reason", "simulated_gateway_failure"));
             emitAfterCommit("FAILED", payload);
@@ -343,12 +348,14 @@ public class InvoiceService extends Observable {
         created.setTransactionDetails(details);
 
         Invoice completed = invoiceRepository.save(created);
+        invalidateInvoiceCaches(null);
         emitAfterCommit("COMPLETED", invoicePayload(completed));
         return completed;
     }
 
-    // ── S5-F6: Revenue Report by Date Range ─────────────────────────────────
-
+    /** S5-F6: revenue report — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "invoice-service::S5-F6",
+               key = "T(java.util.Objects).hash(#startDate, #endDate)")
     public RevenueReportDTO getRevenueReport(LocalDate startDate, LocalDate endDate) {
         if (startDate.isAfter(endDate)) {
             throw new BadRequestException("startDate must not be after endDate");
@@ -365,18 +372,16 @@ public class InvoiceService extends Observable {
 
     @Transactional
     public Invoice retryFailedInvoice(Long id, RetryInvoiceRequest request) {
-        Invoice invoice = getInvoiceById(id);
+        Invoice invoice = findById(id);
 
         if (invoice.getStatus() != Invoice.InvoiceStatus.FAILED) {
             throw new BadRequestException("Only FAILED invoices can be retried");
         }
 
-        // Optionally update payment method
         if (request.getMethod() != null && !request.getMethod().isBlank()) {
             invoice.setMethod(Invoice.PaymentMethod.valueOf(request.getMethod()));
         }
 
-        // Update transactionDetails
         Map<String, Object> details = invoice.getTransactionDetails();
         if (details == null) {
             details = new HashMap<>();
@@ -388,15 +393,45 @@ public class InvoiceService extends Observable {
         details.put("retryCount", retryCount);
         invoice.setTransactionDetails(details);
 
-        // Simulate processing — mark completed
         invoice.setStatus(Invoice.InvoiceStatus.COMPLETED);
         details.put("completedAt", LocalDateTime.now().toString());
 
         Invoice saved = invoiceRepository.save(invoice);
+        invalidateInvoiceCaches(id);
         Map<String, Object> payload = invoicePayload(saved);
         payload.put("retryCount", retryCount);
         emitAfterCommit("RETRY_ATTEMPTED", payload);
         return saved;
+    }
+
+    // ── internal helpers ─────────────────────────────────────────────────────
+
+    private AppliedDiscountDTO mapAppliedDiscount(InvoiceDiscount invoiceDiscount) {
+        Discount discount = invoiceDiscount.getDiscount();
+        return new AppliedDiscountDTO(
+                discount != null ? discount.getCode() : null,
+                discount != null ? discount.getDiscountType() : null,
+                invoiceDiscount.getDiscountApplied(),
+                invoiceDiscount.getAppliedAt()
+        );
+    }
+
+    /** Non-cached DB fetch used by all write paths (§4.4.4). */
+    Invoice findById(Long id) {
+        return invoiceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
+    }
+
+    /** Invalidate entity detail + all feature caches on any invoice write (§4.4.4). */
+    private void invalidateInvoiceCaches(Long id) {
+        if (id != null) {
+            cacheInvalidator.deleteKey("invoice-service::invoice::" + id);
+            cacheInvalidator.deleteKey("invoice-service::S5-F8::" + id);
+        }
+        cacheInvalidator.wildcardDelete("invoice-service::S5-F1::*");
+        cacheInvalidator.wildcardDelete("invoice-service::S5-F3::*");
+        cacheInvalidator.wildcardDelete("invoice-service::S5-F6::*");
+        cacheInvalidator.wildcardDelete("invoice-service::S5-F9::*");
     }
 
     protected void emitAfterCommit(String action, Map<String, Object> payload) {

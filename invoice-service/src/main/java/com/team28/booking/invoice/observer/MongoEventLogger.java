@@ -1,5 +1,6 @@
 package com.team28.booking.invoice.observer;
 
+import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.factory.EventFactory;
 import com.team28.booking.invoice.factory.EventType;
 import com.team28.booking.invoice.factory.MongoEvent;
@@ -12,23 +13,30 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class MongoEventLogger implements EntityObserver {
 
     private static final Logger log = LoggerFactory.getLogger(MongoEventLogger.class);
 
+    private static final Set<String> INVALIDATING_ACTIONS = Set.of(
+            "CREATED", "COMPLETED", "FAILED", "REFUNDED", "RETRY_ATTEMPTED", "DISCOUNT_APPLIED"
+    );
+
     private final EventFactory factory;
     private final MongoTemplate mongoTemplate;
+    private final CacheInvalidator cacheInvalidator;
 
     @Value("${spring.application.name}")
     private String appName;
 
     private EventType boundType;
 
-    public MongoEventLogger(EventFactory factory, MongoTemplate mongoTemplate) {
+    public MongoEventLogger(EventFactory factory, MongoTemplate mongoTemplate, CacheInvalidator cacheInvalidator) {
         this.factory = factory;
         this.mongoTemplate = mongoTemplate;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @PostConstruct
@@ -57,6 +65,10 @@ public class MongoEventLogger implements EntityObserver {
             }
             MongoEvent event = factory.createEvent(boundType, params);
             mongoTemplate.save(event);
+            if (INVALIDATING_ACTIONS.contains(eventType)) {
+                cacheInvalidator.wildcardDelete("invoice-service::S5-F10::*");
+                cacheInvalidator.wildcardDelete("invoice-service::S5-F11::*");
+            }
         } catch (Exception ex) {
             log.warn("MongoEventLogger failed for {} action={}: {}", boundType, eventType, ex.getMessage());
             // intentional: do NOT rethrow — §3.3 failure policy

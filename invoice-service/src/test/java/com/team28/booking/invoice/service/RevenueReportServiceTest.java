@@ -1,5 +1,6 @@
 package com.team28.booking.invoice.service;
 
+import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
 import com.team28.booking.invoice.exception.BadRequestException;
 import com.team28.booking.invoice.repository.InvoiceRepository;
@@ -26,6 +27,9 @@ class RevenueReportServiceTest {
 
     @Mock
     private InvoiceRepository invoiceRepository;
+
+    @Mock
+    private CacheInvalidator cacheInvalidator;
 
     @InjectMocks
     private InvoiceService invoiceService;
