@@ -1,5 +1,6 @@
 package com.team28.booking.invoice.service;
 
+import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.exception.BadRequestException;
 import com.team28.booking.invoice.exception.ResourceNotFoundException;
@@ -31,6 +32,9 @@ class RetryInvoiceServiceTest {
 
     @Mock
     private InvoiceRepository invoiceRepository;
+
+    @Mock
+    private CacheInvalidator cacheInvalidator;
 
     @InjectMocks
     private InvoiceService invoiceService;
