@@ -15,6 +15,7 @@ import com.team28.booking.user.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,11 +35,18 @@ public class UserService {
     @Autowired
     private SavedAddressRepository savedAddressRepository;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     public User save(User user) {
+        String pw = user.getPassword();
+        if (pw != null && !pw.startsWith("$2")) {
+            user.setPassword(passwordEncoder.encode(pw));
+        }
         return userRepository.save(user);
     }
 
