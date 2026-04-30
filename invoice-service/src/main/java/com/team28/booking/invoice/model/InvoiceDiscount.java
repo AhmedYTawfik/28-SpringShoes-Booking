@@ -1,5 +1,6 @@
 package com.team28.booking.invoice.model;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -20,8 +21,8 @@ public class InvoiceDiscount {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "discount_applied", nullable = false)
-    private Double discountApplied;
+    @Column(name = "discount_applied", nullable = false, precision = 10, scale = 2)
+    private BigDecimal discountApplied;
 
     @Column(name = "applied_at", nullable = false)
     private LocalDateTime appliedAt;
@@ -40,8 +41,8 @@ public class InvoiceDiscount {
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
-    public Double getDiscountApplied() { return discountApplied; }
-    public void setDiscountApplied(Double discountApplied) { this.discountApplied = discountApplied; }
+    public BigDecimal getDiscountApplied() { return discountApplied; }
+    public void setDiscountApplied(BigDecimal discountApplied) { this.discountApplied = discountApplied; }
 
     public LocalDateTime getAppliedAt() { return appliedAt; }
     public void setAppliedAt(LocalDateTime appliedAt) { this.appliedAt = appliedAt; }
