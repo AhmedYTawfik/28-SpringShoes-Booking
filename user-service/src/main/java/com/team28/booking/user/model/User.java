@@ -31,10 +31,12 @@ public class User {
     private String phone;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)
     private Role role;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)
     private Status status = Status.ACTIVE;
 
@@ -51,15 +53,6 @@ public class User {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonManagedReference
     private List<SavedAddress> savedAddresses = new ArrayList<>();
-
-    // Enums as required by PDF Section 7.1.1
-    public enum Role {
-        CLIENT, ADMIN
-    }
-
-    public enum Status {
-        ACTIVE, DEACTIVATED
-    }
 
     // Constructors
     public User() {
