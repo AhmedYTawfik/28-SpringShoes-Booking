@@ -76,15 +76,15 @@ public class UserService {
             ));
         }
 
-        return new UserProfileDTO(
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getPreferences(),
-                addressDTOs,
-                (long) addressDTOs.size()
-        );
+        return UserProfileDTO.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .preferences(user.getPreferences())
+                .savedAddresses(addressDTOs)
+                .totalAddresses((long) addressDTOs.size())
+                .build();
     }
 
     public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
@@ -139,26 +139,26 @@ public class UserService {
 
         Object[] summaryRow = userRepository.findUserBookingSummary(userId);
         if (summaryRow == null) {
-            return new UserBookingSummaryDTO(
-                    user.getId(),
-                    user.getName(),
-                    0L,
-                    0L,
-                    0L,
-                    BigDecimal.ZERO,
-                    BigDecimal.ZERO
-            );
+            return UserBookingSummaryDTO.builder()
+                    .userId(user.getId())
+                    .name(user.getName())
+                    .totalBookings(0L)
+                    .completedBookings(0L)
+                    .cancelledBookings(0L)
+                    .totalSpent(BigDecimal.ZERO)
+                    .averageBookingPrice(BigDecimal.ZERO)
+                    .build();
         }
 
-        return new UserBookingSummaryDTO(
-                ((Number) summaryRow[0]).longValue(),
-                (String) summaryRow[1],
-                ((Number) summaryRow[2]).longValue(),
-                ((Number) summaryRow[3]).longValue(),
-                ((Number) summaryRow[4]).longValue(),
-                toBigDecimal(summaryRow[5]),
-                toBigDecimal(summaryRow[6])
-        );
+        return UserBookingSummaryDTO.builder()
+                .userId(((Number) summaryRow[0]).longValue())
+                .name((String) summaryRow[1])
+                .totalBookings(((Number) summaryRow[2]).longValue())
+                .completedBookings(((Number) summaryRow[3]).longValue())
+                .cancelledBookings(((Number) summaryRow[4]).longValue())
+                .totalSpent(toBigDecimal(summaryRow[5]))
+                .averageBookingPrice(toBigDecimal(summaryRow[6]))
+                .build();
     }
 
     // S1-F1: Search Users
@@ -239,12 +239,12 @@ public class UserService {
         // Map Object[] results to DTOs
         List<TopClientDTO> topClients = new ArrayList<>();
         for (Object[] row : results) {
-            TopClientDTO dto = new TopClientDTO();
-            dto.setUserId(((Number) row[0]).longValue());
-            dto.setName((String) row[1]);
-            dto.setTotalSpent(((Number) row[2]).doubleValue());
-            dto.setBookingCount(((Number) row[3]).longValue());
-            topClients.add(dto);
+            topClients.add(TopClientDTO.builder()
+                    .userId(((Number) row[0]).longValue())
+                    .name((String) row[1])
+                    .totalSpent(((Number) row[2]).doubleValue())
+                    .bookingCount(((Number) row[3]).longValue())
+                    .build());
         }
 
         return topClients;

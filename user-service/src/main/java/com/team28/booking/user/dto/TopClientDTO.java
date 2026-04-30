@@ -62,4 +62,6 @@ public class TopClientDTO {
     public void setBookingCount(Long bookingCount) {
         this.bookingCount = bookingCount;
     }
+
+    public static TopClientDTOBuilder builder() { return new TopClientDTOBuilder(); }
 }
