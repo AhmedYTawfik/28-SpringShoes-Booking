@@ -22,6 +22,10 @@ spring:
       password: ${REDIS_PASSWORD:redispass}
     mongodb:
       uri: mongodb://${MONGO_USERNAME:root}:${MONGO_PASSWORD:rootpass}@${MONGO_HOST:mongo}:${MONGO_PORT:27017}/${MONGO_DATABASE:bookingmongo}?authSource=admin
+  cache:
+    type: redis
+    redis:
+      use-key-prefix: false
 
 jwt:
   secret: ${JWT_SECRET:fJ8z2vK6yQ3pX9mR4wT5sN7bE1uI0aH8oL2cD6gV4eK3=}
