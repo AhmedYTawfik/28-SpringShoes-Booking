@@ -1,5 +1,6 @@
 package com.team28.booking.booking.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -51,6 +52,7 @@ public class Booking {
     private LocalDateTime completedAt;
 
     // Booking is the INVERSE side; BookingItem is the owner (has the FK)
+    @JsonIgnore  // excluded from Redis serialization to avoid lazy-load issues
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<BookingItem> bookingServices = new ArrayList<>();
 

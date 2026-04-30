@@ -1,5 +1,6 @@
 package com.team28.booking.booking.observer;
 
+import com.team28.booking.booking.cache.CacheInvalidator;
 import com.team28.booking.booking.factory.EventFactory;
 import com.team28.booking.booking.factory.EventType;
 import com.team28.booking.booking.factory.MongoEvent;
@@ -12,23 +13,32 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class MongoEventLogger implements EntityObserver {
 
     private static final Logger log = LoggerFactory.getLogger(MongoEventLogger.class);
 
+    // Actions that mutate booking state and should trigger cache invalidation (§4.4.4)
+    private static final Set<String> INVALIDATING_ACTIONS = Set.of(
+            "BOOKING_CREATED", "BOOKING_DELETED", "PROVIDER_ASSIGNED",
+            "BOOKING_COMPLETED", "BOOKING_CANCELLED", "SERVICES_ADDED"
+    );
+
     private final EventFactory factory;
     private final MongoTemplate mongoTemplate;
+    private final CacheInvalidator cacheInvalidator;
 
     @Value("${spring.application.name}")
     private String appName;
 
     private EventType boundType;
 
-    public MongoEventLogger(EventFactory factory, MongoTemplate mongoTemplate) {
+    public MongoEventLogger(EventFactory factory, MongoTemplate mongoTemplate, CacheInvalidator cacheInvalidator) {
         this.factory = factory;
         this.mongoTemplate = mongoTemplate;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @PostConstruct
@@ -57,6 +67,12 @@ public class MongoEventLogger implements EntityObserver {
             }
             MongoEvent event = factory.createEvent(boundType, params);
             mongoTemplate.save(event);
+            // Observer-driven cache invalidation after successful Mongo write (§4.4.4)
+            // Exclude ANALYTICS_VIEWED / DASHBOARD_VIEWED — they must not self-defeat the cache
+            if (INVALIDATING_ACTIONS.contains(eventType)) {
+                cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
+                cacheInvalidator.wildcardDelete("booking-service::S3-F12::*");
+            }
         } catch (Exception ex) {
             log.warn("MongoEventLogger failed for {} action={}: {}", boundType, eventType, ex.getMessage());
             // intentional: do NOT rethrow — §3.3 failure policy
