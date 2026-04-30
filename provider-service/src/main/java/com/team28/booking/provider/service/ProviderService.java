@@ -28,17 +28,20 @@ public class ProviderService extends Observable {
     private final ProviderCertificationService certificationService;
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidationService cacheInvalidationService;
+    private final IndexingService indexingService;
 
     public ProviderService(
             ProviderRepository providerRepository,
             ProviderCertificationService certificationService,
             MongoEventLogger mongoEventLogger,
-            CacheInvalidationService cacheInvalidationService
+            CacheInvalidationService cacheInvalidationService,
+            IndexingService indexingService
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidationService = cacheInvalidationService;
+        this.indexingService = indexingService;
     }
 
     @PostConstruct
@@ -51,6 +54,7 @@ public class ProviderService extends Observable {
         ensureServiceDetailsDescription(provider);
         Provider saved = providerRepository.save(provider);
         emitAfterCommit("PROVIDER_CREATED", providerPayload(saved));
+        indexingService.indexProvider(saved, "auto_crud_create");
         return saved;
     }
 
@@ -94,15 +98,15 @@ public class ProviderService extends Observable {
             cacheInvalidationService.invalidateProviderRating(saved.getId());
             emitAfterCommit("RATING_RECORDED", providerPayload(saved));
         }
+        indexingService.indexProvider(saved, "auto_crud_update");
         return saved;
     }
 
     //delete
     public void deleteProvider(Long id) {
         Provider provider = getProviderById(id);
-        Map<String, Object> payload = providerPayload(provider);
         providerRepository.delete(provider);
-        emitAfterCommit("PROVIDER_DELETED", payload);
+        indexingService.deleteProvider(provider);
     }
 
     @Transactional
