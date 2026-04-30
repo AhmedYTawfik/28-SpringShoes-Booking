@@ -9,6 +9,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -52,12 +53,12 @@ class RevenueReportServiceTest {
 
         assertThat(dto.startDate()).isEqualTo(START);
         assertThat(dto.endDate()).isEqualTo(END);
-        assertThat(dto.totalRevenue()).isEqualTo(600.0);
+        assertThat(dto.totalRevenue()).isEqualByComparingTo(BigDecimal.valueOf(600.0));
         assertThat(dto.totalInvoices()).isEqualTo(4L);
         assertThat(dto.completedInvoices()).isEqualTo(3L);
-        assertThat(dto.refundedAmount()).isEqualTo(100.0);
-        assertThat(dto.netRevenue()).isEqualTo(500.0);          // 600 - 100
-        assertThat(dto.averageInvoiceAmount()).isEqualTo(150.0);
+        assertThat(dto.refundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(100.0));
+        assertThat(dto.netRevenue()).isEqualByComparingTo(BigDecimal.valueOf(500.0));          // 600 - 100
+        assertThat(dto.averageInvoiceAmount()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
     }
 
     @Test
@@ -82,7 +83,7 @@ class RevenueReportServiceTest {
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
-        assertThat(dto.netRevenue()).isEqualTo(750.0);
+        assertThat(dto.netRevenue()).isEqualByComparingTo(BigDecimal.valueOf(750.0));
     }
 
     @Test
@@ -93,7 +94,7 @@ class RevenueReportServiceTest {
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(sameDay, sameDay);
 
-        assertThat(dto.totalRevenue()).isEqualTo(100.0);
+        assertThat(dto.totalRevenue()).isEqualByComparingTo(BigDecimal.valueOf(100.0));
     }
 
     // ── null values from DB ───────────────────────────────────────────────────
