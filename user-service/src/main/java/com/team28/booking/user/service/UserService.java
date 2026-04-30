@@ -94,15 +94,15 @@ public class UserService extends Observable {
             ));
         }
 
-        return new UserProfileDTO(
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getPreferences(),
-                addressDTOs,
-                (long) addressDTOs.size()
-        );
+        return UserProfileDTO.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .preferences(user.getPreferences())
+                .savedAddresses(addressDTOs)
+                .totalAddresses((long) addressDTOs.size())
+                .build();
     }
 
     public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
