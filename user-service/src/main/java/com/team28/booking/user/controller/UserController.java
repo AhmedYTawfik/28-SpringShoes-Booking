@@ -30,6 +30,7 @@ public class UserController {
     // CRUD: Create User
     @PostMapping              // ← Maps to POST /api/users
     public ResponseEntity<User> createUser(@RequestBody User user) {
+        user.setRole(User.Role.CLIENT);
         User saved = userService.save(user);
         return ResponseEntity.ok(saved);
     }
