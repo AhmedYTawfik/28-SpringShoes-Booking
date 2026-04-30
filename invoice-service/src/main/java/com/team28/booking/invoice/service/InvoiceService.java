@@ -132,6 +132,7 @@ public class InvoiceService {
     // ── CRUD ────────────────────────────────────────────────────────────────
 
     public Invoice createInvoice(Invoice invoice) {
+        invoice.setCreatedAt(LocalDateTime.now());
         return invoiceRepository.save(invoice);
     }
 
@@ -152,7 +153,6 @@ public class InvoiceService {
         existing.setMethod(updatedInvoice.getMethod());
         existing.setStatus(updatedInvoice.getStatus());
         existing.setTransactionDetails(updatedInvoice.getTransactionDetails());
-        existing.setCreatedAt(updatedInvoice.getCreatedAt());
         return invoiceRepository.save(existing);
     }
 
