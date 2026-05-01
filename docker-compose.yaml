@@ -111,6 +111,12 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: redispass
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,6 +133,15 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
+      SPRING_MAIN_LAZY_INITIALIZATION: "true"
+      MANAGEMENT_HEALTH_ELASTICSEARCH_ENABLED: "false"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -145,6 +160,15 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_NEO4J_URI: bolt://neo4j:7687
+      SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
+      SPRING_NEO4J_AUTHENTICATION_PASSWORD: neo4jpass
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration
     depends_on:
       mongo:
         condition: service_healthy
@@ -163,6 +187,16 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_CASSANDRA_CONTACTPOINTS: cassandra
+      SPRING_CASSANDRA_PORT: 9042
+      SPRING_CASSANDRA_LOCALDATACENTER: datacenter1
+      SPRING_CASSANDRA_KEYSPACENAME: bookingks
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration
     depends_on:
       cassandra:
         condition: service_healthy
@@ -181,6 +215,12 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: redispass
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration
     depends_on:
       mongo:
         condition: service_healthy
