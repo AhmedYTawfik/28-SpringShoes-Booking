@@ -41,6 +41,7 @@ build/
 ### Project-specific ###
 .claude/
 CLAUDE.md
+GEMINI.md
 booking-milestone-1.pdf
 
 *.class

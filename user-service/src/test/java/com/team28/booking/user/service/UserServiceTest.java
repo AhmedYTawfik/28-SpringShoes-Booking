@@ -1,5 +1,6 @@
 package com.team28.booking.user.service;
 
+import com.team28.booking.user.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.repository.UserRepository;
@@ -12,6 +13,10 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 class UserServiceTest {
 
     @Test
@@ -22,17 +27,17 @@ class UserServiceTest {
         user.setName("Ahmed");
 
         Object[] summaryRow = new Object[]{
-                1L,
-                "Ahmed",
-                5L,
-                3L,
-                1L,
-                new BigDecimal("1000.00"),
-                new BigDecimal("333.33")
+                1L, "Ahmed", 5L, 3L, 1L, new BigDecimal("1000.00"), new BigDecimal("333.33")
         };
 
         UserRepository userRepository = stubUserRepository(Optional.of(user), summaryRow);
         ReflectionTestUtils.setField(userService, "userRepository", userRepository);
+
+        ObjectArrayDtoAdapter adapter = mock(ObjectArrayDtoAdapter.class);
+        UserBookingSummaryDTO expectedDto = new UserBookingSummaryDTO(
+                1L, "Ahmed", 5L, 3L, 1L, new BigDecimal("1000.00"), new BigDecimal("333.33"));
+        when(adapter.toUserBookingSummaryDTO(any())).thenReturn(expectedDto);
+        ReflectionTestUtils.setField(userService, "objectArrayDtoAdapter", adapter);
 
         UserBookingSummaryDTO summary = userService.getUserBookingSummary(1L);
 
@@ -53,17 +58,17 @@ class UserServiceTest {
         user.setName("Sara");
 
         Object[] summaryRow = new Object[]{
-                2L,
-                "Sara",
-                0L,
-                0L,
-                0L,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO
+                2L, "Sara", 0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO
         };
 
         UserRepository userRepository = stubUserRepository(Optional.of(user), summaryRow);
         ReflectionTestUtils.setField(userService, "userRepository", userRepository);
+
+        ObjectArrayDtoAdapter adapter = mock(ObjectArrayDtoAdapter.class);
+        UserBookingSummaryDTO expectedDto = new UserBookingSummaryDTO(
+                2L, "Sara", 0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO);
+        when(adapter.toUserBookingSummaryDTO(any())).thenReturn(expectedDto);
+        ReflectionTestUtils.setField(userService, "objectArrayDtoAdapter", adapter);
 
         UserBookingSummaryDTO summary = userService.getUserBookingSummary(2L);
 
