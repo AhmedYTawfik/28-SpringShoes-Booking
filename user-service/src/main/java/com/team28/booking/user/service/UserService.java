@@ -6,6 +6,7 @@ import com.team28.booking.user.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.user.cache.CacheInvalidator;
 import com.team28.booking.user.auth.JwtService;
 import com.team28.booking.user.dto.AuthResponse;
+import com.team28.booking.user.dto.LoginRequest;
 import com.team28.booking.user.dto.RegisterRequest;
 import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
@@ -106,6 +107,31 @@ public class UserService extends Observable {
         emitAfterCommit("REGISTERED", payload);
 
         String token = jwtService.issue(saved.getEmail(), saved.getId(), saved.getRole().name());
+        return new AuthResponse(token, jwtService.getExpirationMs());
+    }
+
+    // ── S1-F11: Login ────────────────────────────────────────────────────────
+
+    public AuthResponse login(LoginRequest request) {
+        // a) Find user by email – return 401 if not found (prevents enumeration)
+        User user = userRepository.findByEmail(request.getEmail()).orElse(null);
+        if (user == null) {
+            throw new org.springframework.security.authentication.BadCredentialsException("Invalid credentials");
+        }
+
+        // b) Verify BCrypt password – return 401 if mismatch
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new org.springframework.security.authentication.BadCredentialsException("Invalid credentials");
+        }
+
+        // c) Log LOGGED_IN event to auth_events via Observer
+        Map<String, Object> payload = userPayload(user);
+        notifyObservers("LOGGED_IN", payload);
+
+        // d) Issue JWT with email (sub), uid, role claims
+        String token = jwtService.issue(user.getEmail(), user.getId(), user.getRole().name());
+
+        // e) Return token + expiration with 200
         return new AuthResponse(token, jwtService.getExpirationMs());
     }
 
