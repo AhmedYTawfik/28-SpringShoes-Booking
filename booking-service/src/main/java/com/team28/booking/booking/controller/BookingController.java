@@ -1,11 +1,15 @@
 package com.team28.booking.booking.controller;
 
+import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
 
 import java.util.List;
 
@@ -57,8 +61,34 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.searchByMetadata(key, value));
     }
   
+    @PutMapping("/{id}/complete")
+    public ResponseEntity<Booking> completeBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.completeBooking(id));
+    }
+
     @PutMapping("/{id}/cancel")
     public ResponseEntity<Booking> cancelBooking(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.cancelBooking(id));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<Booking>> searchBookings(
+            @RequestParam(required = false) Booking.Status status,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(bookingService.searchBookings(
+                status != null ? status.name() : null, startDate, endDate));
+    }
+
+    @GetMapping("/analytics")
+    public ResponseEntity<BookingAnalyticsDTO> getAnalytics(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(bookingService.getAnalytics(startDate, endDate));
+    }
+
+    @GetMapping("/{id}/details")
+    public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.getBookingDetails(id));
     }
 }

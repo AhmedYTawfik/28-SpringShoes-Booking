@@ -1,10 +1,14 @@
 package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.cache.CacheInvalidator;
+import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.dto.EstimateServiceItemDTO;
+import com.team28.booking.booking.dto.ServiceDetailsDTO;
 import com.team28.booking.booking.model.Booking;
+import com.team28.booking.booking.model.BookingItem;
 import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.observer.Observable;
 import com.team28.booking.booking.repository.BookingRepository;
@@ -18,10 +22,15 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class BookingService extends Observable {
@@ -49,8 +58,10 @@ public class BookingService extends Observable {
         booking.setId(null);
         Booking saved = bookingRepository.save(booking);
         // invalidate estimate + metadata-search caches; results depend on booking counts (§4.4.4)
+        cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F3::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F5::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CREATED", bookingPayload(saved));
         return saved;
@@ -74,8 +85,10 @@ public class BookingService extends Observable {
         Booking saved = bookingRepository.save(existing);
         // invalidate the entity detail + all feature caches that include booking data (§4.4.4)
         cacheInvalidator.deleteKey("booking-service::booking::" + id);
+        cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F3::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F5::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F9::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
 
@@ -94,8 +107,10 @@ public class BookingService extends Observable {
         bookingRepository.delete(booking);
         // invalidate entity detail + all feature caches (§4.4.4)
         cacheInvalidator.deleteKey("booking-service::booking::" + id);
+        cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F3::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F5::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F9::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_DELETED", payload);
@@ -118,7 +133,9 @@ public class BookingService extends Observable {
         Booking saved = bookingRepository.save(booking);
         // invalidate entity detail + analytics / estimate caches (§4.4.4)
         cacheInvalidator.deleteKey("booking-service::booking::" + id);
+        cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F3::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F9::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CANCELLED", bookingPayload(saved));
@@ -187,6 +204,126 @@ public class BookingService extends Observable {
                 .estimatedPrice(estimatedPrice)
                 .demandMultiplier(demandMultiplier)
                 .build();
+    }
+
+    /** S3-F4: complete an IN_PROGRESS booking, release provider, create PENDING invoice. */
+    @Transactional
+    public Booking completeBooking(Long id) {
+        Booking booking = findById(id);
+
+        if (booking.getStatus() != Booking.Status.IN_PROGRESS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Booking must be IN_PROGRESS to complete");
+        }
+
+        booking.setStatus(Booking.Status.COMPLETED);
+        booking.setCompletedAt(LocalDateTime.now());
+
+        if (booking.getTotalPrice() == null) {
+            BigDecimal total = Optional.ofNullable(booking.getBookingServices())
+                    .orElse(List.of())
+                    .stream()
+                    .map(BookingItem::getPrice)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            booking.setTotalPrice(total);
+        }
+
+        if (booking.getProviderId() != null) {
+            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
+        }
+
+        bookingRepository.createInvoiceForBooking(
+                booking.getId(), booking.getUserId(), booking.getTotalPrice());
+
+        Booking saved = bookingRepository.save(booking);
+        cacheInvalidator.deleteKey("booking-service::booking::" + id);
+        cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F3::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F9::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
+        emitAfterCommit("BOOKING_COMPLETED", bookingPayload(saved));
+        return saved;
+    }
+
+    /** S3-F1: search bookings by optional status and date range — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "booking-service::S3-F1",
+               key = "T(java.util.Objects).hash(#status, #startDate, #endDate)")
+    @Transactional(readOnly = true)
+    public List<Booking> searchBookings(String status, LocalDate startDate, LocalDate endDate) {
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+        return bookingRepository.searchBookingsByStatusAndDate(status, startDateTime, endDateTime);
+    }
+
+    /** S3-F6: booking analytics report over a date range. */
+    @Cacheable(cacheNames = "booking-service::S3-F6",
+               key = "T(java.util.Objects).hash(#startDate, #endDate)")
+    @Transactional(readOnly = true)
+    public BookingAnalyticsDTO getAnalytics(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "startDate must be on or before endDate");
+        }
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        Object[] result = bookingRepository.getBookingAnalytics(startDateTime, endDateTime);
+
+        Object[] row = (result.length > 0 && result[0] instanceof Object[])
+                ? (Object[]) result[0]
+                : result;
+
+        long totalBookings     = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        long completedBookings = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        long cancelledBookings = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+        BigDecimal totalRevenue        = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
+        BigDecimal averageBookingPrice = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
+
+        double completionRate = totalBookings > 0
+                ? ((double) completedBookings / totalBookings) * 100.0
+                : 0.0;
+
+        return new BookingAnalyticsDTO(totalBookings, completedBookings, cancelledBookings,
+                totalRevenue, averageBookingPrice, completionRate);
+    }
+
+    /** S3-F9: booking detail with sorted service items and completion summary. */
+    @Cacheable(cacheNames = "booking-service::S3-F9",
+               key = "#id")
+    @Transactional(readOnly = true)
+    public BookingDetailsDTO getBookingDetails(Long id) {
+        Booking booking = findById(id);
+
+        List<ServiceDetailsDTO> services = Optional.ofNullable(booking.getBookingServices())
+                .orElse(List.of())
+                .stream()
+                .sorted(Comparator.comparing(BookingItem::getServiceOrder))
+                .map(item -> new ServiceDetailsDTO(
+                        item.getId(),
+                        item.getServiceOrder(),
+                        item.getServiceName(),
+                        item.getDuration(),
+                        item.getPrice(),
+                        item.getStatus(),
+                        item.getMetadata()))
+                .toList();
+
+        int totalServices     = services.size();
+        int completedServices = (int) services.stream()
+                .filter(s -> s.status() == BookingItem.Status.COMPLETED)
+                .count();
+
+        return new BookingDetailsDTO(
+                booking.getId(),
+                booking.getUserId(),
+                booking.getProviderId(),
+                booking.getStatus(),
+                booking.getTotalPrice(),
+                booking.getMetadata(),
+                services,
+                totalServices,
+                completedServices);
     }
 
     public List<Booking> getAllBookings() {
