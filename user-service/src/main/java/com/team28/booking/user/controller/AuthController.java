@@ -1,11 +1,13 @@
 package com.team28.booking.user.controller;
 
 import com.team28.booking.user.dto.AuthResponse;
+import com.team28.booking.user.dto.LoginRequest;
 import com.team28.booking.user.dto.RegisterRequest;
 import com.team28.booking.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -28,6 +30,18 @@ public class AuthController {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
             }
             throw e;
+        }
+    }
+
+    // S1-F11: Login — public endpoint, returns 200 with JWT or 401 on bad credentials
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
+        try {
+            AuthResponse response = userService.login(request);
+            return ResponseEntity.ok(response);
+        } catch (BadCredentialsException e) {
+            // 401 for both "user not found" and "wrong password" — prevents account enumeration
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
     }
 }

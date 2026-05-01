@@ -76,6 +76,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByPhone(String phone);
 
+    Optional<User> findByEmail(String email);
+
     // S1-F9: Filter users by language preference and minimum completed bookings.
     @Query(value = "SELECT u.* " +
             "FROM users u " +
