@@ -5,7 +5,7 @@ spring:
   application:
     name: user-service
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb}
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb}
     username: ${POSTGRES_USER:postgres}
     password: ${POSTGRES_PASSWORD:postgres}
   jpa:
@@ -17,11 +17,11 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   data:
     redis:
-      host: ${REDIS_HOST:redis}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:redispass}
     mongodb:
-      uri: mongodb://${MONGO_USERNAME:root}:${MONGO_PASSWORD:rootpass}@${MONGO_HOST:mongo}:${MONGO_PORT:27017}/${MONGO_DATABASE:bookingmongo}?authSource=admin
+      uri: mongodb://${MONGO_USERNAME:root}:${MONGO_PASSWORD:rootpass}@${MONGO_HOST:localhost}:${MONGO_PORT:27017}/${MONGO_DATABASE:bookingmongo}?authSource=admin
   cache:
     type: redis
     redis:
