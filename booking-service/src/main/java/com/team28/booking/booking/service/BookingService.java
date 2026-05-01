@@ -6,15 +6,19 @@ import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.dto.EstimateServiceItemDTO;
+import com.team28.booking.booking.dto.ProviderRecommendationDTO;
 import com.team28.booking.booking.dto.ServiceDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.model.BookingItem;
+import com.team28.booking.booking.neo4j.UserNodeRepository;
 import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.observer.Observable;
 import com.team28.booking.booking.repository.BookingRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -31,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class BookingService extends Observable {
@@ -38,13 +43,16 @@ public class BookingService extends Observable {
     private final BookingRepository bookingRepository;
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidator cacheInvalidator;
+    private final UserNodeRepository userNodeRepository;
 
     public BookingService(BookingRepository bookingRepository,
                           MongoEventLogger mongoEventLogger,
-                          CacheInvalidator cacheInvalidator) {
+                          CacheInvalidator cacheInvalidator,
+                          UserNodeRepository userNodeRepository) {
         this.bookingRepository = bookingRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
+        this.userNodeRepository = userNodeRepository;
     }
 
     @PostConstruct
@@ -328,6 +336,82 @@ public class BookingService extends Observable {
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
+    }
+
+    /**
+     * S3-F12: Get provider recommendations for a user using Neo4j collaborative filtering.
+     *
+     * @param userId   the PG user ID to recommend for
+     * @param limit    max number of recommendations (default 5)
+     * @return ranked list of ProviderRecommendationDTO
+     */
+    @Cacheable(cacheNames = "booking-service::S3-F12",
+               key = "T(java.util.Objects).hash(#userId, #limit)")
+    @Transactional(readOnly = true)
+    public List<ProviderRecommendationDTO> getRecommendations(Long userId, int limit) {
+        // a) Ownership check: caller must be the user themselves or an ADMIN
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities() != null) {
+            boolean isAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+            if (!isAdmin) {
+                // Extract uid claim from principal (stored as Map<String,Object> by UserLoaderHandler)
+                Object principal = auth.getPrincipal();
+                Long callerUid = null;
+                if (principal instanceof Map<?, ?> map) {
+                    Object idVal = map.get("id");
+                    if (idVal != null) callerUid = ((Number) idVal).longValue();
+                }
+                if (callerUid == null || !callerUid.equals(userId)) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "Access denied: you can only view your own recommendations");
+                }
+            }
+        }
+
+        // c) Verify user exists in PG
+        if (!bookingRepository.existsUserById(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "User not found with id: " + userId);
+        }
+
+        // d) Traverse the Neo4j recommendation graph
+        List<Map<String, Object>> neo4jResults =
+                userNodeRepository.findRecommendations(userId, limit);
+
+        if (neo4jResults.isEmpty()) {
+            return List.of();
+        }
+
+        // e) Collect provider IDs and enrich with PG name/specialty
+        List<Long> providerIds = neo4jResults.stream()
+                .map(r -> ((Number) r.get("providerId")).longValue())
+                .collect(Collectors.toList());
+
+        List<Object[]> pgRows = bookingRepository.findProvidersByIds(providerIds);
+
+        // Build a lookup map: providerId -> {name, specialty}
+        Map<Long, Object[]> providerMap = pgRows.stream()
+                .collect(Collectors.toMap(
+                        row -> ((Number) row[0]).longValue(),
+                        row -> row));
+
+        // f) Assemble DTOs preserving Neo4j ranking order
+        return neo4jResults.stream()
+                .map(r -> {
+                    Long pid = ((Number) r.get("providerId")).longValue();
+                    long score = ((Number) r.get("score")).longValue();
+                    Object[] pRow = providerMap.get(pid);
+                    String name = pRow != null && pRow[1] != null ? pRow[1].toString() : "";
+                    String specialty = pRow != null && pRow[2] != null ? pRow[2].toString() : "";
+                    return ProviderRecommendationDTO.builder()
+                            .providerId(pid)
+                            .name(name)
+                            .specialty(specialty)
+                            .score(score)
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────

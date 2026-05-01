@@ -5,6 +5,7 @@ import com.team28.booking.booking.dto.BookingAnalyticsDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.model.BookingItem;
+import com.team28.booking.booking.neo4j.UserNodeRepository;
 import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.repository.BookingRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +39,9 @@ public class BookingServiceTest {
 
     @Mock
     private CacheInvalidator cacheInvalidator;
+
+    @Mock
+    private UserNodeRepository userNodeRepository;
 
     @InjectMocks
     private BookingService bookingService;

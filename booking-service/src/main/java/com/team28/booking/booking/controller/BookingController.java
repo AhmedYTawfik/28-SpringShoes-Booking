@@ -4,6 +4,7 @@ import com.team28.booking.booking.dto.BookingAnalyticsDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
+import com.team28.booking.booking.dto.ProviderRecommendationDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
@@ -90,5 +91,13 @@ public class BookingController {
     @GetMapping("/{id}/details")
     public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.getBookingDetails(id));
+    }
+
+    /** S3-F12: Get provider recommendations for a user (collaborative filtering via Neo4j). */
+    @GetMapping("/recommendations")
+    public ResponseEntity<List<ProviderRecommendationDTO>> getRecommendations(
+            @RequestParam Long userId,
+            @RequestParam(required = false, defaultValue = "5") int limit) {
+        return ResponseEntity.ok(bookingService.getRecommendations(userId, limit));
     }
 }
