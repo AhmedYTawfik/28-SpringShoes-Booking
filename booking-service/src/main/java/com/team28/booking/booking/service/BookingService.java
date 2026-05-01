@@ -61,6 +61,7 @@ public class BookingService extends Observable {
         cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F3::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F5::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CREATED", bookingPayload(saved));
         return saved;
@@ -236,6 +237,9 @@ public class BookingService extends Observable {
 
         Booking saved = bookingRepository.save(booking);
         cacheInvalidator.deleteKey("booking-service::booking::" + id);
+        cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F3::*");
+        cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F9::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_COMPLETED", bookingPayload(saved));
