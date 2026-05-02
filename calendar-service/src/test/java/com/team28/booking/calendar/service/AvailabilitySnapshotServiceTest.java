@@ -66,10 +66,7 @@ class AvailabilitySnapshotServiceTest {
     }
 
     private AvailabilitySnapshotRequest request(LocalDate date, String notes) {
-        AvailabilitySnapshotRequest r = new AvailabilitySnapshotRequest();
-        r.setDate(date);
-        r.setNotes(notes);
-        return r;
+        return new AvailabilitySnapshotRequest(date, notes);
     }
 
     // ── (a) Normal: provider exists, 10 slots (4 avail, 6 booked) ─────────────

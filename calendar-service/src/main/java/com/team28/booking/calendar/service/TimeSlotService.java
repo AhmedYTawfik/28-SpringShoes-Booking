@@ -33,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class TimeSlotService extends Observable {
@@ -323,30 +324,36 @@ public class TimeSlotService extends Observable {
         validateProviderExists(providerId);
 
         // b) Compute slot stats from PG for the given provider + date
-        Object[] stats = timeSlotRepository.getSnapshotStats(providerId, request.getDate());
+        Object[] stats = timeSlotRepository.getSnapshotStats(providerId, request.date());
         Object[] row = (Object[]) stats[0];
         int totalSlots     = ((Number) row[0]).intValue();
         int availableSlots = ((Number) row[1]).intValue();
         int bookedSlots    = ((Number) row[2]).intValue();
         double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots : 0.0;
 
-        // c) Save to Cassandra (time-series, §7.4.1)
+        // c) Save to Cassandra (time-series, §7.4.1).
+        // Add a random sub-microsecond nanosecond offset to Instant.now() so that two
+        // concurrent snapshot requests for the same provider never share the same
+        // Cassandra primary key (provider_id, timestamp). Without this, requests landing
+        // within the same microsecond would silently upsert the same row.
+        Instant timestamp = Instant.now()
+                .plusNanos(ThreadLocalRandom.current().nextLong(0, 999_000));
         CalendarAvailabilityEvent event = new CalendarAvailabilityEvent(
                 providerId,
-                Instant.now(),
-                request.getDate().toString(),
+                timestamp,
+                request.date().toString(),
                 totalSlots,
                 availableSlots,
                 bookedSlots,
                 utilizationRate,
-                request.getNotes()
+                request.notes()
         );
         cassandraRepo.save(event);
 
         // d) Fire Observer → TRACKING_RECORDED → MongoDB calendar_events
         Map<String, Object> payload = new HashMap<>();
         payload.put("providerId", providerId);
-        payload.put("date", request.getDate().toString());
+        payload.put("date", request.date().toString());
         payload.put("totalSlots", totalSlots);
         payload.put("availableSlots", availableSlots);
         payload.put("bookedSlots", bookedSlots);

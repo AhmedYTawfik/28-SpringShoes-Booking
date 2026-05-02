@@ -4,6 +4,7 @@ import com.team28.booking.calendar.dto.AvailabilitySnapshotRequest;
 import com.team28.booking.calendar.dto.CalendarAnalyticsDTO;
 import com.team28.booking.calendar.service.CalendarAnalyticsService;
 import com.team28.booking.calendar.service.TimeSlotService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -62,7 +63,7 @@ public class CalendarController {
     @ResponseStatus(HttpStatus.CREATED)
     public void recordSnapshot(
             @PathVariable Long providerId,
-            @RequestBody AvailabilitySnapshotRequest request) {
+            @Valid @RequestBody AvailabilitySnapshotRequest request) {
         timeSlotService.recordAvailabilitySnapshot(providerId, request);
     }
 
