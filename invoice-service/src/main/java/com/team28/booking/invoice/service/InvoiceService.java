@@ -354,17 +354,36 @@ public class InvoiceService extends Observable {
         return completed;
     }
 
-    /** S5-F10: revenue by service type — 10 min TTL (§10.5.1). */
-    @Cacheable(cacheNames = "invoice-service::S5-F10", key = "'all'")
-    public List<ServiceTypeRevenueDTO> getRevenueByServiceType() {
-        List<Object[]> rows = invoiceRepository.getRevenueByServiceType();
+    /** S5-F10: revenue by provider specialty — 10 min TTL (§10.5.1). */
+    @Cacheable(cacheNames = "invoice-service::S5-F10",
+               key = "T(java.util.Objects).hash(#startDate, #endDate)")
+    public List<ServiceTypeRevenueDTO> getRevenueByServiceType(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new BadRequestException("startDate must not be after endDate");
+        }
+        LocalDateTime from = startDate.atStartOfDay();
+        LocalDateTime to   = endDate.atTime(23, 59, 59, 999_000_000);
+
+        List<Object[]> rows = invoiceRepository.getRevenueByServiceType(from, to);
         List<ServiceTypeRevenueDTO> result = new ArrayList<>();
         for (Object[] row : rows) {
+            BigDecimal cancellationFeeRevenue = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
+            BigDecimal netBookingRevenue      = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
+            long       bookingCount           = row[3] != null ? ((Number) row[3]).longValue() : 0L;
+            long       cancelledCount         = row[4] != null ? ((Number) row[4]).longValue() : 0L;
+
+            BigDecimal totalRevenue    = cancellationFeeRevenue.add(netBookingRevenue);
+            BigDecimal cancellationRate = bookingCount > 0
+                    ? BigDecimal.valueOf(cancelledCount).divide(BigDecimal.valueOf(bookingCount), 4, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+
             result.add(ServiceTypeRevenueDTO.builder()
-                    .serviceType(row[0] != null ? row[0].toString() : "UNKNOWN")
-                    .totalRevenue(row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO)
-                    .invoiceCount(row[2] != null ? ((Number) row[2]).longValue() : 0L)
-                    .totalCancellationFees(row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO)
+                    .specialty(row[0] != null ? row[0].toString() : "UNKNOWN")
+                    .totalRevenue(totalRevenue)
+                    .cancellationFeeRevenue(cancellationFeeRevenue)
+                    .netBookingRevenue(netBookingRevenue)
+                    .bookingCount(bookingCount)
+                    .cancellationRate(cancellationRate)
                     .build());
         }
         return result;

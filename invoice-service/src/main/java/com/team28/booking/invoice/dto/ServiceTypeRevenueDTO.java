@@ -3,10 +3,12 @@ package com.team28.booking.invoice.dto;
 import java.math.BigDecimal;
 
 public record ServiceTypeRevenueDTO(
-        String serviceType,
+        String specialty,
         BigDecimal totalRevenue,
-        BigDecimal totalCancellationFees,
-        Long invoiceCount
+        BigDecimal cancellationFeeRevenue,
+        BigDecimal netBookingRevenue,
+        Long bookingCount,
+        BigDecimal cancellationRate
 ) {
     public static ServiceTypeRevenueDTOBuilder builder() { return new ServiceTypeRevenueDTOBuilder(); }
 }

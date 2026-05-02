@@ -120,9 +120,11 @@ public class InvoiceController {
 
     // ── S5-F10: Revenue by Service Type with Cancellation Fee Breakdown ─────
 
-    @GetMapping("/analytics/revenue-by-service")
-    public ResponseEntity<List<ServiceTypeRevenueDTO>> getRevenueByServiceType() {
-        List<ServiceTypeRevenueDTO> result = invoiceService.getRevenueByServiceType();
+    @GetMapping("/analytics/service-type")
+    public ResponseEntity<List<ServiceTypeRevenueDTO>> getRevenueByServiceType(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        List<ServiceTypeRevenueDTO> result = invoiceService.getRevenueByServiceType(startDate, endDate);
         invoiceService.emitAnalyticsViewed("S5-F10");
         return ResponseEntity.ok(result);
     }
