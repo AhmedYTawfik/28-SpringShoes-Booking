@@ -1,11 +1,17 @@
 package com.team28.booking.calendar.controller;
 
+import com.team28.booking.calendar.dto.AvailabilitySnapshotRequest;
 import com.team28.booking.calendar.dto.CalendarAnalyticsDTO;
 import com.team28.booking.calendar.service.CalendarAnalyticsService;
 import com.team28.booking.calendar.service.TimeSlotService;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -45,6 +51,19 @@ public class CalendarController {
         // Log ANALYTICS_VIEWED unconditionally — runs on every call including cache hits
         logAnalyticsViewed(startDate, endDate);
         return dto;
+    }
+
+    /**
+     * POST /api/calendar/{providerId}/availability-snapshot
+     * S4-F11: Record Provider Availability Snapshot.
+     * Returns 201 Created on success.
+     */
+    @PostMapping("/{providerId}/availability-snapshot")
+    @ResponseStatus(HttpStatus.CREATED)
+    public void recordSnapshot(
+            @PathVariable Long providerId,
+            @RequestBody AvailabilitySnapshotRequest request) {
+        timeSlotService.recordAvailabilitySnapshot(providerId, request);
     }
 
     // ── private helpers ──────────────────────────────────────────────────────

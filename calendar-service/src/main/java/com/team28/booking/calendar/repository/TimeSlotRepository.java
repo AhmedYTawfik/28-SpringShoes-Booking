@@ -138,4 +138,18 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
     List<Object[]> getSlotsByDate(
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
+
+    // ── S4-F11: Record Provider Availability Snapshot ─────────────────────────
+
+    @Query(value = """
+            SELECT
+                COUNT(*) AS totalSlots,
+                COUNT(*) FILTER (WHERE available = true) AS availableSlots,
+                COUNT(*) FILTER (WHERE available = false) AS bookedSlots
+            FROM time_slots
+            WHERE provider_id = :providerId AND date = :date
+            """, nativeQuery = true)
+    Object[] getSnapshotStats(
+            @Param("providerId") Long providerId,
+            @Param("date") LocalDate date);
 }
