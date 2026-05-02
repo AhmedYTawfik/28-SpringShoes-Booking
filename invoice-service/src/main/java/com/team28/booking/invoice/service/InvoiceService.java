@@ -22,6 +22,7 @@ import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
+import com.team28.booking.invoice.dto.ServiceTypeRevenueDTO;
 import com.team28.booking.invoice.dto.UserInvoiceSummaryDTO;
 import com.team28.booking.invoice.exception.BadRequestException;
 import com.team28.booking.invoice.exception.ResourceNotFoundException;
@@ -353,6 +354,29 @@ public class InvoiceService extends Observable {
         return completed;
     }
 
+    /** S5-F10: revenue by service type — 10 min TTL (§10.5.1). */
+    @Cacheable(cacheNames = "invoice-service::S5-F10", key = "'all'")
+    public List<ServiceTypeRevenueDTO> getRevenueByServiceType() {
+        List<Object[]> rows = invoiceRepository.getRevenueByServiceType();
+        List<ServiceTypeRevenueDTO> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            result.add(ServiceTypeRevenueDTO.builder()
+                    .serviceType(row[0] != null ? row[0].toString() : "UNKNOWN")
+                    .totalRevenue(row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO)
+                    .invoiceCount(row[2] != null ? ((Number) row[2]).longValue() : 0L)
+                    .totalCancellationFees(row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO)
+                    .build());
+        }
+        return result;
+    }
+
+    /** Emit ANALYTICS_VIEWED unconditionally — must fire even on cache hits (§4.4.4). */
+    public void emitAnalyticsViewed(String featureId) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("feature", featureId);
+        notifyObservers("ANALYTICS_VIEWED", payload);
+    }
+
     /** S5-F6: revenue report — 10 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "invoice-service::S5-F6",
                key = "T(java.util.Objects).hash(#startDate, #endDate)")
@@ -432,6 +456,8 @@ public class InvoiceService extends Observable {
         cacheInvalidator.wildcardDelete("invoice-service::S5-F3::*");
         cacheInvalidator.wildcardDelete("invoice-service::S5-F6::*");
         cacheInvalidator.wildcardDelete("invoice-service::S5-F9::*");
+        cacheInvalidator.wildcardDelete("invoice-service::S5-F10::*");
+        cacheInvalidator.wildcardDelete("invoice-service::S5-F11::*");
     }
 
     protected void emitAfterCommit(String action, Map<String, Object> payload) {

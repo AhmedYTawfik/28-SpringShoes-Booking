@@ -72,4 +72,22 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     // Verify user exists (cross-service query)
     @Query(value = "SELECT id FROM users WHERE id = :userId", nativeQuery = true)
     Long findUserById(@Param("userId") Long userId);
+
+    // S5-F10: revenue grouped by booking service name, with cancellation fee from JSONB
+    @Query(value = """
+        SELECT
+            bs.service_name                                                          AS service_type,
+            COALESCE(SUM(bs.price), 0)                                               AS total_revenue,
+            COUNT(DISTINCT i.id)                                                     AS invoice_count,
+            COALESCE(SUM(
+                COALESCE(CAST(i.transaction_details->>'cancellationFee' AS NUMERIC), 0)
+            ), 0)                                                                    AS total_cancellation_fees
+        FROM invoices i
+        JOIN bookings b         ON b.id = i.booking_id
+        JOIN booking_services bs ON bs.booking_id = b.id
+        WHERE i.status IN ('COMPLETED', 'REFUNDED')
+        GROUP BY bs.service_name
+        ORDER BY total_revenue DESC
+        """, nativeQuery = true)
+    List<Object[]> getRevenueByServiceType();
 }
