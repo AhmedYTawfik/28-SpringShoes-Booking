@@ -1,0 +1,59 @@
+package com.team28.booking.calendar.controller;
+
+import com.team28.booking.calendar.dto.CalendarAnalyticsDTO;
+import com.team28.booking.calendar.service.CalendarAnalyticsService;
+import com.team28.booking.calendar.service.TimeSlotService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * S4-F10 (Phase 1): Calendar analytics endpoint.
+ *
+ * <p>Caching design: the data fetch goes through {@link CalendarAnalyticsService#getCachedAnalytics}
+ * which is annotated {@code @Cacheable}. The ANALYTICS_VIEWED Observer event is fired here,
+ * OUTSIDE the cached call, so it executes on every request — even on cache hits.</p>
+ */
+@RestController
+@RequestMapping("/api/calendar")
+public class CalendarController {
+
+    private final CalendarAnalyticsService calendarAnalyticsService;
+    private final TimeSlotService timeSlotService;
+
+    public CalendarController(CalendarAnalyticsService calendarAnalyticsService,
+                              TimeSlotService timeSlotService) {
+        this.calendarAnalyticsService = calendarAnalyticsService;
+        this.timeSlotService = timeSlotService;
+    }
+
+    /**
+     * GET /api/calendar/analytics?startDate=&endDate=
+     * S4-F10: Get Calendar Analytics Dashboard.
+     */
+    @GetMapping("/analytics")
+    public CalendarAnalyticsDTO getAnalytics(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        // Data fetch (potentially served from Redis cache)
+        CalendarAnalyticsDTO dto = calendarAnalyticsService.getCachedAnalytics(startDate, endDate);
+        // Log ANALYTICS_VIEWED unconditionally — runs on every call including cache hits
+        logAnalyticsViewed(startDate, endDate);
+        return dto;
+    }
+
+    // ── private helpers ──────────────────────────────────────────────────────
+
+    private void logAnalyticsViewed(LocalDate startDate, LocalDate endDate) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("startDate", startDate.toString());
+        payload.put("endDate", endDate.toString());
+        payload.put("action", "ANALYTICS_VIEWED");
+        timeSlotService.fireEvent("ANALYTICS_VIEWED", payload);
+    }
+}
