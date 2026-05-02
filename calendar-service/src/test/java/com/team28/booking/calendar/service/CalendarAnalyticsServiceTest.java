@@ -35,12 +35,13 @@ class CalendarAnalyticsServiceTest {
 
     @BeforeEach
     void setUp() {
-        // Minimal constructor — we only need the repo for analytics tests
+        // Minimal constructor — we only need the repo for read-only analytics tests
         timeSlotService = new TimeSlotService(
                 timeSlotRepository,
                 null,  // MongoEventLogger — not needed for read-only analytics
                 null,  // ObjectArrayDtoAdapter
-                null   // CacheInvalidator
+                null,  // CacheInvalidator
+                null   // CalendarAvailabilityEventRepository — not needed here
         );
     }
 
@@ -162,7 +163,7 @@ class CalendarAnalyticsServiceTest {
         when(timeSlotRepository.getAnalyticsStats(start, end))
                 .thenReturn(new Object[]{statsRow(5, 5, 0)});
         when(timeSlotRepository.getSlotsByDate(any(), any()))
-                .thenReturn(List.of());
+                .thenReturn(new ArrayList<>());
 
         CalendarAnalyticsDTO dto = timeSlotService.getCalendarAnalytics(start, end);
 
@@ -180,7 +181,7 @@ class CalendarAnalyticsServiceTest {
         when(timeSlotRepository.getAnalyticsStats(start, end))
                 .thenReturn(new Object[]{statsRow(8, 0, 8)});
         when(timeSlotRepository.getSlotsByDate(any(), any()))
-                .thenReturn(List.of());
+                .thenReturn(new ArrayList<>());
 
         CalendarAnalyticsDTO dto = timeSlotService.getCalendarAnalytics(start, end);
 

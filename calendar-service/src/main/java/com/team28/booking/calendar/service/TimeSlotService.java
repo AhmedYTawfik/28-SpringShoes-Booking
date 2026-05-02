@@ -2,6 +2,9 @@ package com.team28.booking.calendar.service;
 
 import com.team28.booking.calendar.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.calendar.cache.CacheInvalidator;
+import com.team28.booking.calendar.cassandra.CalendarAvailabilityEvent;
+import com.team28.booking.calendar.cassandra.CalendarAvailabilityEventRepository;
+import com.team28.booking.calendar.dto.AvailabilitySnapshotRequest;
 import com.team28.booking.calendar.dto.AvailableProviderDTO;
 import com.team28.booking.calendar.dto.CalendarAnalyticsDTO;
 import com.team28.booking.calendar.dto.IdleProviderProjection;
@@ -20,6 +23,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -29,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class TimeSlotService extends Observable {
@@ -37,15 +42,18 @@ public class TimeSlotService extends Observable {
     private final MongoEventLogger mongoEventLogger;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
+    private final CalendarAvailabilityEventRepository cassandraRepo;
 
     public TimeSlotService(TimeSlotRepository timeSlotRepository,
                            MongoEventLogger mongoEventLogger,
                            ObjectArrayDtoAdapter objectArrayDtoAdapter,
-                           CacheInvalidator cacheInvalidator) {
+                           CacheInvalidator cacheInvalidator,
+                           CalendarAvailabilityEventRepository cassandraRepo) {
         this.timeSlotRepository = timeSlotRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
+        this.cassandraRepo = cassandraRepo;
     }
 
     @PostConstruct
@@ -298,6 +306,65 @@ public class TimeSlotService extends Observable {
      */
     public void fireEvent(String action, Map<String, Object> payload) {
         notifyObservers(action, payload);
+    }
+
+    // ── S4-F11: Record Provider Availability Snapshot ─────────────────────────
+
+    /**
+     * S4-F11: Record Provider Availability Snapshot.
+     * a) Validates provider exists (PG native query).
+     * b) Computes slot stats for the given provider+date (PG).
+     * c) Persists a time-series record to Cassandra.
+     * d) Fires TRACKING_RECORDED Observer event → MongoDB calendar_events.
+     * e) Explicitly invalidates targeted cache keys (S4-F12::{providerId} and S4-F10::*).
+     */
+    @Transactional(readOnly = true)
+    public void recordAvailabilitySnapshot(Long providerId, AvailabilitySnapshotRequest request) {
+        // a) Provider existence check via PG native query
+        validateProviderExists(providerId);
+
+        // b) Compute slot stats from PG for the given provider + date
+        Object[] stats = timeSlotRepository.getSnapshotStats(providerId, request.date());
+        Object[] row = (Object[]) stats[0];
+        int totalSlots     = ((Number) row[0]).intValue();
+        int availableSlots = ((Number) row[1]).intValue();
+        int bookedSlots    = ((Number) row[2]).intValue();
+        double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots : 0.0;
+
+        // c) Save to Cassandra (time-series, §7.4.1).
+        // Add a random sub-microsecond nanosecond offset to Instant.now() so that two
+        // concurrent snapshot requests for the same provider never share the same
+        // Cassandra primary key (provider_id, timestamp). Without this, requests landing
+        // within the same microsecond would silently upsert the same row.
+        Instant timestamp = Instant.now()
+                .plusNanos(ThreadLocalRandom.current().nextLong(0, 999_000));
+        CalendarAvailabilityEvent event = new CalendarAvailabilityEvent(
+                providerId,
+                timestamp,
+                request.date().toString(),
+                totalSlots,
+                availableSlots,
+                bookedSlots,
+                utilizationRate,
+                request.notes()
+        );
+        cassandraRepo.save(event);
+
+        // d) Fire Observer → TRACKING_RECORDED → MongoDB calendar_events
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("providerId", providerId);
+        payload.put("date", request.date().toString());
+        payload.put("totalSlots", totalSlots);
+        payload.put("availableSlots", availableSlots);
+        payload.put("bookedSlots", bookedSlots);
+        payload.put("utilizationRate", utilizationRate);
+        notifyObservers("TRACKING_RECORDED", payload);
+
+        // e) Targeted cache invalidation (§4.4.4 NoSQL-writer rules)
+        // S4-F12 is provider-specific — invalidate only that provider's history cache
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F12::" + providerId);
+        // S4-F10 analytics spans all providers — invalidate entirely
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F10::*");
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
