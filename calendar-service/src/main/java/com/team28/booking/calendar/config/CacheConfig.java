@@ -40,7 +40,7 @@ public class CacheConfig implements CachingConfigurer {
         perCache.put("calendar-service::S4-F8", baseline.entryTtl(Duration.ofMinutes(15)));
         perCache.put("calendar-service::S4-F9", baseline.entryTtl(Duration.ofMinutes(10)));
         perCache.put("calendar-service::S4-F10", baseline.entryTtl(Duration.ofMinutes(10)));
-        perCache.put("calendar-service::S4-F12", baseline.entryTtl(Duration.ofMinutes(10)));
+        perCache.put("calendar-service::S4-F12", baseline.entryTtl(Duration.ofMinutes(5)));
         perCache.put("calendar-service::time-slot", baseline.entryTtl(Duration.ofMinutes(15)));
 
         return RedisCacheManager.builder(cf)
