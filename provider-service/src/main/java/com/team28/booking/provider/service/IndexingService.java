@@ -13,6 +13,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -74,13 +75,14 @@ public class IndexingService extends Observable {
         );
     }
 
+    private static final List<String> INDEXED_FIELDS =
+            List.of("id", "name", "specialty", "pricingTier", "description", "rating", "status");
+
     private Map<String, Object> providerPayload(Provider provider, String source) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("providerId", provider.getId());
-        payload.put("name", provider.getName());
-        payload.put("specialty", provider.getSpecialty());
-        payload.put("status", provider.getStatus() != null ? provider.getStatus().name() : null);
-        payload.put("details", Map.of("source", source));
+        payload.put("indexedFields", INDEXED_FIELDS);
+        payload.put("source", source);
         return payload;
     }
 

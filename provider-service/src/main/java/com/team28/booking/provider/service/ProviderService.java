@@ -191,6 +191,11 @@ public class ProviderService extends Observable {
         return findById(id);
     }
 
+    public void indexProviderExplicitly(Long id) {
+        Provider provider = findById(id);
+        indexingService.indexProvider(provider, "explicit");
+    }
+
     /** S2-F5: filter by pricing tier — 5 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "provider-service::S2-F5",
                key = "T(java.util.Objects).hash(#tier, #status)")

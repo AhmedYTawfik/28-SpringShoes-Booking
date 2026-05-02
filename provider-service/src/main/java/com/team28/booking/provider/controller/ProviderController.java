@@ -49,6 +49,12 @@ public class ProviderController {
         return ResponseEntity.ok("Provider deleted successfully");
     }
 
+    @PostMapping("/{id}/index")
+    public ResponseEntity<Void> indexProvider(@PathVariable Long id) {
+        providerService.indexProviderExplicitly(id);
+        return ResponseEntity.ok().build();
+    }
+
     @PutMapping("/{id}/availability")
     public ResponseEntity<Void> updateAvailability(@PathVariable Long id,
                                                    @RequestBody UpdateAvailabilityRequest request) {
