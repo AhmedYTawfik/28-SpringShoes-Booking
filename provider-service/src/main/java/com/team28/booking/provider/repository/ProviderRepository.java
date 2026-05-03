@@ -61,4 +61,31 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
             @Param("minRating") Double minRating,
             @Param("maxRating") Double maxRating
     );
+
+    @Query(value = """
+        SELECT
+            COUNT(*) AS total_completed,
+            SUM(i.amount) AS total_revenue,
+            AVG(i.amount) AS average_booking_val
+        FROM bookings b
+        JOIN invoices i
+        ON b.invoices_id = i.id
+        WHERE b.status = 'COMPLETED'
+        AND b.providerId = :providerId
+    """, nativeQuery = true)
+    Object[] getProviderDashboardSummary(@Param("providerId") Long id);
+
+    @Query(value = """
+        SELECT
+            COALESCE(
+                SUM(CASE WHEN ts.available = false THEN 1 ELSE 0 END) * 1.0
+                / NULLIF(COUNT(*), 0),
+                0.0
+            ) AS utilization_rate
+        FROM time_slots ts
+        WHERE ts.provider_id = :providerId
+        AND ts.start_time >= DATE_TRUNC('month', CURRENT_DATE)
+        AND ts.start_time < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+    """, nativeQuery = true)
+    Double getUtilizationRate(@Param("providerId") Long id);
 }
