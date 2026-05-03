@@ -33,7 +33,7 @@ public class UserController {
     public ResponseEntity<User> createUser(@RequestBody User user) {
         user.setRole(User.Role.CLIENT);
         User saved = userService.save(user);
-        return ResponseEntity.ok(saved);
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
     // CRUD: Get All Users
