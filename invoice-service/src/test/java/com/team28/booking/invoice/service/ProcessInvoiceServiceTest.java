@@ -73,7 +73,7 @@ class ProcessInvoiceServiceTest {
         assertThat(result.getTransactionDetails()).containsKey("completedAt");
         assertThat(result.getTransactionDetails()).containsKey("gateway");
         assertThat(result.getTransactionDetails()).containsEntry("cancellationFee", 0);
-        verify(invoiceRepository).save(any(Invoice.class));
+        verify(invoiceRepository, times(2)).save(any(Invoice.class));
     }
 
     @Test
