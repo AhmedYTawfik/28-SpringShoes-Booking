@@ -41,7 +41,7 @@ public class CacheConfig implements CachingConfigurer {
         perCache.put("booking-service::S3-F9", baseline.entryTtl(Duration.ofMinutes(10)));
         // M2 feature caches (pre-wired for invalidation hooks)
         perCache.put("booking-service::S3-F10", baseline.entryTtl(Duration.ofMinutes(10)));
-        perCache.put("booking-service::S3-F12", baseline.entryTtl(Duration.ofMinutes(10)));
+        perCache.put("booking-service::S3-F12", baseline.entryTtl(Duration.ofMinutes(5)));
         // CRUD entity caches (§4.4.2)
         perCache.put("booking-service::booking", baseline.entryTtl(Duration.ofMinutes(15)));
         perCache.put("booking-service::booking-item", baseline.entryTtl(Duration.ofMinutes(15)));
