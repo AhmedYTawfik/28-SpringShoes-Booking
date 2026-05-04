@@ -36,6 +36,9 @@ import com.team28.booking.invoice.repository.DiscountRepository;
 import com.team28.booking.invoice.repository.DiscountUsageProjection;
 import com.team28.booking.invoice.repository.InvoiceDiscountRepository;
 import com.team28.booking.invoice.repository.InvoiceRepository;
+import com.team28.booking.invoice.mongo.PaymentAuditEventRepository;
+import com.team28.booking.invoice.mongo.PaymentMethodBreakdown;
+import com.team28.booking.invoice.dto.PaymentMethodAnalyticsDTO;
 
 import jakarta.annotation.PostConstruct;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -50,19 +53,22 @@ public class InvoiceService extends Observable {
     private final MongoEventLogger mongoEventLogger;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
+    private final PaymentAuditEventRepository paymentAuditEventRepository;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
                           InvoiceDiscountRepository invoiceDiscountRepository,
                           MongoEventLogger mongoEventLogger,
                           ObjectArrayDtoAdapter objectArrayDtoAdapter,
-                          CacheInvalidator cacheInvalidator) {
+                          CacheInvalidator cacheInvalidator,
+                          PaymentAuditEventRepository paymentAuditEventRepository) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
         this.invoiceDiscountRepository = invoiceDiscountRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
+        this.paymentAuditEventRepository = paymentAuditEventRepository;
     }
 
     @PostConstruct
@@ -387,6 +393,40 @@ public class InvoiceService extends Observable {
                     .build());
         }
         return result;
+    }
+
+    /** S5-F11: Payment method breakdown — 10 min TTL. */
+    @Cacheable(cacheNames = "invoice-service::S5-F11",
+               key = "T(java.util.Objects).hash(#startDate, #endDate)")
+    public List<PaymentMethodAnalyticsDTO> getPaymentMethodBreakdown(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new BadRequestException("startDate must not be after endDate");
+        }
+        java.time.LocalDateTime from = startDate.atStartOfDay();
+        java.time.LocalDateTime to   = endDate.atTime(23, 59, 59, 999_000_000);
+
+        List<String> actions = java.util.List.of("COMPLETED", "FAILED");
+        List<PaymentMethodBreakdown> rows = paymentAuditEventRepository.findMethodBreakdown(from, to, actions);
+
+        java.util.Map<String, PaymentMethodAnalyticsDTO> map = new java.util.HashMap<>();
+        for (PaymentMethodBreakdown row : rows) {
+            long success = row.getSuccessCount();
+            long failure = row.getFailureCount();
+            long denom = success + failure;
+            double successRate = denom == 0 ? 0.0 : ((double) success) / ((double) denom);
+            java.math.BigDecimal totalAmount = java.math.BigDecimal.valueOf(row.getTotalAmount());
+            PaymentMethodAnalyticsDTO dto = new PaymentMethodAnalyticsDTO(row.getMethod(), success, failure, successRate, totalAmount);
+            map.put(row.getMethod(), dto);
+        }
+
+        // Ensure all methods are present
+        for (Invoice.PaymentMethod pm : Invoice.PaymentMethod.values()) {
+            if (!map.containsKey(pm.name())) {
+                map.put(pm.name(), new PaymentMethodAnalyticsDTO(pm.name(), 0L, 0L, 0.0, java.math.BigDecimal.ZERO));
+            }
+        }
+
+        return new java.util.ArrayList<>(map.values());
     }
 
     /** Emit ANALYTICS_VIEWED unconditionally — must fire even on cache hits (§4.4.4). */
