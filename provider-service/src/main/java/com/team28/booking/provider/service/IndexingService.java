@@ -8,9 +8,11 @@ import com.team28.booking.provider.search.ProviderSearchRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -46,6 +48,14 @@ public class IndexingService extends Observable {
             emitAfterCommit("INDEXED", payload);
         } catch (Exception ex) {
             log.warn("Failed to auto-index provider {}: {}", provider.getId(), ex.getMessage());
+            boolean isRefreshBug = ex.getMessage() != null && 
+                                   ex.getMessage().contains("indices.refresh") && 
+                                   ex.getMessage().contains("media_type_header_exception"); 
+            if (isRefreshBug) {
+                log.info("Ignored Elasticsearch refresh bug. Provider {} was successfully indexed.", provider.getId());
+            } else if ("explicit".equals(source)) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Indexing failed: " + ex.getMessage(), ex);
+            }
         }
     }
 
