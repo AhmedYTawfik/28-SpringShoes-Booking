@@ -1,5 +1,6 @@
 package com.team28.booking.provider.repository;
 
+import com.team28.booking.provider.dto.ProviderRepoDashboardReturn;
 import com.team28.booking.provider.model.Provider;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -69,11 +70,11 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
             AVG(i.amount) AS average_booking_val
         FROM bookings b
         JOIN invoices i
-        ON b.invoices_id = i.id
+        ON i.booking_id = b.id
         WHERE b.status = 'COMPLETED'
-        AND b.providerId = :providerId
+        AND b.provider_id = :providerId
     """, nativeQuery = true)
-    Object[] getProviderDashboardSummary(@Param("providerId") Long id);
+    ProviderRepoDashboardReturn getProviderDashboardSummary(@Param("providerId") Long id);
 
     @Query(value = """
         SELECT
@@ -84,8 +85,8 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
             ) AS utilization_rate
         FROM time_slots ts
         WHERE ts.provider_id = :providerId
-        AND ts.start_time >= DATE_TRUNC('month', CURRENT_DATE)
-        AND ts.start_time < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+        AND ts.date >= DATE_TRUNC('month', CURRENT_DATE)::date
+        AND ts.date < (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month')::date
     """, nativeQuery = true)
     Double getUtilizationRate(@Param("providerId") Long id);
 }

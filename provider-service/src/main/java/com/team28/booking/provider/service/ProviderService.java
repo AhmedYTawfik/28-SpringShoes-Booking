@@ -35,6 +35,7 @@ public class ProviderService extends Observable {
     private final IndexingService indexingService;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
+    private final ProviderDashboardService dashboardService;
 
     public ProviderService(
             ProviderRepository providerRepository,
@@ -43,7 +44,8 @@ public class ProviderService extends Observable {
             CacheInvalidationService cacheInvalidationService,
             IndexingService indexingService,
             ObjectArrayDtoAdapter objectArrayDtoAdapter,
-            CacheInvalidator cacheInvalidator
+            CacheInvalidator cacheInvalidator,
+            ProviderDashboardService dashboardService
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
@@ -52,6 +54,7 @@ public class ProviderService extends Observable {
         this.indexingService = indexingService;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
+        this.dashboardService = dashboardService;
     }
 
     @PostConstruct
@@ -182,34 +185,13 @@ public class ProviderService extends Observable {
 
     public ProviderDashboardDTO logAndGetProviderDashboard(Long id) {
         mongoEventLogger.onEvent("DASHBOARD_VIEWED", Map.of("id", id));
-        return getProviderDashboard(id);
+        return dashboardService.getProviderDashboard(id);
     }
 
     // ── reads (cached) ───────────────────────────────────────────────────────
 
     public List<Provider> getAllProviders() {
         return providerRepository.findAll();
-    }
-
-    @Cacheable(cacheNames = "provider-service::S2-F12", key = "#id")
-    public ProviderDashboardDTO getProviderDashboard(Long id) {
-        Provider provider = getProviderById(id);
-        Object[] dashboardSummary = providerRepository.getProviderDashboardSummary(id);
-
-        // The rating should already be the average, I don't get why the documents
-        // also wanted the total number of ratings
-        Double providerRating = provider.getRating();
-        Double utilizationRate = providerRepository.getUtilizationRate(id);
-
-        return ProviderDashboardDTO.builder()
-                .providerId(provider.getId())
-                .name(provider.getName())
-                .totalBookings(((Number)dashboardSummary[0]).longValue())
-                .totalRevenue(((Number)dashboardSummary[1]).doubleValue())
-                .averageBookingValue(((Number)dashboardSummary[2]).doubleValue())
-                .averageRating(providerRating)
-                .utilizationRate(utilizationRate)
-                .build();
     }
 
     /** CRUD GET-by-ID — 15 min TTL (§4.4.2). */
