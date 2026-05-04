@@ -2,13 +2,18 @@ package com.team28.booking.user.controller;
 
 import com.team28.booking.user.dto.TopClientDTO;
 import com.team28.booking.user.dto.UpdateRoleRequest;
+import com.team28.booking.user.dto.UserActivityFeedDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.User;
+import com.team28.booking.user.model.User.Role;
 import com.team28.booking.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.crossstore.ChangeSetPersister.NotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -212,4 +217,26 @@ public class UserController {
         }
     }
 
+    // S1-F12: paginated list of activity events
+    @GetMapping("/{id}/activity")
+    public ResponseEntity<UserActivityFeedDTO> getUserActivityFeed(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Long currentUserId = currentUser.getId();
+        Role userRole = currentUser.getRole(); // change to accomodate multiple roles!
+
+        if (!currentUserId.equals(id) && userRole != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Caller is neither the target user nor the an Admin");
+        }
+        try {
+            UserActivityFeedDTO userActivityFeedDTO = userService.getUserActivityFeed(id, page, size);
+            return ResponseEntity.ok(userActivityFeedDTO);
+        } catch (NotFoundException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
 }
