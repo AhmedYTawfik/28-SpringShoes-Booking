@@ -13,12 +13,15 @@ import java.util.Objects;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
+import com.team28.booking.invoice.dto.PaymentMethodAnalyticsDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
@@ -30,19 +33,16 @@ import com.team28.booking.invoice.model.Discount;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
 import com.team28.booking.invoice.model.InvoiceDiscount;
+import com.team28.booking.invoice.mongo.PaymentAuditEventRepository;
+import com.team28.booking.invoice.mongo.PaymentMethodBreakdown;
 import com.team28.booking.invoice.observer.MongoEventLogger;
 import com.team28.booking.invoice.observer.Observable;
 import com.team28.booking.invoice.repository.DiscountRepository;
 import com.team28.booking.invoice.repository.DiscountUsageProjection;
 import com.team28.booking.invoice.repository.InvoiceDiscountRepository;
 import com.team28.booking.invoice.repository.InvoiceRepository;
-import com.team28.booking.invoice.mongo.PaymentAuditEventRepository;
-import com.team28.booking.invoice.mongo.PaymentMethodBreakdown;
-import com.team28.booking.invoice.dto.PaymentMethodAnalyticsDTO;
 
 import jakarta.annotation.PostConstruct;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class InvoiceService extends Observable {
@@ -407,6 +407,11 @@ public class InvoiceService extends Observable {
 
         List<String> actions = java.util.List.of("COMPLETED", "FAILED");
         List<PaymentMethodBreakdown> rows = paymentAuditEventRepository.findMethodBreakdown(from, to, actions);
+
+        // Return empty list if no data exists for the date range (spec §4.4.2)
+        if (rows.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
 
         java.util.Map<String, PaymentMethodAnalyticsDTO> map = new java.util.HashMap<>();
         for (PaymentMethodBreakdown row : rows) {
