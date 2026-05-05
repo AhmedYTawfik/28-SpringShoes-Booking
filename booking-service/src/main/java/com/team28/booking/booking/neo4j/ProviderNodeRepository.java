@@ -8,5 +8,5 @@ import java.util.Optional;
 @Repository
 public interface ProviderNodeRepository extends Neo4jRepository<ProviderNode, Long> {
 
-    Optional<ProviderNode> findByProviderId(Long providerId);
+    // findById(Long) inherited from Neo4jRepository — use that instead
 }
