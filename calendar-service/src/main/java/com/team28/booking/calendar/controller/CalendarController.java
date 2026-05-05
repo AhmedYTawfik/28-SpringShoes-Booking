@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -82,14 +83,28 @@ public class CalendarController {
     @GetMapping("/{providerId}/availability-history")
     public List<AvailabilitySnapshotDTO> getAvailabilityHistory(
             @PathVariable Long providerId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startTime,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endTime) {
+            @RequestParam(required = false) String startTime,
+            @RequestParam(required = false) String endTime) {
 
-        if (startTime != null && endTime != null && startTime.isAfter(endTime)) {
+        Instant start = parseToInstant(startTime);
+        Instant end = parseToInstant(endTime);
+
+        if (start != null && end != null && start.isAfter(end)) {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "startTime must be before or equal to endTime");
         }
-        return availabilityHistoryService.getAvailabilityHistory(providerId, startTime, endTime);
+        return availabilityHistoryService.getAvailabilityHistory(providerId, start, end);
+    }
+
+    private Instant parseToInstant(String timeString) {
+        if (timeString == null || timeString.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Instant.parse(timeString);
+        } catch (java.time.format.DateTimeParseException e) {
+            return LocalDateTime.parse(timeString).atZone(java.time.ZoneId.systemDefault()).toInstant();
+        }
     }
 
     // ── private helpers ──────────────────────────────────────────────────────

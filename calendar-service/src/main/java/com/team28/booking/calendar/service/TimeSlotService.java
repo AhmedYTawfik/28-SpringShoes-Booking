@@ -64,6 +64,10 @@ public class TimeSlotService extends Observable {
     // ── writes ───────────────────────────────────────────────────────────────
 
     public TimeSlot createTimeSlot(TimeSlot timeSlot) {
+        validateTimeRange(timeSlot);
+        if (timeSlot.getProviderId() != null) {
+            validateOverlap(timeSlot);
+        }
         timeSlot.setCreatedAt(LocalDateTime.now());
         if (timeSlot.getAvailable() == null) timeSlot.setAvailable(true);
         TimeSlot saved = timeSlotRepository.save(timeSlot);
@@ -76,6 +80,7 @@ public class TimeSlotService extends Observable {
         validateProviderExists(providerId);
         validateTimeRange(timeSlot);
         timeSlot.setProviderId(providerId);
+        validateOverlap(timeSlot);
         if (timeSlot.getAvailable() == null) timeSlot.setAvailable(true);
         timeSlot.setCreatedAt(LocalDateTime.now());
         TimeSlot saved = timeSlotRepository.save(timeSlot);
@@ -97,6 +102,7 @@ public class TimeSlotService extends Observable {
             }
             validateTimeRange(timeSlot);
             timeSlot.setProviderId(providerId);
+            validateOverlap(timeSlot);
             timeSlot.setAvailable(true);
             timeSlot.setCreatedAt(createdAt);
             slotsToSave.add(timeSlot);
@@ -119,6 +125,8 @@ public class TimeSlotService extends Observable {
         existing.setDate(updated.getDate());
         existing.setStartTime(updated.getStartTime());
         existing.setEndTime(updated.getEndTime());
+        validateTimeRange(existing);
+        validateOverlap(existing);
         existing.setAvailable(updated.getAvailable());
         existing.setMetadata(updated.getMetadata());
         TimeSlot saved = timeSlotRepository.save(existing);
@@ -391,10 +399,29 @@ public class TimeSlotService extends Observable {
     }
 
     private void validateTimeRange(TimeSlot timeSlot) {
+        if (timeSlot.getDate() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "date is required");
+        }
         if (timeSlot.getStartTime() == null
                 || timeSlot.getEndTime() == null
                 || !timeSlot.getStartTime().isBefore(timeSlot.getEndTime())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startTime must be before endTime");
+        }
+    }
+
+    private void validateOverlap(TimeSlot timeSlot) {
+        if (timeSlot.getProviderId() == null || timeSlot.getDate() == null || timeSlot.getStartTime() == null || timeSlot.getEndTime() == null) {
+            return;
+        }
+        long overlapCount = timeSlotRepository.countOverlappingSlots(
+                timeSlot.getProviderId(),
+                timeSlot.getDate(),
+                timeSlot.getStartTime(),
+                timeSlot.getEndTime(),
+                timeSlot.getId()
+        );
+        if (overlapCount > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Time slot overlaps with an existing slot");
         }
     }
 
