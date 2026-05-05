@@ -16,4 +16,8 @@ public record BookingDetailsDTO(
         List<ServiceDetailsDTO> services,
         Integer totalServices,
         Integer completedServices) {
+
+    public static BookingDetailsDTOBuilder builder() {
+        return new BookingDetailsDTOBuilder();
+    }
 }
