@@ -2,6 +2,7 @@ package com.team28.booking.invoice.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.Date;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -525,12 +526,16 @@ public class InvoiceService extends Observable {
         }
         Object[] row = rows.get(0);
         String bookingStatus = (String) row[0];
-        LocalDate appointmentDate = row[1] != null ? (LocalDate) row[1] : null;
+        LocalDate appointmentDate = null;
 
-        Map<String, Object> bookingData = Map.of(
-            "status", bookingStatus,
-            "appointmentDate", appointmentDate
-        );
+        if (row[1] instanceof LocalDate)
+            appointmentDate = (LocalDate) row[1];
+        else if (row[1] instanceof java.sql.Date)
+            appointmentDate = ((java.sql.Date) row[1]).toLocalDate();
+
+        Map<String, Object> bookingData = new HashMap<>();
+        bookingData.put("status", bookingStatus);
+        bookingData.put("appointmentDate", appointmentDate);
 
         // --- Step e: delegate strategy selection (no time-branching in this method) ---
         RefundStrategy strategy = refundStrategySelector.select(bookingData);
@@ -573,7 +578,12 @@ public class InvoiceService extends Observable {
         Invoice saved = invoiceRepository.save(invoice);
 
         // Update booking to CANCELLED
-        invoiceRepository.cancelBooking(invoice.getBookingId());
+        int updatedRows = invoiceRepository.cancelBooking(invoice.getBookingId());
+        if (updatedRows < 1) {
+            throw new BadRequestException(
+                "Failed to cancel booking because it was changed or removed concurrently"
+            );
+        }
 
         // --- Step j: invalidate caches ---
         invalidateInvoiceCaches(invoiceId);

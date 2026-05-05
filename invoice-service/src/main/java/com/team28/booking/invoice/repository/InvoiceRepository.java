@@ -74,9 +74,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query(value = "SELECT id FROM users WHERE id = :userId", nativeQuery = true)
     Long findUserById(@Param("userId") Long userId);
 
-    // S5-F12: fetch booking status + appointmentDate + totalPrice for cancellation refund
+    // S5-F12: fetch booking status + appointmentDate for cancellation refund
     @Query(value = """
-        SELECT b.status, b.appointment_date, b.total_price
+        SELECT b.status, b.appointment_date
         FROM bookings b
         WHERE b.id = :bookingId
         """, nativeQuery = true)
@@ -84,7 +84,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     // S5-F12: set booking status to CANCELLED after successful cancellation refund
     @Modifying(clearAutomatically = true)
-    @Query(value = "UPDATE bookings SET status = 'CANCELLED' WHERE id = :bookingId", nativeQuery = true)
+    @Query(value = """
+        UPDATE bookings
+        SET status = 'CANCELLED'
+        WHERE id = :bookingId
+        AND status IN ('REQUESTED', 'CONFIRMED')
+        """, nativeQuery = true)
     int cancelBooking(@Param("bookingId") Long bookingId);
 
     // S5-F10: revenue by provider specialty, with cancellation fee breakdown (§10.5.1)
