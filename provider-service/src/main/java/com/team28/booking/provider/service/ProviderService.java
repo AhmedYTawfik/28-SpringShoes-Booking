@@ -2,9 +2,7 @@ package com.team28.booking.provider.service;
 
 import com.team28.booking.provider.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.provider.cache.CacheInvalidator;
-import com.team28.booking.provider.dto.ProviderDashboardDTO;
-import com.team28.booking.provider.dto.ProviderEarningsDTO;
-import com.team28.booking.provider.dto.VerifiedBy;
+import com.team28.booking.provider.dto.*;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.provider.observer.MongoEventLogger;
@@ -13,6 +11,7 @@ import com.team28.booking.provider.repository.ProviderRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -20,11 +19,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class ProviderService extends Observable {
@@ -301,5 +296,75 @@ public class ProviderService extends Observable {
         payload.put("rating", provider.getRating());
         payload.put("totalRatings", provider.getTotalRatings());
         return payload;
+    }
+
+    public List<ProviderCertAlertDTO> getProvidersWithExpCert() {
+        List<Provider> providers =
+                providerRepository.findProvidersWithExpiredCerts(LocalDate.now());
+
+        List<ProviderCertAlertDTO> certificationAlerts = new ArrayList<>();
+        for (Provider provider : providers) {
+            List<ProviderCertification> expiredCerts = provider.getProviderCertifications()
+                    .stream().filter(
+                            cert -> cert.getExpiryDate().isBefore(LocalDate.now())
+                    ).toList();
+
+            certificationAlerts.add(new ProviderCertAlertDTO(
+                    provider.getId(), provider.getName(),
+                    provider.getStatus(), expiredCerts, expiredCerts.size()
+            ));
+        }
+
+        return certificationAlerts;
+    }
+
+
+    @Transactional
+    public void rateProvider(Long providerId, RateProviderDTO rateProvider) {
+        Provider provider;
+        try {
+            provider = getProviderById(providerId);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
+
+        BookingSummary bookingSummary =
+                providerRepository.getBookingSummary(rateProvider.bookingId())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        if (!bookingSummary.getProviderId().equals(providerId))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not associated with given provider");
+
+        if (!bookingSummary.getStatus().equals("COMPLETED"))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking was not completed");
+
+        if (rateProvider.rating() < 1.0 || rateProvider.rating() > 5.0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
+
+        int previousRating = provider.getTotalRatings();
+        int newTotalRatings = previousRating + 1;
+        double newRating = (provider.getRating() * previousRating + rateProvider.rating()) / newTotalRatings;
+
+        provider.setRating(newRating);
+        provider.setTotalRatings(newTotalRatings);
+        updateProvider(providerId, provider);
+    }
+
+    public List<TopProviderDTO> getTopRatedProviders(int limit) {
+        if (limit == 0) limit = 50;
+        PageRequest paging = PageRequest.of(0, limit);
+        List<ProviderSummary> topProviders = providerRepository.findTopProvidersWithBookingCount(paging);
+
+
+        List<TopProviderDTO> topProviderDTOS = new ArrayList<>();
+        topProviders.forEach(provider -> topProviderDTOS.add(
+                // The total bookings are left as 0 for now
+                new TopProviderDTO(
+                        provider.getId(), provider.getName(),
+                        provider.getRating(), provider.getBookingCount().intValue()
+                )
+        ));
+
+        return topProviderDTOS;
     }
 }
