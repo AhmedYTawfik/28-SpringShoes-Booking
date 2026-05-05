@@ -10,4 +10,7 @@ public record BookingAnalyticsDTO(
         BigDecimal averageBookingPrice,
         double completionRate
 ) {
+    public static BookingAnalyticsDTOBuilder builder() {
+        return new BookingAnalyticsDTOBuilder();
+    }
 }
