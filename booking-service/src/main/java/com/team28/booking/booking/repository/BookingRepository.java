@@ -52,4 +52,20 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             "FROM bookings WHERE requested_at >= :startDate AND requested_at <= :endDate", nativeQuery = true)
     Object[] getBookingAnalytics(@Param("startDate") LocalDateTime startDate,
                                  @Param("endDate") LocalDateTime endDate);
+
+    @Query(value = "SELECT " +
+            "COUNT(b.id) as totalBookings, " +
+            "COALESCE(SUM(i.amount), 0) as totalRevenue, " +
+            "COALESCE(SUM(i.amount) / NULLIF(COUNT(CASE WHEN b.status = 'COMPLETED' THEN 1 END), 0), 0) as averageBookingValue " +
+            "FROM bookings b " +
+            "LEFT JOIN invoices i ON i.booking_id = b.id AND b.status = 'COMPLETED' " +
+            "WHERE b.requested_at >= :startDate AND b.requested_at <= :endDate", nativeQuery = true)
+    Object[] getDashboardAggregates(@Param("startDate") LocalDateTime startDate,
+                                    @Param("endDate") LocalDateTime endDate);
+
+    @Query(value = "SELECT status, COUNT(*) as cnt FROM bookings " +
+            "WHERE requested_at >= :startDate AND requested_at <= :endDate " +
+            "GROUP BY status", nativeQuery = true)
+    List<Object[]> getDashboardStatusBreakdown(@Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate);
 }

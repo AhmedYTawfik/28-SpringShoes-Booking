@@ -2,6 +2,7 @@ package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.cache.CacheInvalidator;
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
@@ -13,7 +14,10 @@ import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.observer.Observable;
 import com.team28.booking.booking.repository.BookingRepository;
 import jakarta.annotation.PostConstruct;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +31,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,13 +43,16 @@ public class BookingService extends Observable {
     private final BookingRepository bookingRepository;
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidator cacheInvalidator;
+    private final CacheManager cacheManager;
 
     public BookingService(BookingRepository bookingRepository,
                           MongoEventLogger mongoEventLogger,
-                          CacheInvalidator cacheInvalidator) {
+                          CacheInvalidator cacheInvalidator,
+                          CacheManager cacheManager) {
         this.bookingRepository = bookingRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
+        this.cacheManager = cacheManager;
     }
 
     @PostConstruct
@@ -286,6 +294,80 @@ public class BookingService extends Observable {
 
         return new BookingAnalyticsDTO(totalBookings, completedBookings, cancelledBookings,
                 totalRevenue, averageBookingPrice, completionRate);
+    }
+
+    /**
+     * S3-F10: booking analytics dashboard over a date range — 10 min TTL (§4.4.1).
+     * MongoDB ANALYTICS_VIEWED log is written outside the cache layer so it fires on every
+     * call, including cache hits (spec §10.3.1 d).
+     */
+    public BookingAnalyticsDashboardDTO getDashboardAnalytics(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "startDate must be on or before endDate");
+        }
+
+        // Log ANALYTICS_VIEWED on every invocation — outside cache, per spec §10.3.1 d
+        logAnalyticsViewed(startDate, endDate);
+
+        // Programmatic cache check — avoids AOP self-invocation limitation
+        String cacheKey = String.valueOf(Objects.hash(startDate, endDate));
+        Cache cache = cacheManager.getCache("booking-service::S3-F10");
+        if (cache != null) {
+            Cache.ValueWrapper wrapper = cache.get(cacheKey);
+            if (wrapper != null) {
+                return (BookingAnalyticsDashboardDTO) wrapper.get();
+            }
+        }
+
+        BookingAnalyticsDashboardDTO result = computeDashboardAnalytics(startDate, endDate);
+
+        if (cache != null) {
+            cache.put(cacheKey, result);
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    BookingAnalyticsDashboardDTO computeDashboardAnalytics(LocalDate startDate, LocalDate endDate) {
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        Object[] agg = bookingRepository.getDashboardAggregates(startDateTime, endDateTime);
+        Object[] row = (agg.length > 0 && agg[0] instanceof Object[]) ? (Object[]) agg[0] : agg;
+
+        long totalBookings    = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        BigDecimal totalRevenue       = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
+        BigDecimal averageBookingValue = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
+
+        List<Object[]> statusRows = bookingRepository.getDashboardStatusBreakdown(startDateTime, endDateTime);
+        Map<String, Long> bookingsByStatus = new LinkedHashMap<>();
+        long completedCount = 0L;
+        for (Object[] statusRow : statusRows) {
+            String status = (String) statusRow[0];
+            long count = ((Number) statusRow[1]).longValue();
+            bookingsByStatus.put(status, count);
+            if ("COMPLETED".equals(status)) {
+                completedCount = count;
+            }
+        }
+
+        double completionRate = totalBookings > 0 ? (double) completedCount / totalBookings : 0.0;
+
+        return BookingAnalyticsDashboardDTO.builder()
+                .totalBookings(totalBookings)
+                .totalRevenue(totalRevenue)
+                .averageBookingValue(averageBookingValue)
+                .completionRate(completionRate)
+                .bookingsByStatus(bookingsByStatus)
+                .build();
+    }
+
+    private void logAnalyticsViewed(LocalDate startDate, LocalDate endDate) {
+        Map<String, Object> params = Map.of("action", "ANALYTICS_VIEWED",
+                "startDate", startDate.toString(),
+                "endDate", endDate.toString());
+        mongoEventLogger.onEvent("ANALYTICS_VIEWED", params);
     }
 
     /** S3-F9: booking detail with sorted service items and completion summary. */

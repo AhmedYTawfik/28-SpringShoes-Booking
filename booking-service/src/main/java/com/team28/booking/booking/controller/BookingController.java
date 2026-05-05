@@ -1,6 +1,7 @@
 package com.team28.booking.booking.controller;
 
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
@@ -85,6 +86,13 @@ public class BookingController {
             @RequestParam LocalDate startDate,
             @RequestParam LocalDate endDate) {
         return ResponseEntity.ok(bookingService.getAnalytics(startDate, endDate));
+    }
+
+    @GetMapping("/analytics/dashboard")
+    public ResponseEntity<BookingAnalyticsDashboardDTO> getDashboardAnalytics(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(bookingService.getDashboardAnalytics(startDate, endDate));
     }
 
     @GetMapping("/{id}/details")
