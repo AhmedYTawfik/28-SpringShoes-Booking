@@ -47,7 +47,10 @@ public class TimeSlotController {
     @PostMapping("/batch")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Integer> batchCreate(@RequestBody BatchTimeSlotRequest request) {
-        int count = timeSlotService.batchCreateTimeSlots(request.providerId(), request.timeSlots());
+        if (request.getProviderId() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "providerId is missing");
+        }
+        int count = timeSlotService.batchCreateTimeSlots(request.getProviderId(), request.getTimeSlots());
         return Map.of("count", count);
     }
 

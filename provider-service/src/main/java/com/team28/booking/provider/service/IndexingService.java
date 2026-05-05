@@ -41,33 +41,37 @@ public class IndexingService extends Observable {
     }
 
     public void indexProvider(Provider provider, String source) {
-        try {
-            providerSearchRepository.save(toDocument(provider));
-            cacheInvalidationService.invalidateProviderSearch();
-            Map<String, Object> payload = providerPayload(provider, source);
-            emitAfterCommit("INDEXED", payload);
-        } catch (Exception ex) {
-            log.warn("Failed to auto-index provider {}: {}", provider.getId(), ex.getMessage());
-            boolean isRefreshBug = ex.getMessage() != null && 
-                                   ex.getMessage().contains("indices.refresh") && 
-                                   ex.getMessage().contains("media_type_header_exception"); 
-            if (isRefreshBug) {
-                log.info("Ignored Elasticsearch refresh bug. Provider {} was successfully indexed.", provider.getId());
-            } else if ("explicit".equals(source)) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Indexing failed: " + ex.getMessage(), ex);
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                providerSearchRepository.save(toDocument(provider));
+                cacheInvalidationService.invalidateProviderSearch();
+                Map<String, Object> payload = providerPayload(provider, source);
+                emitAfterCommit("INDEXED", payload);
+            } catch (Exception ex) {
+                log.warn("Failed to auto-index provider {}: {}", provider.getId(), ex.getMessage());
+                boolean isRefreshBug = ex.getMessage() != null && 
+                                       ex.getMessage().contains("indices.refresh") && 
+                                       ex.getMessage().contains("media_type_header_exception"); 
+                if (isRefreshBug) {
+                    log.info("Ignored Elasticsearch refresh bug. Provider {} was successfully indexed.", provider.getId());
+                } else if ("explicit".equals(source)) {
+                    log.error("Indexing failed: " + ex.getMessage(), ex);
+                }
             }
-        }
+        });
     }
 
     public void deleteProvider(Provider provider) {
-        try {
-            providerSearchRepository.deleteById(provider.getId().toString());
-            cacheInvalidationService.invalidateProviderSearch();
-        } catch (Exception ex) {
-            log.warn("Failed to remove provider {} from Elasticsearch: {}", provider.getId(), ex.getMessage());
-        } finally {
-            emitAfterCommit("PROVIDER_DELETED", providerPayload(provider, "auto_crud_delete"));
-        }
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                providerSearchRepository.deleteById(provider.getId().toString());
+                cacheInvalidationService.invalidateProviderSearch();
+            } catch (Exception ex) {
+                log.warn("Failed to remove provider {} from Elasticsearch: {}", provider.getId(), ex.getMessage());
+            } finally {
+                emitAfterCommit("PROVIDER_DELETED", providerPayload(provider, "auto_crud_delete"));
+            }
+        });
     }
 
     private ProviderSearchDocument toDocument(Provider provider) {

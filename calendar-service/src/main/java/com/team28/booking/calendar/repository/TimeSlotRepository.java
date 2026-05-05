@@ -114,6 +114,19 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
     @Query(value = "DELETE FROM time_slots WHERE date < :cutoffDate", nativeQuery = true)
     int deleteByDateBefore(@Param("cutoffDate") LocalDate cutoffDate);
 
+    @Query(value = """
+            SELECT COUNT(*) FROM time_slots 
+            WHERE provider_id = :providerId 
+              AND date = :date 
+              AND (start_time < :endTime AND end_time > :startTime)
+              AND (:id IS NULL OR id != :id)
+            """, nativeQuery = true)
+    long countOverlappingSlots(@Param("providerId") Long providerId, 
+                               @Param("date") LocalDate date, 
+                               @Param("startTime") java.time.LocalTime startTime, 
+                               @Param("endTime") java.time.LocalTime endTime,
+                               @Param("id") Long id);
+
     // ── S4-F10: Calendar Analytics Dashboard ─────────────────────────────────
 
     @Query(value = """
