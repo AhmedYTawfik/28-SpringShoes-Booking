@@ -138,6 +138,22 @@ public class BookingService extends Observable {
     }
 
     @Transactional
+    public Booking assignProvider(Long bookingId, Long providerId) {
+        Booking booking = findById(bookingId);
+        if (booking.getStatus() != Booking.Status.REQUESTED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Booking must be in REQUESTED status to assign a provider");
+        }
+        booking.setProviderId(providerId);
+        booking.setStatus(Booking.Status.CONFIRMED);
+        Booking saved = bookingRepository.save(booking);
+        cacheInvalidator.deleteKey("booking-service::booking::" + bookingId);
+        cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
+        emitAfterCommit("PROVIDER_ASSIGNED", bookingPayload(saved));
+        return saved;
+    }
+
+    @Transactional
     public Booking cancelBooking(Long id) {
         Booking booking = findById(id);
 
