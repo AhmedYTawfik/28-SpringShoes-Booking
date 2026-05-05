@@ -3,6 +3,8 @@ package com.team28.booking.calendar.controller;
 import com.team28.booking.calendar.auth.JwtAuthenticationFilter;
 import com.team28.booking.calendar.dto.AvailabilitySnapshotDTO;
 import com.team28.booking.calendar.service.AvailabilityHistoryService;
+import com.team28.booking.calendar.service.CalendarAnalyticsService;
+import com.team28.booking.calendar.service.TimeSlotService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,12 +28,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(AvailabilityHistoryController.class)
-class AvailabilityHistoryControllerTest {
+@WebMvcTest(CalendarController.class)
+class CalendarControllerTest {
 
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private AvailabilityHistoryService availabilityHistoryService;
+    @MockitoBean private CalendarAnalyticsService calendarAnalyticsService;
+    @MockitoBean private TimeSlotService timeSlotService;
     @MockitoBean private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     private static final Long PROVIDER_ID = 42L;

@@ -30,10 +30,16 @@ public class AvailabilityHistoryService {
 
     /** S4-F12: provider availability history — 5 min TTL. */
     @Cacheable(cacheNames = "calendar-service::S4-F12",
-               key = "T(java.util.Objects).hash(#providerId, #startTime, #endTime)")
+               key = "#providerId + '::' + T(java.util.Objects).hash(#startTime, #endTime)")
     public List<AvailabilitySnapshotDTO> getAvailabilityHistory(Long providerId, Instant startTime, Instant endTime) {
         if (timeSlotRepository.countProviderById(providerId) == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        }
+
+        if (startTime == null && endTime != null) {
+            startTime = Instant.EPOCH;
+        } else if (startTime != null && endTime == null) {
+            endTime = Instant.parse("9999-12-31T23:59:59Z");
         }
 
         List<CalendarAvailabilityEvent> rows = (startTime != null && endTime != null)
