@@ -1,9 +1,12 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.provider.dto.ProviderDashboardDTO;
 import com.team28.booking.provider.dto.UpdateAvailabilityRequest;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
+import com.team28.booking.provider.search.ProviderSearchDocument;
+import com.team28.booking.provider.service.ProviderFullTextSearchService;
 import com.team28.booking.provider.service.ProviderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,9 +19,12 @@ import java.util.Map;
 @RequestMapping("/api/providers")
 public class ProviderController {
     private final ProviderService providerService;
+    private final ProviderFullTextSearchService providerFullTextSearchService;
 
-    public ProviderController(ProviderService providerService) {
+    public ProviderController(ProviderService providerService,
+                              ProviderFullTextSearchService providerFullTextSearchService) {
         this.providerService = providerService;
+        this.providerFullTextSearchService = providerFullTextSearchService;
     }
 
     @PostMapping
@@ -47,6 +53,12 @@ public class ProviderController {
     public ResponseEntity<String> deleteProvider(@PathVariable Long id) {
         providerService.deleteProvider(id);
         return ResponseEntity.ok("Provider deleted successfully");
+    }
+
+    @PostMapping("/{id}/index")
+    public ResponseEntity<Void> indexProvider(@PathVariable Long id) {
+        providerService.indexProviderExplicitly(id);
+        return ResponseEntity.ok().build();
     }
 
     @PutMapping("/{id}/availability")
@@ -78,6 +90,18 @@ public class ProviderController {
         return ResponseEntity.ok(providerService.searchProviders(status, minRating, maxRating));
     }
 
+   @GetMapping("/search/full-text")
+    public ResponseEntity<List<ProviderSearchDocument>> fullTextSearch(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String specialty,
+            @RequestParam(required = false) String pricingTier,
+            @RequestParam(required = false) Provider.ProviderStatus status,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating) {
+        return ResponseEntity.ok(
+                providerFullTextSearchService.search(query, specialty, pricingTier, status, minRating, maxRating));
+    }
+
     @GetMapping("/pricing-tier")
     public List<Provider> filterByPricingTier(
             @RequestParam String tier,
@@ -92,5 +116,10 @@ public class ProviderController {
         @RequestBody VerifiedBy verifiedBy
     ) {
         return providerService.verifyCertificate(providerId, certificationId, verifiedBy);
+    }
+
+    @GetMapping("/{id}/dashboard")
+    public ProviderDashboardDTO getProviderDashboard(@PathVariable Long id) {
+        return providerService.logAndGetProviderDashboard(id);
     }
 }
