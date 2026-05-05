@@ -53,4 +53,4 @@ implementation_plan.md
 calendar-service-ms02-f10-f11.md
 MS02_extracted.txt
 *.txt
-\n# Grader Cache\n.grader-cache/
+.grader-cache/
