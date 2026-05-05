@@ -197,6 +197,9 @@ public class BookingService extends Observable {
             if (service.duration() <= 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service duration must be positive");
             }
+            if (service.price() < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service price must not be negative");
+            }
         }
 
         int totalDuration = request.services().stream()
