@@ -387,6 +387,7 @@ public class TimeSlotService extends Observable {
         cacheInvalidator.wildcardDelete("calendar-service::S4-F8::*");
         cacheInvalidator.wildcardDelete("calendar-service::S4-F9::*");
         cacheInvalidator.wildcardDelete("calendar-service::S4-F10::*");
+        cacheInvalidator.wildcardDelete("calendar-service::S4-F12::*");
     }
 
     private void validateTimeRange(TimeSlot timeSlot) {

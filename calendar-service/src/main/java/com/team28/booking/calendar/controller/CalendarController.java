@@ -2,8 +2,13 @@ package com.team28.booking.calendar.controller;
 
 import com.team28.booking.calendar.dto.AvailabilitySnapshotRequest;
 import com.team28.booking.calendar.dto.CalendarAnalyticsDTO;
+import com.team28.booking.calendar.service.AvailabilityHistoryService;
 import com.team28.booking.calendar.service.CalendarAnalyticsService;
 import com.team28.booking.calendar.service.TimeSlotService;
+import com.team28.booking.calendar.dto.AvailabilitySnapshotDTO;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.Instant;
+import java.util.List;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,11 +37,14 @@ public class CalendarController {
 
     private final CalendarAnalyticsService calendarAnalyticsService;
     private final TimeSlotService timeSlotService;
+    private final AvailabilityHistoryService availabilityHistoryService;
 
     public CalendarController(CalendarAnalyticsService calendarAnalyticsService,
-                              TimeSlotService timeSlotService) {
+                              TimeSlotService timeSlotService,
+                              AvailabilityHistoryService availabilityHistoryService) {
         this.calendarAnalyticsService = calendarAnalyticsService;
         this.timeSlotService = timeSlotService;
+        this.availabilityHistoryService = availabilityHistoryService;
     }
 
     /**
@@ -65,6 +73,23 @@ public class CalendarController {
             @PathVariable Long providerId,
             @Valid @RequestBody AvailabilitySnapshotRequest request) {
         timeSlotService.recordAvailabilitySnapshot(providerId, request);
+    }
+
+    /**
+     * GET /api/calendar/{providerId}/availability-history
+     * S4-F12: Get Provider Availability History.
+     */
+    @GetMapping("/{providerId}/availability-history")
+    public List<AvailabilitySnapshotDTO> getAvailabilityHistory(
+            @PathVariable Long providerId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startTime,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endTime) {
+
+        if (startTime != null && endTime != null && startTime.isAfter(endTime)) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "startTime must be before or equal to endTime");
+        }
+        return availabilityHistoryService.getAvailabilityHistory(providerId, startTime, endTime);
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
