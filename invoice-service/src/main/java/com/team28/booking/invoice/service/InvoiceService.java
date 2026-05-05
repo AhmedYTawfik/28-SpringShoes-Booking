@@ -22,6 +22,7 @@ import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
+import com.team28.booking.invoice.dto.ServiceTypeRevenueDTO;
 import com.team28.booking.invoice.dto.UserInvoiceSummaryDTO;
 import com.team28.booking.invoice.exception.BadRequestException;
 import com.team28.booking.invoice.exception.ResourceNotFoundException;
@@ -353,6 +354,48 @@ public class InvoiceService extends Observable {
         return completed;
     }
 
+    /** S5-F10: revenue by provider specialty — 10 min TTL (§10.5.1). */
+    @Cacheable(cacheNames = "invoice-service::S5-F10",
+               key = "T(java.util.Objects).hash(#startDate, #endDate)")
+    public List<ServiceTypeRevenueDTO> getRevenueByServiceType(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new BadRequestException("startDate must not be after endDate");
+        }
+        LocalDateTime from = startDate.atStartOfDay();
+        LocalDateTime to   = endDate.atTime(23, 59, 59, 999_000_000);
+
+        List<Object[]> rows = invoiceRepository.getRevenueByServiceType(from, to);
+        List<ServiceTypeRevenueDTO> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            BigDecimal cancellationFeeRevenue = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
+            BigDecimal netBookingRevenue      = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
+            long       bookingCount           = row[3] != null ? ((Number) row[3]).longValue() : 0L;
+            long       cancelledCount         = row[4] != null ? ((Number) row[4]).longValue() : 0L;
+
+            BigDecimal totalRevenue    = cancellationFeeRevenue.add(netBookingRevenue);
+            BigDecimal cancellationRate = bookingCount > 0
+                    ? BigDecimal.valueOf(cancelledCount).divide(BigDecimal.valueOf(bookingCount), 4, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+
+            result.add(ServiceTypeRevenueDTO.builder()
+                    .specialty(row[0] != null ? row[0].toString() : "UNKNOWN")
+                    .totalRevenue(totalRevenue)
+                    .cancellationFeeRevenue(cancellationFeeRevenue)
+                    .netBookingRevenue(netBookingRevenue)
+                    .bookingCount(bookingCount)
+                    .cancellationRate(cancellationRate)
+                    .build());
+        }
+        return result;
+    }
+
+    /** Emit ANALYTICS_VIEWED unconditionally — must fire even on cache hits (§4.4.4). */
+    public void emitAnalyticsViewed(String featureId) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("feature", featureId);
+        notifyObservers("ANALYTICS_VIEWED", payload);
+    }
+
     /** S5-F6: revenue report — 10 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "invoice-service::S5-F6",
                key = "T(java.util.Objects).hash(#startDate, #endDate)")
@@ -432,6 +475,8 @@ public class InvoiceService extends Observable {
         cacheInvalidator.wildcardDelete("invoice-service::S5-F3::*");
         cacheInvalidator.wildcardDelete("invoice-service::S5-F6::*");
         cacheInvalidator.wildcardDelete("invoice-service::S5-F9::*");
+        cacheInvalidator.wildcardDelete("invoice-service::S5-F10::*");
+        cacheInvalidator.wildcardDelete("invoice-service::S5-F11::*");
     }
 
     protected void emitAfterCommit(String action, Map<String, Object> payload) {

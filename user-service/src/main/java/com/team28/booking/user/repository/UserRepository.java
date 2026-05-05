@@ -72,6 +72,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.savedAddresses WHERE u.id = :userId")
     Optional<User> findByIdWithSavedAddresses(@Param("userId") Long userId);
 
+    boolean existsByEmail(String email);
+
+    boolean existsByPhone(String phone);
+
+    Optional<User> findByEmail(String email);
+
     // S1-F9: Filter users by language preference and minimum completed bookings.
     @Query(value = "SELECT u.* " +
             "FROM users u " +

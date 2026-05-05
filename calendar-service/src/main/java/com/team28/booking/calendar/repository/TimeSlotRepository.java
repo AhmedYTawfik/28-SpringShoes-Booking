@@ -113,4 +113,43 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
     @Transactional
     @Query(value = "DELETE FROM time_slots WHERE date < :cutoffDate", nativeQuery = true)
     int deleteByDateBefore(@Param("cutoffDate") LocalDate cutoffDate);
+
+    // ── S4-F10: Calendar Analytics Dashboard ─────────────────────────────────
+
+    @Query(value = """
+            SELECT
+                COUNT(*) AS totalSlots,
+                COUNT(*) FILTER (WHERE available = true) AS availableSlots,
+                COUNT(*) FILTER (WHERE available = false) AS bookedSlots
+            FROM time_slots
+            WHERE date >= :startDate AND date <= :endDate
+            """, nativeQuery = true)
+    Object[] getAnalyticsStats(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @Query(value = """
+            SELECT CAST(date AS TEXT) AS slotDate, COUNT(*) AS cnt
+            FROM time_slots
+            WHERE date >= :startDate AND date <= :endDate
+            GROUP BY date
+            ORDER BY date
+            """, nativeQuery = true)
+    List<Object[]> getSlotsByDate(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    // ── S4-F11: Record Provider Availability Snapshot ─────────────────────────
+
+    @Query(value = """
+            SELECT
+                COUNT(*) AS totalSlots,
+                COUNT(*) FILTER (WHERE available = true) AS availableSlots,
+                COUNT(*) FILTER (WHERE available = false) AS bookedSlots
+            FROM time_slots
+            WHERE provider_id = :providerId AND date = :date
+            """, nativeQuery = true)
+    Object[] getSnapshotStats(
+            @Param("providerId") Long providerId,
+            @Param("date") LocalDate date);
 }

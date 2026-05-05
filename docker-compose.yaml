@@ -50,10 +50,10 @@ services:
       - es-data:/usr/share/elasticsearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
 
   mongo:
     image: mongo:latest
@@ -67,10 +67,11 @@ services:
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --eval \"db.adminCommand('ping')\""]
+      test: ["CMD-SHELL", "mongosh --username root --password rootpass --authenticationDatabase admin --eval \"db.adminCommand('ping')\" --quiet"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   neo4j:
     image: neo4j:latest
@@ -88,8 +89,8 @@ services:
       test: ["CMD-SHELL", "neo4j status"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 60s
 
   redis:
     image: redis:latest

@@ -2,19 +2,27 @@ package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.cache.CacheInvalidator;
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.dto.EstimateServiceItemDTO;
+import com.team28.booking.booking.dto.ProviderRecommendationDTO;
 import com.team28.booking.booking.dto.ServiceDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.model.BookingItem;
+import com.team28.booking.booking.neo4j.UserNodeRepository;
 import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.observer.Observable;
 import com.team28.booking.booking.repository.BookingRepository;
 import jakarta.annotation.PostConstruct;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -27,10 +35,12 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class BookingService extends Observable {
@@ -38,13 +48,19 @@ public class BookingService extends Observable {
     private final BookingRepository bookingRepository;
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidator cacheInvalidator;
+    private final CacheManager cacheManager;
+    private final UserNodeRepository userNodeRepository;
 
     public BookingService(BookingRepository bookingRepository,
                           MongoEventLogger mongoEventLogger,
-                          CacheInvalidator cacheInvalidator) {
+                          CacheInvalidator cacheInvalidator,
+                          CacheManager cacheManager,
+                          UserNodeRepository userNodeRepository) {
         this.bookingRepository = bookingRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
+        this.cacheManager = cacheManager;
+        this.userNodeRepository = userNodeRepository;
     }
 
     @PostConstruct
@@ -288,6 +304,80 @@ public class BookingService extends Observable {
                 totalRevenue, averageBookingPrice, completionRate);
     }
 
+    /**
+     * S3-F10: booking analytics dashboard over a date range — 10 min TTL (§4.4.1).
+     * MongoDB ANALYTICS_VIEWED log is written outside the cache layer so it fires on every
+     * call, including cache hits (spec §10.3.1 d).
+     */
+    public BookingAnalyticsDashboardDTO getDashboardAnalytics(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "startDate must be on or before endDate");
+        }
+
+        // Log ANALYTICS_VIEWED on every invocation — outside cache, per spec §10.3.1 d
+        logAnalyticsViewed(startDate, endDate);
+
+        // Programmatic cache check — avoids AOP self-invocation limitation
+        String cacheKey = String.valueOf(Objects.hash(startDate, endDate));
+        Cache cache = cacheManager.getCache("booking-service::S3-F10");
+        if (cache != null) {
+            Cache.ValueWrapper wrapper = cache.get(cacheKey);
+            if (wrapper != null) {
+                return (BookingAnalyticsDashboardDTO) wrapper.get();
+            }
+        }
+
+        BookingAnalyticsDashboardDTO result = computeDashboardAnalytics(startDate, endDate);
+
+        if (cache != null) {
+            cache.put(cacheKey, result);
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    BookingAnalyticsDashboardDTO computeDashboardAnalytics(LocalDate startDate, LocalDate endDate) {
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        Object[] agg = bookingRepository.getDashboardAggregates(startDateTime, endDateTime);
+        Object[] row = (agg.length > 0 && agg[0] instanceof Object[]) ? (Object[]) agg[0] : agg;
+
+        long totalBookings    = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        BigDecimal totalRevenue       = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
+        BigDecimal averageBookingValue = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
+
+        List<Object[]> statusRows = bookingRepository.getDashboardStatusBreakdown(startDateTime, endDateTime);
+        Map<String, Long> bookingsByStatus = new LinkedHashMap<>();
+        long completedCount = 0L;
+        for (Object[] statusRow : statusRows) {
+            String status = (String) statusRow[0];
+            long count = ((Number) statusRow[1]).longValue();
+            bookingsByStatus.put(status, count);
+            if ("COMPLETED".equals(status)) {
+                completedCount = count;
+            }
+        }
+
+        double completionRate = totalBookings > 0 ? (double) completedCount / totalBookings : 0.0;
+
+        return BookingAnalyticsDashboardDTO.builder()
+                .totalBookings(totalBookings)
+                .totalRevenue(totalRevenue)
+                .averageBookingValue(averageBookingValue)
+                .completionRate(completionRate)
+                .bookingsByStatus(bookingsByStatus)
+                .build();
+    }
+
+    private void logAnalyticsViewed(LocalDate startDate, LocalDate endDate) {
+        Map<String, Object> params = Map.of("action", "ANALYTICS_VIEWED",
+                "startDate", startDate.toString(),
+                "endDate", endDate.toString());
+        mongoEventLogger.onEvent("ANALYTICS_VIEWED", params);
+    }
+
     /** S3-F9: booking detail with sorted service items and completion summary. */
     @Cacheable(cacheNames = "booking-service::S3-F9",
                key = "#id")
@@ -328,6 +418,82 @@ public class BookingService extends Observable {
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
+    }
+
+    /**
+     * S3-F12: Get provider recommendations for a user using Neo4j collaborative filtering.
+     *
+     * @param userId   the PG user ID to recommend for
+     * @param limit    max number of recommendations (default 5)
+     * @return ranked list of ProviderRecommendationDTO
+     */
+    @Cacheable(cacheNames = "booking-service::S3-F12",
+               key = "T(java.util.Objects).hash(#userId, #limit)")
+    @Transactional(readOnly = true)
+    public List<ProviderRecommendationDTO> getRecommendations(Long userId, int limit) {
+        // a) Ownership check: caller must be the user themselves or an ADMIN
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities() != null) {
+            boolean isAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+            if (!isAdmin) {
+                // Extract uid claim from principal (stored as Map<String,Object> by UserLoaderHandler)
+                Object principal = auth.getPrincipal();
+                Long callerUid = null;
+                if (principal instanceof Map<?, ?> map) {
+                    Object idVal = map.get("id");
+                    if (idVal != null) callerUid = ((Number) idVal).longValue();
+                }
+                if (callerUid == null || !callerUid.equals(userId)) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "Access denied: you can only view your own recommendations");
+                }
+            }
+        }
+
+        // c) Verify user exists in PG
+        if (!bookingRepository.existsUserById(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "User not found with id: " + userId);
+        }
+
+        // d) Traverse the Neo4j recommendation graph
+        List<Map<String, Object>> neo4jResults =
+                userNodeRepository.findRecommendations(userId, limit);
+
+        if (neo4jResults.isEmpty()) {
+            return List.of();
+        }
+
+        // e) Collect provider IDs and enrich with PG name/specialty
+        List<Long> providerIds = neo4jResults.stream()
+                .map(r -> ((Number) r.get("providerId")).longValue())
+                .collect(Collectors.toList());
+
+        List<Object[]> pgRows = bookingRepository.findProvidersByIds(providerIds);
+
+        // Build a lookup map: providerId -> {name, specialty}
+        Map<Long, Object[]> providerMap = pgRows.stream()
+                .collect(Collectors.toMap(
+                        row -> ((Number) row[0]).longValue(),
+                        row -> row));
+
+        // f) Assemble DTOs preserving Neo4j ranking order
+        return neo4jResults.stream()
+                .map(r -> {
+                    Long pid = ((Number) r.get("providerId")).longValue();
+                    long score = ((Number) r.get("score")).longValue();
+                    Object[] pRow = providerMap.get(pid);
+                    String name = pRow != null && pRow[1] != null ? pRow[1].toString() : "";
+                    String specialty = pRow != null && pRow[2] != null ? pRow[2].toString() : "";
+                    return ProviderRecommendationDTO.builder()
+                            .providerId(pid)
+                            .name(name)
+                            .specialty(specialty)
+                            .score(score)
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────

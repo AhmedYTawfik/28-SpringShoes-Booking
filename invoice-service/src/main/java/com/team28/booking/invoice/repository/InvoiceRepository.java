@@ -72,4 +72,35 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     // Verify user exists (cross-service query)
     @Query(value = "SELECT id FROM users WHERE id = :userId", nativeQuery = true)
     Long findUserById(@Param("userId") Long userId);
+
+    // S5-F10: revenue by provider specialty, with cancellation fee breakdown (§10.5.1)
+    @Query(value = """
+        SELECT
+            p.specialty,
+            COALESCE(SUM(
+                CASE WHEN i.status IN ('COMPLETED', 'REFUNDED')
+                     THEN COALESCE(CAST(i.transaction_details->>'cancellationFee' AS NUMERIC), 0)
+                     ELSE 0 END
+            ), 0)                                                                   AS cancellation_fee_revenue,
+            COALESCE(SUM(
+                CASE WHEN i.status = 'COMPLETED'
+                          THEN COALESCE(i.amount, 0)
+                     WHEN i.status = 'REFUNDED'
+                          THEN COALESCE(i.amount, 0)
+                               - COALESCE(CAST(i.transaction_details->>'refundAmount' AS NUMERIC), 0)
+                     ELSE 0 END
+            ), 0)                                                                   AS net_booking_revenue,
+            COUNT(DISTINCT b.id)                                                    AS booking_count,
+            COALESCE(SUM(CASE WHEN b.status = 'CANCELLED' THEN 1 ELSE 0 END), 0)  AS cancelled_count
+        FROM bookings b
+        JOIN providers p     ON p.id = b.provider_id
+        LEFT JOIN invoices i ON i.booking_id = b.id
+        WHERE b.requested_at >= :startDate
+          AND b.requested_at <= :endDate
+        GROUP BY p.specialty
+        ORDER BY (cancellation_fee_revenue + net_booking_revenue) DESC
+        """, nativeQuery = true)
+    List<Object[]> getRevenueByServiceType(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
 }

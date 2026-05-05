@@ -2,9 +2,11 @@ package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.cache.CacheInvalidator;
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.model.BookingItem;
+import com.team28.booking.booking.neo4j.UserNodeRepository;
 import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.repository.BookingRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -38,6 +42,12 @@ public class BookingServiceTest {
 
     @Mock
     private CacheInvalidator cacheInvalidator;
+
+    @Mock
+    private CacheManager cacheManager;
+
+    @Mock
+    private UserNodeRepository userNodeRepository;
 
     @InjectMocks
     private BookingService bookingService;
@@ -407,5 +417,94 @@ public class BookingServiceTest {
 
         assertTrue(result.isEmpty());
         verify(bookingRepository).searchBookingsByStatusAndDate(isNull(), any(), any());
+    }
+
+    // --- S3-F10: getDashboardAnalytics ---
+
+    @Test
+    void getDashboardAnalytics_startAfterEnd_throws400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> bookingService.getDashboardAnalytics(
+                        LocalDate.of(2026, 4, 1), LocalDate.of(2026, 3, 1)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(bookingRepository, never()).getDashboardAggregates(any(), any());
+    }
+
+    @Test
+    void getDashboardAnalytics_noBookings_returnsZeros() {
+        LocalDate start = LocalDate.of(2026, 1, 1);
+        LocalDate end   = LocalDate.of(2026, 1, 31);
+
+        Cache mockCache = mock(Cache.class);
+        when(cacheManager.getCache("booking-service::S3-F10")).thenReturn(mockCache);
+        when(mockCache.get(any())).thenReturn(null);
+
+        Object[] aggRow = new Object[]{0L, new BigDecimal("0.00"), new BigDecimal("0.00")};
+        when(bookingRepository.getDashboardAggregates(any(), any())).thenReturn(aggRow);
+        when(bookingRepository.getDashboardStatusBreakdown(any(), any())).thenReturn(List.of());
+
+        BookingAnalyticsDashboardDTO dto = bookingService.getDashboardAnalytics(start, end);
+
+        assertEquals(0L, dto.totalBookings());
+        assertEquals(0, dto.totalRevenue().compareTo(BigDecimal.ZERO));
+        assertEquals(0.0, dto.completionRate(), 0.001);
+        assertTrue(dto.bookingsByStatus().isEmpty());
+    }
+
+    @Test
+    void getDashboardAnalytics_withBookings_returnsCorrectAggregates() {
+        LocalDate start = LocalDate.of(2026, 3, 1);
+        LocalDate end   = LocalDate.of(2026, 3, 31);
+
+        Cache mockCache = mock(Cache.class);
+        when(cacheManager.getCache("booking-service::S3-F10")).thenReturn(mockCache);
+        when(mockCache.get(any())).thenReturn(null);
+
+        Object[] aggRow = new Object[]{10L, new BigDecimal("600.00"), new BigDecimal("100.00")};
+        when(bookingRepository.getDashboardAggregates(any(), any())).thenReturn(aggRow);
+
+        List<Object[]> statusRows = List.of(
+                new Object[]{"COMPLETED", 6L},
+                new Object[]{"CANCELLED", 2L},
+                new Object[]{"REQUESTED", 2L}
+        );
+        when(bookingRepository.getDashboardStatusBreakdown(any(), any())).thenReturn(statusRows);
+
+        BookingAnalyticsDashboardDTO dto = bookingService.getDashboardAnalytics(start, end);
+
+        assertEquals(10L, dto.totalBookings());
+        assertEquals(new BigDecimal("600.00"), dto.totalRevenue());
+        assertEquals(new BigDecimal("100.00"), dto.averageBookingValue());
+        assertEquals(0.6, dto.completionRate(), 0.001);
+        assertEquals(6L, dto.bookingsByStatus().get("COMPLETED"));
+        assertEquals(2L, dto.bookingsByStatus().get("CANCELLED"));
+        assertEquals(2L, dto.bookingsByStatus().get("REQUESTED"));
+    }
+
+    @Test
+    void getDashboardAnalytics_logsAnalyticsViewedOnEveryCall() {
+        LocalDate start = LocalDate.of(2026, 3, 1);
+        LocalDate end   = LocalDate.of(2026, 3, 31);
+
+        Cache mockCache = mock(Cache.class);
+        when(cacheManager.getCache("booking-service::S3-F10")).thenReturn(mockCache);
+
+        // First call is a cache miss
+        when(mockCache.get(any())).thenReturn(null);
+        Object[] aggRow = new Object[]{0L, BigDecimal.ZERO, BigDecimal.ZERO};
+        when(bookingRepository.getDashboardAggregates(any(), any())).thenReturn(aggRow);
+        when(bookingRepository.getDashboardStatusBreakdown(any(), any())).thenReturn(List.of());
+        bookingService.getDashboardAnalytics(start, end);
+
+        // Second call simulates a cache hit
+        Cache.ValueWrapper wrapper = mock(Cache.ValueWrapper.class);
+        when(mockCache.get(any())).thenReturn(wrapper);
+        when(wrapper.get()).thenReturn(new BookingAnalyticsDashboardDTO(
+                0L, BigDecimal.ZERO, BigDecimal.ZERO, 0.0, java.util.Map.of()));
+        bookingService.getDashboardAnalytics(start, end);
+
+        // ANALYTICS_VIEWED must be logged on both calls
+        verify(mongoEventLogger, times(2)).onEvent(eq("ANALYTICS_VIEWED"), any());
     }
 }
