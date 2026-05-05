@@ -64,6 +64,13 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.searchByMetadata(key, value));
     }
   
+    @PutMapping("/{id}/assign")
+    public ResponseEntity<Booking> assignProvider(
+            @PathVariable Long id,
+            @RequestParam Long providerId) {
+        return ResponseEntity.ok(bookingService.assignProvider(id, providerId));
+    }
+
     @PutMapping("/{id}/complete")
     public ResponseEntity<Booking> completeBooking(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.completeBooking(id));
