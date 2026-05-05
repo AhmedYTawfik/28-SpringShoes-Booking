@@ -1,9 +1,6 @@
 package com.team28.booking.provider.controller;
 
-import com.team28.booking.provider.dto.ProviderDashboardDTO;
-import com.team28.booking.provider.dto.UpdateAvailabilityRequest;
-import com.team28.booking.provider.dto.ProviderEarningsDTO;
-import com.team28.booking.provider.dto.VerifiedBy;
+import com.team28.booking.provider.dto.*;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.search.ProviderSearchDocument;
 import com.team28.booking.provider.service.ProviderFullTextSearchService;
@@ -20,6 +17,7 @@ import java.util.Map;
 public class ProviderController {
     private final ProviderService providerService;
     private final ProviderFullTextSearchService providerFullTextSearchService;
+
 
     public ProviderController(ProviderService providerService,
                               ProviderFullTextSearchService providerFullTextSearchService) {
@@ -121,5 +119,19 @@ public class ProviderController {
     @GetMapping("/{id}/dashboard")
     public ProviderDashboardDTO getProviderDashboard(@PathVariable Long id) {
         return providerService.logAndGetProviderDashboard(id);
+    }
+
+    @PostMapping("/{id}/rate")
+    public void rateProvider(
+            @PathVariable Long id, @RequestBody RateProviderDTO rateProvider
+    ) {
+        providerService.rateProvider(id, rateProvider);
+    }
+
+    @GetMapping("/reports/top-rated")
+    public List<TopProviderDTO> getTopProviders(
+            @RequestParam(required = false, defaultValue = "0") int limit
+    ) {
+        return providerService.getTopRatedProviders(limit);
     }
 }
