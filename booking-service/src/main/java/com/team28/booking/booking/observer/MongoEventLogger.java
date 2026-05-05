@@ -23,7 +23,8 @@ public class MongoEventLogger implements EntityObserver {
     // Actions that mutate booking state and should trigger cache invalidation (§4.4.4)
     private static final Set<String> INVALIDATING_ACTIONS = Set.of(
             "BOOKING_CREATED", "BOOKING_DELETED", "PROVIDER_ASSIGNED",
-            "BOOKING_COMPLETED", "BOOKING_CANCELLED", "SERVICES_ADDED"
+            "BOOKING_COMPLETED", "BOOKING_CANCELLED", "SERVICES_ADDED",
+            "INTERACTION_RECORDED"
     );
 
     private final EventFactory factory;

@@ -37,7 +37,18 @@ public interface UserNodeRepository extends Neo4jRepository<UserNode, Long> {
         ORDER BY score DESC
         LIMIT $limit
         """)
-    List<Map<String, Object>> findRecommendations(
+        List<Map<String, Object>> findRecommendations(
             @Param("userId") Long userId,
             @Param("limit") int limit);
+
+    @Query("OPTIONAL MATCH (u:User {userId: $userId})-[r:BOOKED]->(p:Provider {providerId: $providerId}) " +
+           "RETURN $bookingId IN coalesce(r.recorded_booking_ids, [])")
+    Boolean hasRecordedBooking(@Param("userId") Long userId, @Param("providerId") Long providerId, @Param("bookingId") Long bookingId);
+
+    @Query("MERGE (u:User {userId: $userId}) " +
+           "MERGE (p:Provider {providerId: $providerId}) " +
+           "MERGE (u)-[r:BOOKED]->(p) " +
+           "ON CREATE SET r.bookingCount = 1, r.lastBookingDate = localdatetime(), r.recorded_booking_ids = [$bookingId] " +
+           "ON MATCH SET r.bookingCount = r.bookingCount + 1, r.lastBookingDate = localdatetime(), r.recorded_booking_ids = coalesce(r.recorded_booking_ids, []) + $bookingId")
+    void recordInteraction(@Param("userId") Long userId, @Param("providerId") Long providerId, @Param("bookingId") Long bookingId);
 }

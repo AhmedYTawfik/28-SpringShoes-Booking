@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -99,6 +100,13 @@ public class BookingController {
     @GetMapping("/{id}/details")
     public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.getBookingDetails(id));
+    }
+
+    /** S3-F11: Record User-Provider Booking Pattern */
+    @PostMapping("/{bookingId}/record-interaction")
+    public ResponseEntity<Map<String, Object>> recordInteraction(@PathVariable Long bookingId) {
+        bookingService.recordInteraction(bookingId);
+        return ResponseEntity.ok(Map.of("message", "Interaction recorded successfully"));
     }
 
     /** S3-F12: Get provider recommendations for a user (collaborative filtering via Neo4j). */

@@ -28,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.EmptyResultDataAccessException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -50,17 +52,20 @@ public class BookingService extends Observable {
     private final CacheInvalidator cacheInvalidator;
     private final CacheManager cacheManager;
     private final UserNodeRepository userNodeRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public BookingService(BookingRepository bookingRepository,
                           MongoEventLogger mongoEventLogger,
                           CacheInvalidator cacheInvalidator,
                           CacheManager cacheManager,
-                          UserNodeRepository userNodeRepository) {
+                          UserNodeRepository userNodeRepository,
+                          JdbcTemplate jdbcTemplate) {
         this.bookingRepository = bookingRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
         this.cacheManager = cacheManager;
         this.userNodeRepository = userNodeRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @PostConstruct
@@ -494,6 +499,52 @@ public class BookingService extends Observable {
                             .build();
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * S3-F11: Record User-Provider Booking Pattern
+     *
+     * @param bookingId the booking to record
+     */
+    @Transactional
+    public void recordInteraction(Long bookingId) {
+        Booking booking = findById(bookingId);
+
+        if (booking.getStatus() != Booking.Status.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be COMPLETED to record interaction");
+        }
+
+        Long userId = booking.getUserId();
+        Long providerId = booking.getProviderId();
+
+        if (providerId == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking has no provider assigned");
+        }
+
+        Boolean alreadyRecorded = userNodeRepository.hasRecordedBooking(userId, providerId, bookingId);
+        if (Boolean.TRUE.equals(alreadyRecorded)) {
+            return;
+        }
+
+        try {
+            jdbcTemplate.queryForObject("SELECT id FROM users WHERE id = ?", Long.class, userId);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId);
+        }
+
+        try {
+            jdbcTemplate.queryForObject("SELECT id FROM providers WHERE id = ?", Long.class, providerId);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found: " + providerId);
+        }
+
+        userNodeRepository.recordInteraction(userId, providerId, bookingId);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("bookingId", bookingId);
+        payload.put("userId", userId);
+        payload.put("providerId", providerId);
+        emitAfterCommit("INTERACTION_RECORDED", payload);
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
