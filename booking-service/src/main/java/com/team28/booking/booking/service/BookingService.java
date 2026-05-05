@@ -25,6 +25,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.EmptyResultDataAccessException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -434,13 +435,26 @@ public class BookingService extends Observable {
         Long userId = booking.getUserId();
         Long providerId = booking.getProviderId();
 
+        if (providerId == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking has no provider assigned");
+        }
+
         Boolean alreadyRecorded = userNodeRepository.hasRecordedBooking(userId, providerId, bookingId);
         if (Boolean.TRUE.equals(alreadyRecorded)) {
             return;
         }
 
-        jdbcTemplate.queryForObject("SELECT id FROM users WHERE id = ?", Long.class, userId);
-        jdbcTemplate.queryForObject("SELECT id FROM providers WHERE id = ?", Long.class, providerId);
+        try {
+            jdbcTemplate.queryForObject("SELECT id FROM users WHERE id = ?", Long.class, userId);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId);
+        }
+
+        try {
+            jdbcTemplate.queryForObject("SELECT id FROM providers WHERE id = ?", Long.class, providerId);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found: " + providerId);
+        }
 
         userNodeRepository.recordInteraction(userId, providerId, bookingId);
 
