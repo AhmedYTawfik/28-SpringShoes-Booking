@@ -10,12 +10,15 @@ import com.team28.booking.user.dto.LoginRequest;
 import com.team28.booking.user.dto.RegisterRequest;
 import com.team28.booking.user.dto.SavedAddressDTO;
 import com.team28.booking.user.dto.TopClientDTO;
+import com.team28.booking.user.dto.UserActivityFeedDTO;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.dto.UserProfileDTO;
 import com.team28.booking.user.model.SavedAddress;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.model.User.Role;
 import com.team28.booking.user.model.User.Status;
+import com.team28.booking.user.mongo.AuthEvent;
+import com.team28.booking.user.mongo.AuthEventRepository;
 import com.team28.booking.user.observer.MongoEventLogger;
 import com.team28.booking.user.observer.Observable;
 import com.team28.booking.user.repository.SavedAddressRepository;
@@ -26,6 +29,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.crossstore.ChangeSetPersister.NotFoundException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +53,9 @@ public class UserService extends Observable {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private AuthEventRepository authEventRepository;
 
     @Autowired
     private SavedAddressRepository savedAddressRepository;
@@ -382,6 +393,25 @@ public class UserService extends Observable {
         return topClients;
     }
 
+    /**
+     * S1-F12: user activity feed (auth events) — 5 min TTL (§4.4.1).
+     */
+    @Cacheable(cacheNames = "user-service::S1-F12", key = "T(java.util.Objects).hash(#id, #page, #size)")
+    public UserActivityFeedDTO getUserActivityFeed(Long id, int page, int size)
+            throws NotFoundException {
+
+        User user = findById(id);
+        if (user == null) {
+            throw new NotFoundException();
+        }
+
+        Page<AuthEvent> pageResult = authEventRepository.findByUserIdOrderByTimestampDesc(id,
+                PageRequest.of(page, size));
+        List<AuthEvent> authEvents = pageResult.getContent();
+        int totalElements = pageResult.getNumberOfElements();
+
+        return UserActivityFeedDTO.build(authEvents, page, Math.max(1, Math.min(100, size)), totalElements);
+    }
     // ── internal helpers ─────────────────────────────────────────────────────
 
     /** Invalidate entity detail + all feature caches on any user write (§4.4.4). */
@@ -396,6 +426,7 @@ public class UserService extends Observable {
         cacheInvalidator.wildcardDelete("user-service::S1-F8::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F9::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F10::*");
+        cacheInvalidator.wildcardDelete("user-service::S1-F12::*");
     }
 
     private void validateDateRange(String startDate, String endDate) {
