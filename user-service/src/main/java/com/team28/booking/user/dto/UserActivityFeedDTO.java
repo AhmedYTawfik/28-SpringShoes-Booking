@@ -11,7 +11,7 @@ public record UserActivityFeedDTO(
         int size,
         int totalElements) {
 
-    public UserActivityFeedDTO(List<AuthEvent> authEvents, int page, int size) {
+    public static UserActivityFeedDTO build(List<AuthEvent> authEvents, int page, int size, int totalElements) {
         List<UserActivity> userActivities = new ArrayList<>();
 
         for (AuthEvent authEvent : authEvents) {
@@ -20,6 +20,6 @@ public record UserActivityFeedDTO(
             userActivities.add(userActivity);
         }
 
-        this(userActivities, page, size, userActivities.size());
+        return new UserActivityFeedDTO(userActivities, page, size, totalElements);
     }
 }

@@ -408,8 +408,9 @@ public class UserService extends Observable {
         Page<AuthEvent> pageResult = authEventRepository.findByUserIdOrderByTimestampDesc(id,
                 PageRequest.of(page, size));
         List<AuthEvent> authEvents = pageResult.getContent();
+        int totalElements = pageResult.getNumberOfElements();
 
-        return new UserActivityFeedDTO(authEvents, page, Math.min(100, size));
+        return UserActivityFeedDTO.build(authEvents, page, Math.max(1, Math.min(100, size)), totalElements);
     }
     // ── internal helpers ─────────────────────────────────────────────────────
 

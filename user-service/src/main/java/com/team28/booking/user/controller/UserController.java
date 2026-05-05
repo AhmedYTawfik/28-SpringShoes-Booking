@@ -233,6 +233,9 @@ public class UserController {
                     "Caller is neither the target user nor the an Admin");
         }
         try {
+            if (size < 1 || page < 0) {
+                return ResponseEntity.badRequest().build();
+            }
             UserActivityFeedDTO userActivityFeedDTO = userService.getUserActivityFeed(id, page, size);
             return ResponseEntity.ok(userActivityFeedDTO);
         } catch (NotFoundException e) {
