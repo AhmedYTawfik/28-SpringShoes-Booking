@@ -77,8 +77,8 @@ public class BookingController {
     @GetMapping("/search")
     public ResponseEntity<List<Booking>> searchBookings(
             @RequestParam(required = false) Booking.Status status,
-            @RequestParam LocalDate startDate,
-            @RequestParam LocalDate endDate) {
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate) {
         return ResponseEntity.ok(bookingService.searchBookings(
                 status != null ? status.name() : null, startDate, endDate));
     }

@@ -203,7 +203,15 @@ public class BookingService extends Observable {
                 .mapToInt(EstimateServiceItemDTO::duration)
                 .sum();
 
-        BigDecimal basePrice = BigDecimal.valueOf(5.0).multiply(BigDecimal.valueOf(totalDuration));
+        BigDecimal basePrice = request.services().stream()
+                .map(s -> BigDecimal.valueOf(s.price()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Verify provider exists
+        if (!bookingRepository.existsProviderById(request.providerId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Provider not found with id: " + request.providerId());
+        }
 
         Long activeCount = bookingRepository.countActiveBookingsByProviderAndDate(
                 request.providerId(), request.appointmentDate());
@@ -272,6 +280,12 @@ public class BookingService extends Observable {
                key = "T(java.util.Objects).hash(#status, #startDate, #endDate)")
     @Transactional(readOnly = true)
     public List<Booking> searchBookings(String status, LocalDate startDate, LocalDate endDate) {
+        if (startDate == null) startDate = LocalDate.of(1970, 1, 1);
+        if (endDate == null) endDate = LocalDate.of(9999, 12, 31);
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "startDate must not be after endDate");
+        }
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
         return bookingRepository.searchBookingsByStatusAndDate(status, startDateTime, endDateTime);
@@ -302,7 +316,7 @@ public class BookingService extends Observable {
         BigDecimal averageBookingPrice = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
 
         double completionRate = totalBookings > 0
-                ? ((double) completedBookings / totalBookings) * 100.0
+                ? (double) completedBookings / totalBookings
                 : 0.0;
 
         return new BookingAnalyticsDTO(totalBookings, completedBookings, cancelledBookings,
