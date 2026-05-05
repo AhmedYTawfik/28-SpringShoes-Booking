@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -30,6 +31,9 @@ class RevenueReportServiceTest {
 
     @Mock
     private CacheInvalidator cacheInvalidator;
+
+    @Spy
+    private com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
     @InjectMocks
     private InvoiceService invoiceService;

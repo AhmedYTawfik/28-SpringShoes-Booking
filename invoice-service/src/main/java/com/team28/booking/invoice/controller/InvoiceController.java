@@ -22,6 +22,7 @@ import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RefundRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
+import com.team28.booking.invoice.dto.ServiceTypeRevenueDTO;
 import com.team28.booking.invoice.dto.UserInvoiceSummaryDTO;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
@@ -115,6 +116,17 @@ public class InvoiceController {
             return ResponseEntity.ok(invoice);
         }
         return ResponseEntity.status(201).body(invoice);
+    }
+
+    // ── S5-F10: Revenue by Service Type with Cancellation Fee Breakdown ─────
+
+    @GetMapping("/analytics/service-type")
+    public ResponseEntity<List<ServiceTypeRevenueDTO>> getRevenueByServiceType(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        List<ServiceTypeRevenueDTO> result = invoiceService.getRevenueByServiceType(startDate, endDate);
+        invoiceService.emitAnalyticsViewed("S5-F10");
+        return ResponseEntity.ok(result);
     }
 
     // ── S5-F6: Revenue Report by Date Range ─────────────────────────────────

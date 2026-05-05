@@ -15,6 +15,14 @@ import java.util.List;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
+    // S3-F12: check if user exists in PG
+    @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE id = :userId", nativeQuery = true)
+    boolean existsUserById(@Param("userId") Long userId);
+
+    // S3-F12: bulk-fetch provider name + specialty for enrichment
+    @Query(value = "SELECT id, name, specialty FROM providers WHERE id IN (:ids)", nativeQuery = true)
+    List<Object[]> findProvidersByIds(@Param("ids") List<Long> ids);
+
     @Query(value = "SELECT COUNT(*) FROM bookings WHERE provider_id = :providerId " +
             "AND appointment_date = :date AND status IN ('REQUESTED','CONFIRMED','IN_PROGRESS')",
             nativeQuery = true)
