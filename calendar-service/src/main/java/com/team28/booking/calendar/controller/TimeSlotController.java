@@ -46,45 +46,11 @@ public class TimeSlotController {
 
     @PostMapping("/batch")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Integer> batchCreate(@RequestBody com.fasterxml.jackson.databind.JsonNode payload) {
-        Long providerId = null;
-        List<TimeSlot> timeSlots = new java.util.ArrayList<>();
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-        mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-        if (payload.isArray()) {
-            for (com.fasterxml.jackson.databind.JsonNode node : payload) {
-                TimeSlot slot = mapper.convertValue(node, TimeSlot.class);
-                timeSlots.add(slot);
-                if (providerId == null && slot.getProviderId() != null) {
-                    providerId = slot.getProviderId();
-                }
-            }
-        } else if (payload.isObject()) {
-            if (payload.has("providerId") && !payload.get("providerId").isNull()) {
-                providerId = payload.get("providerId").asLong();
-            }
-            com.fasterxml.jackson.databind.JsonNode slotsNode = payload.has("timeSlots") ? payload.get("timeSlots") : payload.get("slots");
-            if (slotsNode != null && slotsNode.isArray()) {
-                for (com.fasterxml.jackson.databind.JsonNode node : slotsNode) {
-                    TimeSlot slot = mapper.convertValue(node, TimeSlot.class);
-                    timeSlots.add(slot);
-                }
-            }
+    public Map<String, Integer> batchCreate(@RequestBody BatchTimeSlotRequest request) {
+        if (request.getProviderId() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "providerId is missing");
         }
-
-        if (timeSlots.isEmpty()) {
-            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "timeSlots must not be empty");
-        }
-        if (providerId == null) {
-            if (timeSlots.get(0).getProviderId() != null) {
-                providerId = timeSlots.get(0).getProviderId();
-            } else {
-                throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "providerId is missing");
-            }
-        }
-        int count = timeSlotService.batchCreateTimeSlots(providerId, timeSlots);
+        int count = timeSlotService.batchCreateTimeSlots(request.getProviderId(), request.getTimeSlots());
         return Map.of("count", count);
     }
 
