@@ -4,14 +4,16 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import org.springframework.stereotype.Component;
 
+@Component
 public class RefundStrategySelector {
 
     public RefundStrategy select(Map<String, Object> bookingData) {
         String status = (String) bookingData.get("status");
         LocalDate appointmentDate = (LocalDate) bookingData.get("appointmentDate");
 
-        if ("IN_PROGRESS".equals(status) || "COMPLETED".equals(status)) {
+        if (!("REQUESTED".equals(status) || "CONFIRMED".equals(status))) {
             return new NoRefundStrategy();
         }
 

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -72,6 +73,19 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     // Verify user exists (cross-service query)
     @Query(value = "SELECT id FROM users WHERE id = :userId", nativeQuery = true)
     Long findUserById(@Param("userId") Long userId);
+
+    // S5-F12: fetch booking status + appointmentDate + totalPrice for cancellation refund
+    @Query(value = """
+        SELECT b.status, b.appointment_date, b.total_price
+        FROM bookings b
+        WHERE b.id = :bookingId
+        """, nativeQuery = true)
+    List<Object[]> findBookingForCancellation(@Param("bookingId") Long bookingId);
+
+    // S5-F12: set booking status to CANCELLED after successful cancellation refund
+    @Modifying(clearAutomatically = true)
+    @Query(value = "UPDATE bookings SET status = 'CANCELLED' WHERE id = :bookingId", nativeQuery = true)
+    int cancelBooking(@Param("bookingId") Long bookingId);
 
     // S5-F10: revenue by provider specialty, with cancellation fee breakdown (§10.5.1)
     @Query(value = """

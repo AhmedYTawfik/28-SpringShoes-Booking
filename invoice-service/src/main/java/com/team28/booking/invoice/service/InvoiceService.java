@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
+import com.team28.booking.invoice.dto.CancellationRefundRequest;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
@@ -36,6 +37,10 @@ import com.team28.booking.invoice.repository.DiscountRepository;
 import com.team28.booking.invoice.repository.DiscountUsageProjection;
 import com.team28.booking.invoice.repository.InvoiceDiscountRepository;
 import com.team28.booking.invoice.repository.InvoiceRepository;
+import com.team28.booking.invoice.strategy.NoRefundStrategy;
+import com.team28.booking.invoice.strategy.RefundResult;
+import com.team28.booking.invoice.strategy.RefundStrategy;
+import com.team28.booking.invoice.strategy.RefundStrategySelector;
 
 import jakarta.annotation.PostConstruct;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -50,19 +55,22 @@ public class InvoiceService extends Observable {
     private final MongoEventLogger mongoEventLogger;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
+    private final RefundStrategySelector refundStrategySelector;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
                           InvoiceDiscountRepository invoiceDiscountRepository,
                           MongoEventLogger mongoEventLogger,
                           ObjectArrayDtoAdapter objectArrayDtoAdapter,
-                          CacheInvalidator cacheInvalidator) {
+                          CacheInvalidator cacheInvalidator,
+                          RefundStrategySelector refundStrategySelector) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
         this.invoiceDiscountRepository = invoiceDiscountRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
+        this.refundStrategySelector = refundStrategySelector;
     }
 
     @PostConstruct
@@ -444,6 +452,101 @@ public class InvoiceService extends Observable {
         Map<String, Object> payload = invoicePayload(saved);
         payload.put("retryCount", retryCount);
         emitAfterCommit("RETRY_ATTEMPTED", payload);
+        return saved;
+    }
+
+    // ── S5-F12: Process Cancellation Refund with Timing Handling ────────────
+
+    @Transactional
+    public Invoice processCancellationRefund(Long invoiceId, CancellationRefundRequest request) {
+        // --- validate reason ---
+        String reason = request.reason();
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("Refund reason must not be blank");
+        }
+
+        // --- Step b-c: find invoice, validate COMPLETED ---
+        Invoice invoice = findById(invoiceId);
+        if (invoice.getStatus() != InvoiceStatus.COMPLETED) {
+            throw new BadRequestException(
+                "Invoice must be COMPLETED to process cancellation refund");
+        }
+
+        // --- Step d: cross-service booking lookup ---
+        List<Object[]> rows = invoiceRepository.findBookingForCancellation(invoice.getBookingId());
+        if (rows == null || rows.isEmpty()) {
+            throw new ResourceNotFoundException(
+                "Booking not found for invoice: " + invoiceId);
+        }
+        Object[] row = rows.get(0);
+        String bookingStatus = (String) row[0];
+        LocalDate appointmentDate = row[1] != null ? (LocalDate) row[1] : null;
+
+        Map<String, Object> bookingData = Map.of(
+            "status", bookingStatus,
+            "appointmentDate", appointmentDate
+        );
+
+        // --- Step e: delegate strategy selection (no time-branching in this method) ---
+        RefundStrategy strategy = refundStrategySelector.select(bookingData);
+
+        // --- Step f: denial path (NoRefundStrategy) ---
+        if (strategy instanceof NoRefundStrategy) {
+            RefundResult result = strategy.calculateRefund(invoice.getAmount(), bookingData, reason);
+
+            // (i) Log REFUND_DENIED to Mongo before throwing
+            Map<String, Object> denialPayload = invoicePayload(invoice);
+            denialPayload.put("details", Map.of(
+                "strategyName", strategy.strategyName(),
+                "denialReason", result.getReasonCode()
+            ));
+            notifyObservers("REFUND_DENIED", denialPayload);
+
+            // (ii) Invalidate analytics caches
+            cacheInvalidator.wildcardDelete("invoice-service::S5-F10::*");
+            cacheInvalidator.wildcardDelete("invoice-service::S5-F11::*");
+
+            // (iii) Throw 400
+            throw new BadRequestException(result.getReasonCode());
+        }
+
+        // --- Step g: calculate refund ---
+        RefundResult result = strategy.calculateRefund(invoice.getAmount(), bookingData, reason);
+
+        invoice.setStatus(InvoiceStatus.REFUNDED);
+
+        // --- Step h: record in transactionDetails JSONB ---
+        Map<String, Object> details = invoice.getTransactionDetails();
+        if (details == null) details = new HashMap<>();
+        details.put("refundAmount", result.getRefundAmount());
+        details.put("cancellationFee", result.getCancellationFee());
+        details.put("refundReason", reason);
+        details.put("strategyName", strategy.strategyName());
+        details.put("refundedAt", LocalDateTime.now().toString());
+        invoice.setTransactionDetails(details);
+
+        Invoice saved = invoiceRepository.save(invoice);
+
+        // Update booking to CANCELLED
+        invoiceRepository.cancelBooking(invoice.getBookingId());
+
+        // --- Step j: invalidate caches ---
+        invalidateInvoiceCaches(invoiceId);
+
+        // --- Step i: emit REFUNDED (after PG commit) ---
+        Map<String, Object> payload = invoicePayload(saved);
+        payload.put("strategyName", strategy.strategyName());
+        payload.put("refundReason", reason);
+        payload.put("refundAmount", result.getRefundAmount());
+        payload.put("cancellationFee", result.getCancellationFee());
+        payload.put("details", Map.of(
+            "strategyName", strategy.strategyName(),
+            "refundReason", reason,
+            "refundAmount", result.getRefundAmount(),
+            "cancellationFee", result.getCancellationFee()
+        ));
+        emitAfterCommit("REFUNDED", payload);
+
         return saved;
     }
 
