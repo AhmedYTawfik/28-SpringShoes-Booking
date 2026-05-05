@@ -7,18 +7,15 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Repository
 public interface UserNodeRepository extends Neo4jRepository<UserNode, Long> {
-
-    Optional<UserNode> findByUserId(Long userId);
 
     /**
      * S3-F12 — Collaborative-filtering recommendation graph traversal.
      *
      * Algorithm (spec §10.3.3 step d):
-     *  1. Start from the target user (userId = :userId).
+     *  1. Start from the target user (id = :userId).
      *  2. Find all providers that user booked (via BOOKED relationships).
      *  3. Find other users who share at least one of those providers ("similar users").
      *  4. Find providers those similar users booked.
@@ -29,11 +26,11 @@ public interface UserNodeRepository extends Neo4jRepository<UserNode, Long> {
      * Returns a list of maps with keys: providerId (Long), score (Long).
      */
     @Query("""
-        MATCH (u:User {userId: $userId})-[:BOOKED]->(shared:Provider)<-[:BOOKED]-(similar:User)
-        WHERE similar.userId <> $userId
+        MATCH (u:User {id: $userId})-[:BOOKED]->(shared:Provider)<-[:BOOKED]-(similar:User)
+        WHERE similar.id <> $userId
         MATCH (similar)-[:BOOKED]->(candidate:Provider)
         WHERE NOT (u)-[:BOOKED]->(candidate)
-        RETURN candidate.providerId AS providerId, count(distinct similar) AS score
+        RETURN candidate.id AS providerId, count(distinct similar) AS score
         ORDER BY score DESC
         LIMIT $limit
         """)
@@ -41,12 +38,12 @@ public interface UserNodeRepository extends Neo4jRepository<UserNode, Long> {
             @Param("userId") Long userId,
             @Param("limit") int limit);
 
-    @Query("OPTIONAL MATCH (u:User {userId: $userId})-[r:BOOKED]->(p:Provider {providerId: $providerId}) " +
+    @Query("OPTIONAL MATCH (u:User {id: $userId})-[r:BOOKED]->(p:Provider {id: $providerId}) " +
            "RETURN $bookingId IN coalesce(r.recorded_booking_ids, [])")
     Boolean hasRecordedBooking(@Param("userId") Long userId, @Param("providerId") Long providerId, @Param("bookingId") Long bookingId);
 
-    @Query("MERGE (u:User {userId: $userId}) " +
-           "MERGE (p:Provider {providerId: $providerId}) " +
+    @Query("MERGE (u:User {id: $userId}) " +
+           "MERGE (p:Provider {id: $providerId}) " +
            "MERGE (u)-[r:BOOKED]->(p) " +
            "ON CREATE SET r.bookingCount = 1, r.lastBookingDate = localdatetime(), r.recorded_booking_ids = [$bookingId] " +
            "ON MATCH SET r.bookingCount = r.bookingCount + 1, r.lastBookingDate = localdatetime(), r.recorded_booking_ids = coalesce(r.recorded_booking_ids, []) + $bookingId")
