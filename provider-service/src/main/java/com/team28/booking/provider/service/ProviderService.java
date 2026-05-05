@@ -64,6 +64,7 @@ public class ProviderService extends Observable {
 
     // ── writes ───────────────────────────────────────────────────────────────
 
+    @Transactional
     public Provider createProvider(Provider provider) {
         ensureServiceDetailsDescription(provider);
         Provider saved = providerRepository.save(provider);
@@ -73,6 +74,7 @@ public class ProviderService extends Observable {
         return saved;
     }
 
+    @Transactional
     public Provider updateProvider(Long id, Provider updatedProvider) {
         Provider existingProvider = findById(id);
 
@@ -98,6 +100,7 @@ public class ProviderService extends Observable {
         return saved;
     }
 
+    @Transactional
     public void deleteProvider(Long id) {
         Provider provider = findById(id);
         providerRepository.delete(provider);
@@ -126,8 +129,10 @@ public class ProviderService extends Observable {
         Provider saved = providerRepository.save(provider);
         invalidateProviderCaches(providerId);
         emitAfterCommit("AVAILABILITY_TOGGLED", providerPayload(saved));
+        indexingService.indexProvider(saved, "auto_crud_update");
     }
 
+    @Transactional
     public Provider updateServiceDetails(Long id, Map<String, Object> updates) {
         Provider provider = findById(id);
         Map<String, Object> existingDetails = provider.getServiceDetails();
@@ -146,6 +151,7 @@ public class ProviderService extends Observable {
         Map<String, Object> payload = providerPayload(saved);
         payload.put("serviceDetails", saved.getServiceDetails());
         emitAfterCommit("SERVICE_DETAILS_UPDATED", payload);
+        indexingService.indexProvider(saved, "auto_crud_update");
         return saved;
     }
 
@@ -198,6 +204,11 @@ public class ProviderService extends Observable {
     @Cacheable(cacheNames = "provider-service::provider", key = "#id")
     public Provider getProviderById(Long id) {
         return findById(id);
+    }
+
+    public void indexProviderExplicitly(Long id) {
+        Provider provider = findById(id);
+        indexingService.indexProvider(provider, "explicit");
     }
 
     /** S2-F5: filter by pricing tier — 5 min TTL (§4.4.1). */
