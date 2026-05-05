@@ -38,7 +38,7 @@ public class CacheConfig implements CachingConfigurer {
         perCache.put("provider-service::S2-F5", baseline.entryTtl(Duration.ofMinutes(5)));
         perCache.put("provider-service::S2-F6", baseline.entryTtl(Duration.ofMinutes(10)));
         perCache.put("provider-service::S2-F9", baseline.entryTtl(Duration.ofMinutes(10)));
-        perCache.put("provider-service::S2-F10", baseline.entryTtl(Duration.ofMinutes(10)));
+        perCache.put("provider-service::S2-F10", baseline.entryTtl(Duration.ofMinutes(5))); //in the description was 5 not 10
         perCache.put("provider-service::S2-F12", baseline.entryTtl(Duration.ofMinutes(10)));
         perCache.put("provider-service::provider", baseline.entryTtl(Duration.ofMinutes(15)));
         perCache.put("provider-service::provider-certification", baseline.entryTtl(Duration.ofMinutes(15)));

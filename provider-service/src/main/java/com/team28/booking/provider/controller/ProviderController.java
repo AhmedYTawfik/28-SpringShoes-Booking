@@ -5,6 +5,8 @@ import com.team28.booking.provider.dto.UpdateAvailabilityRequest;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
+import com.team28.booking.provider.search.ProviderSearchDocument;
+import com.team28.booking.provider.service.ProviderFullTextSearchService;
 import com.team28.booking.provider.service.ProviderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,9 +19,12 @@ import java.util.Map;
 @RequestMapping("/api/providers")
 public class ProviderController {
     private final ProviderService providerService;
+    private final ProviderFullTextSearchService providerFullTextSearchService;
 
-    public ProviderController(ProviderService providerService) {
+    public ProviderController(ProviderService providerService,
+                              ProviderFullTextSearchService providerFullTextSearchService) {
         this.providerService = providerService;
+        this.providerFullTextSearchService = providerFullTextSearchService;
     }
 
     @PostMapping
@@ -83,6 +88,18 @@ public class ProviderController {
             @RequestParam(required = false) Double minRating,
             @RequestParam(required = false) Double maxRating) {
         return ResponseEntity.ok(providerService.searchProviders(status, minRating, maxRating));
+    }
+
+   @GetMapping("/search/full-text")
+    public ResponseEntity<List<ProviderSearchDocument>> fullTextSearch(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String specialty,
+            @RequestParam(required = false) String pricingTier,
+            @RequestParam(required = false) Provider.ProviderStatus status,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating) {
+        return ResponseEntity.ok(
+                providerFullTextSearchService.search(query, specialty, pricingTier, status, minRating, maxRating));
     }
 
     @GetMapping("/pricing-tier")
