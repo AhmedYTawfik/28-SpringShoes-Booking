@@ -1,5 +1,6 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.provider.dto.ProviderDashboardDTO;
 import com.team28.booking.provider.dto.UpdateAvailabilityRequest;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
@@ -92,5 +93,10 @@ public class ProviderController {
         @RequestBody VerifiedBy verifiedBy
     ) {
         return providerService.verifyCertificate(providerId, certificationId, verifiedBy);
+    }
+
+    @GetMapping("/{id}/dashboard")
+    public ProviderDashboardDTO getProviderDashboard(@PathVariable Long id) {
+        return providerService.logAndGetProviderDashboard(id);
     }
 }

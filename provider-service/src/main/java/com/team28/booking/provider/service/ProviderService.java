@@ -2,6 +2,7 @@ package com.team28.booking.provider.service;
 
 import com.team28.booking.provider.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.provider.cache.CacheInvalidator;
+import com.team28.booking.provider.dto.ProviderDashboardDTO;
 import com.team28.booking.provider.dto.ProviderEarningsDTO;
 import com.team28.booking.provider.dto.VerifiedBy;
 import com.team28.booking.provider.model.Provider;
@@ -34,6 +35,7 @@ public class ProviderService extends Observable {
     private final IndexingService indexingService;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
+    private final ProviderDashboardService dashboardService;
 
     public ProviderService(
             ProviderRepository providerRepository,
@@ -42,7 +44,8 @@ public class ProviderService extends Observable {
             CacheInvalidationService cacheInvalidationService,
             IndexingService indexingService,
             ObjectArrayDtoAdapter objectArrayDtoAdapter,
-            CacheInvalidator cacheInvalidator
+            CacheInvalidator cacheInvalidator,
+            ProviderDashboardService dashboardService
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
@@ -51,6 +54,7 @@ public class ProviderService extends Observable {
         this.indexingService = indexingService;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
+        this.dashboardService = dashboardService;
     }
 
     @PostConstruct
@@ -177,6 +181,11 @@ public class ProviderService extends Observable {
         payload.put("verifiedBy", verifiedBy.verifier());
         emitAfterCommit("CERTIFICATION_VERIFIED", payload);
         return provider;
+    }
+
+    public ProviderDashboardDTO logAndGetProviderDashboard(Long id) {
+        mongoEventLogger.onEvent("DASHBOARD_VIEWED", Map.of("id", id));
+        return dashboardService.getProviderDashboard(id);
     }
 
     // ── reads (cached) ───────────────────────────────────────────────────────
