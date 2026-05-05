@@ -44,18 +44,15 @@ public class BookingService extends Observable {
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidator cacheInvalidator;
     private final CacheManager cacheManager;
-    private final MongoTemplate mongoTemplate;
 
     public BookingService(BookingRepository bookingRepository,
                           MongoEventLogger mongoEventLogger,
                           CacheInvalidator cacheInvalidator,
-                          CacheManager cacheManager,
-                          MongoTemplate mongoTemplate) {
+                          CacheManager cacheManager) {
         this.bookingRepository = bookingRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
         this.cacheManager = cacheManager;
-        this.mongoTemplate = mongoTemplate;
     }
 
     @PostConstruct
@@ -314,7 +311,7 @@ public class BookingService extends Observable {
         logAnalyticsViewed(startDate, endDate);
 
         // Programmatic cache check — avoids AOP self-invocation limitation
-        String cacheKey = startDate + "_" + endDate;
+        String cacheKey = String.valueOf(Objects.hash(startDate, endDate));
         Cache cache = cacheManager.getCache("booking-service::S3-F10");
         if (cache != null) {
             Cache.ValueWrapper wrapper = cache.get(cacheKey);
@@ -367,15 +364,10 @@ public class BookingService extends Observable {
     }
 
     private void logAnalyticsViewed(LocalDate startDate, LocalDate endDate) {
-        try {
-            Map<String, Object> params = new HashMap<>();
-            params.put("action", "ANALYTICS_VIEWED");
-            params.put("startDate", startDate.toString());
-            params.put("endDate", endDate.toString());
-            mongoEventLogger.onEvent("ANALYTICS_VIEWED", params);
-        } catch (Exception ex) {
-            // intentional: observability log must not fail the request
-        }
+        Map<String, Object> params = Map.of("action", "ANALYTICS_VIEWED",
+                "startDate", startDate.toString(),
+                "endDate", endDate.toString());
+        mongoEventLogger.onEvent("ANALYTICS_VIEWED", params);
     }
 
     /** S3-F9: booking detail with sorted service items and completion summary. */

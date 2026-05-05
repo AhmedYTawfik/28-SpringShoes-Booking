@@ -56,7 +56,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query(value = "SELECT " +
             "COUNT(b.id) as totalBookings, " +
             "COALESCE(SUM(i.amount), 0) as totalRevenue, " +
-            "COALESCE(SUM(i.amount) / NULLIF(COUNT(b.id), 0), 0) as averageBookingValue " +
+            "COALESCE(SUM(i.amount) / NULLIF(COUNT(CASE WHEN b.status = 'COMPLETED' THEN 1 END), 0), 0) as averageBookingValue " +
             "FROM bookings b " +
             "LEFT JOIN invoices i ON i.booking_id = b.id AND b.status = 'COMPLETED' " +
             "WHERE b.requested_at >= :startDate AND b.requested_at <= :endDate", nativeQuery = true)
