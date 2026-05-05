@@ -1,5 +1,6 @@
 package com.team28.booking.booking.controller;
 
+import com.team28.booking.booking.dto.AddServicesRequestDTO;
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
 import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
@@ -122,5 +123,13 @@ public class BookingController {
             @RequestParam Long userId,
             @RequestParam(required = false, defaultValue = "5") int limit) {
         return ResponseEntity.ok(bookingService.getRecommendations(userId, limit));
+    }
+
+    /** S3-F7: Add services to a REQUESTED or CONFIRMED booking. */
+    @PostMapping("/{id}/services")
+    public ResponseEntity<Booking> addServices(
+            @PathVariable Long id,
+            @RequestBody AddServicesRequestDTO request) {
+        return ResponseEntity.ok(bookingService.addServices(id, request));
     }
 }

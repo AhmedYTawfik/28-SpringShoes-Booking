@@ -1,6 +1,7 @@
 package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.cache.CacheInvalidator;
+import com.team28.booking.booking.dto.AddServicesRequestDTO;
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
 import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
@@ -14,6 +15,7 @@ import com.team28.booking.booking.model.BookingItem;
 import com.team28.booking.booking.neo4j.UserNodeRepository;
 import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.observer.Observable;
+import com.team28.booking.booking.repository.BookingItemRepository;
 import com.team28.booking.booking.repository.BookingRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.cache.Cache;
@@ -48,6 +50,7 @@ import java.util.stream.Collectors;
 public class BookingService extends Observable {
 
     private final BookingRepository bookingRepository;
+    private final BookingItemRepository bookingItemRepository;
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidator cacheInvalidator;
     private final CacheManager cacheManager;
@@ -55,12 +58,14 @@ public class BookingService extends Observable {
     private final JdbcTemplate jdbcTemplate;
 
     public BookingService(BookingRepository bookingRepository,
+                          BookingItemRepository bookingItemRepository,
                           MongoEventLogger mongoEventLogger,
                           CacheInvalidator cacheInvalidator,
                           CacheManager cacheManager,
                           UserNodeRepository userNodeRepository,
                           JdbcTemplate jdbcTemplate) {
         this.bookingRepository = bookingRepository;
+        this.bookingItemRepository = bookingItemRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
         this.cacheManager = cacheManager;
@@ -578,6 +583,45 @@ public class BookingService extends Observable {
         payload.put("userId", userId);
         payload.put("providerId", providerId);
         emitAfterCommit("INTERACTION_RECORDED", payload);
+    }
+
+    /** S3-F7: Add services to a REQUESTED or CONFIRMED booking. */
+    @Transactional
+    public Booking addServices(Long bookingId, AddServicesRequestDTO request) {
+        if (request.services() == null || request.services().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Services list must not be empty");
+        }
+        Booking booking = findById(bookingId);
+        if (booking.getStatus() != Booking.Status.REQUESTED &&
+                booking.getStatus() != Booking.Status.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Services can only be added to REQUESTED or CONFIRMED bookings");
+        }
+        int currentCount = booking.getBookingServices() == null ? 0 : booking.getBookingServices().size();
+        for (int i = 0; i < request.services().size(); i++) {
+            AddServicesRequestDTO.ServiceItemDTO s = request.services().get(i);
+            BookingItem item = new BookingItem();
+            item.setServiceOrder(currentCount + i + 1);
+            item.setServiceName(s.serviceName());
+            item.setDuration(s.duration());
+            item.setPrice(BigDecimal.valueOf(s.price()));
+            item.setStatus(BookingItem.Status.PENDING);
+            item.setBooking(booking);
+            bookingItemRepository.save(item);
+        }
+        // Recompute totalPrice as sum of all booking services
+        Booking refreshed = findById(bookingId);
+        BigDecimal total = Optional.ofNullable(refreshed.getBookingServices())
+                .orElse(List.of())
+                .stream()
+                .map(BookingItem::getPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        refreshed.setTotalPrice(total);
+        Booking saved = bookingRepository.save(refreshed);
+        cacheInvalidator.deleteKey("booking-service::booking::" + bookingId);
+        cacheInvalidator.wildcardDelete("booking-service::S3-F9::*");
+        emitServicesAdded(saved, null);
+        return saved;
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
