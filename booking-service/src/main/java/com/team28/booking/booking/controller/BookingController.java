@@ -1,6 +1,7 @@
 package com.team28.booking.booking.controller;
 
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -88,9 +90,23 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getAnalytics(startDate, endDate));
     }
 
+    @GetMapping("/analytics/dashboard")
+    public ResponseEntity<BookingAnalyticsDashboardDTO> getDashboardAnalytics(
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(bookingService.getDashboardAnalytics(startDate, endDate));
+    }
+
     @GetMapping("/{id}/details")
     public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long id) {
         return ResponseEntity.ok(bookingService.getBookingDetails(id));
+    }
+
+    /** S3-F11: Record User-Provider Booking Pattern */
+    @PostMapping("/{bookingId}/record-interaction")
+    public ResponseEntity<Map<String, Object>> recordInteraction(@PathVariable Long bookingId) {
+        bookingService.recordInteraction(bookingId);
+        return ResponseEntity.ok(Map.of("message", "Interaction recorded successfully"));
     }
 
     /** S3-F12: Get provider recommendations for a user (collaborative filtering via Neo4j). */

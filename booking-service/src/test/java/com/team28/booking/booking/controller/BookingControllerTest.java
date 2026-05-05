@@ -398,4 +398,63 @@ class BookingControllerTest {
                         .param("endDate", "2026-12-31"))
                 .andExpect(status().isBadRequest());
     }
+
+    // --- S3-F10: GET /api/bookings/analytics/dashboard ---
+
+    @Test
+    void getDashboardAnalytics_validDates_returns200() throws Exception {
+        com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO dto =
+                new com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO(
+                        10L, new BigDecimal("600.00"), new BigDecimal("100.00"), 0.6,
+                        Map.of("COMPLETED", 6L, "CANCELLED", 2L, "REQUESTED", 2L));
+        when(bookingService.getDashboardAnalytics(any(), any())).thenReturn(dto);
+
+        mockMvc.perform(get("/api/bookings/analytics/dashboard")
+                        .param("startDate", "2026-03-01")
+                        .param("endDate", "2026-03-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalBookings").value(10))
+                .andExpect(jsonPath("$.totalRevenue").value(600.00))
+                .andExpect(jsonPath("$.averageBookingValue").value(100.00))
+                .andExpect(jsonPath("$.completionRate").value(0.6))
+                .andExpect(jsonPath("$.bookingsByStatus.COMPLETED").value(6))
+                .andExpect(jsonPath("$.bookingsByStatus.CANCELLED").value(2))
+                .andExpect(jsonPath("$.bookingsByStatus.REQUESTED").value(2));
+    }
+
+    @Test
+    void getDashboardAnalytics_startAfterEnd_returns400() throws Exception {
+        when(bookingService.getDashboardAnalytics(any(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "startDate must be on or before endDate"));
+
+        mockMvc.perform(get("/api/bookings/analytics/dashboard")
+                        .param("startDate", "2026-12-31")
+                        .param("endDate", "2026-01-01"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getDashboardAnalytics_missingStartDate_returns400() throws Exception {
+        mockMvc.perform(get("/api/bookings/analytics/dashboard")
+                        .param("endDate", "2026-12-31"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getDashboardAnalytics_noJwt_returns401() throws Exception {
+        // To test the 401 scenario, we need a way to NOT bypass the filter.
+        // But since JwtAuthenticationFilter is mocked as a MockitoBean and we have a @BeforeEach
+        // that always bypasses it, we need to override that behavior for this test.
+        doAnswer(inv -> {
+            jakarta.servlet.http.HttpServletResponse response = inv.getArgument(1);
+            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+            return null;
+        }).when(jwtAuthenticationFilter).doFilter(any(), any(), any());
+
+        mockMvc.perform(get("/api/bookings/analytics/dashboard")
+                        .param("startDate", "2026-03-01")
+                        .param("endDate", "2026-03-31"))
+                .andExpect(status().isUnauthorized());
+    }
 }

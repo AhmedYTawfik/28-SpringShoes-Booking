@@ -2,6 +2,7 @@ package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.cache.CacheInvalidator;
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
+import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
@@ -15,7 +16,10 @@ import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.observer.Observable;
 import com.team28.booking.booking.repository.BookingRepository;
 import jakarta.annotation.PostConstruct;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.EmptyResultDataAccessException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -31,6 +37,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,16 +50,22 @@ public class BookingService extends Observable {
     private final BookingRepository bookingRepository;
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidator cacheInvalidator;
+    private final CacheManager cacheManager;
     private final UserNodeRepository userNodeRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public BookingService(BookingRepository bookingRepository,
                           MongoEventLogger mongoEventLogger,
                           CacheInvalidator cacheInvalidator,
-                          UserNodeRepository userNodeRepository) {
+                          CacheManager cacheManager,
+                          UserNodeRepository userNodeRepository,
+                          JdbcTemplate jdbcTemplate) {
         this.bookingRepository = bookingRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
+        this.cacheManager = cacheManager;
         this.userNodeRepository = userNodeRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @PostConstruct
@@ -296,6 +309,80 @@ public class BookingService extends Observable {
                 totalRevenue, averageBookingPrice, completionRate);
     }
 
+    /**
+     * S3-F10: booking analytics dashboard over a date range — 10 min TTL (§4.4.1).
+     * MongoDB ANALYTICS_VIEWED log is written outside the cache layer so it fires on every
+     * call, including cache hits (spec §10.3.1 d).
+     */
+    public BookingAnalyticsDashboardDTO getDashboardAnalytics(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "startDate must be on or before endDate");
+        }
+
+        // Log ANALYTICS_VIEWED on every invocation — outside cache, per spec §10.3.1 d
+        logAnalyticsViewed(startDate, endDate);
+
+        // Programmatic cache check — avoids AOP self-invocation limitation
+        String cacheKey = String.valueOf(Objects.hash(startDate, endDate));
+        Cache cache = cacheManager.getCache("booking-service::S3-F10");
+        if (cache != null) {
+            Cache.ValueWrapper wrapper = cache.get(cacheKey);
+            if (wrapper != null) {
+                return (BookingAnalyticsDashboardDTO) wrapper.get();
+            }
+        }
+
+        BookingAnalyticsDashboardDTO result = computeDashboardAnalytics(startDate, endDate);
+
+        if (cache != null) {
+            cache.put(cacheKey, result);
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    BookingAnalyticsDashboardDTO computeDashboardAnalytics(LocalDate startDate, LocalDate endDate) {
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        Object[] agg = bookingRepository.getDashboardAggregates(startDateTime, endDateTime);
+        Object[] row = (agg.length > 0 && agg[0] instanceof Object[]) ? (Object[]) agg[0] : agg;
+
+        long totalBookings    = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        BigDecimal totalRevenue       = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
+        BigDecimal averageBookingValue = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
+
+        List<Object[]> statusRows = bookingRepository.getDashboardStatusBreakdown(startDateTime, endDateTime);
+        Map<String, Long> bookingsByStatus = new LinkedHashMap<>();
+        long completedCount = 0L;
+        for (Object[] statusRow : statusRows) {
+            String status = (String) statusRow[0];
+            long count = ((Number) statusRow[1]).longValue();
+            bookingsByStatus.put(status, count);
+            if ("COMPLETED".equals(status)) {
+                completedCount = count;
+            }
+        }
+
+        double completionRate = totalBookings > 0 ? (double) completedCount / totalBookings : 0.0;
+
+        return BookingAnalyticsDashboardDTO.builder()
+                .totalBookings(totalBookings)
+                .totalRevenue(totalRevenue)
+                .averageBookingValue(averageBookingValue)
+                .completionRate(completionRate)
+                .bookingsByStatus(bookingsByStatus)
+                .build();
+    }
+
+    private void logAnalyticsViewed(LocalDate startDate, LocalDate endDate) {
+        Map<String, Object> params = Map.of("action", "ANALYTICS_VIEWED",
+                "startDate", startDate.toString(),
+                "endDate", endDate.toString());
+        mongoEventLogger.onEvent("ANALYTICS_VIEWED", params);
+    }
+
     /** S3-F9: booking detail with sorted service items and completion summary. */
     @Cacheable(cacheNames = "booking-service::S3-F9",
                key = "#id")
@@ -412,6 +499,52 @@ public class BookingService extends Observable {
                             .build();
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * S3-F11: Record User-Provider Booking Pattern
+     *
+     * @param bookingId the booking to record
+     */
+    @Transactional
+    public void recordInteraction(Long bookingId) {
+        Booking booking = findById(bookingId);
+
+        if (booking.getStatus() != Booking.Status.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be COMPLETED to record interaction");
+        }
+
+        Long userId = booking.getUserId();
+        Long providerId = booking.getProviderId();
+
+        if (providerId == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking has no provider assigned");
+        }
+
+        Boolean alreadyRecorded = userNodeRepository.hasRecordedBooking(userId, providerId, bookingId);
+        if (Boolean.TRUE.equals(alreadyRecorded)) {
+            return;
+        }
+
+        try {
+            jdbcTemplate.queryForObject("SELECT id FROM users WHERE id = ?", Long.class, userId);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId);
+        }
+
+        try {
+            jdbcTemplate.queryForObject("SELECT id FROM providers WHERE id = ?", Long.class, providerId);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found: " + providerId);
+        }
+
+        userNodeRepository.recordInteraction(userId, providerId, bookingId);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("bookingId", bookingId);
+        payload.put("userId", userId);
+        payload.put("providerId", providerId);
+        emitAfterCommit("INTERACTION_RECORDED", payload);
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────

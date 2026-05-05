@@ -8,11 +8,14 @@ import com.team28.booking.provider.search.ProviderSearchRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -45,6 +48,14 @@ public class IndexingService extends Observable {
             emitAfterCommit("INDEXED", payload);
         } catch (Exception ex) {
             log.warn("Failed to auto-index provider {}: {}", provider.getId(), ex.getMessage());
+            boolean isRefreshBug = ex.getMessage() != null && 
+                                   ex.getMessage().contains("indices.refresh") && 
+                                   ex.getMessage().contains("media_type_header_exception"); 
+            if (isRefreshBug) {
+                log.info("Ignored Elasticsearch refresh bug. Provider {} was successfully indexed.", provider.getId());
+            } else if ("explicit".equals(source)) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Indexing failed: " + ex.getMessage(), ex);
+            }
         }
     }
 
@@ -74,13 +85,14 @@ public class IndexingService extends Observable {
         );
     }
 
+    private static final List<String> INDEXED_FIELDS =
+            List.of("id", "name", "specialty", "pricingTier", "description", "rating", "status");
+
     private Map<String, Object> providerPayload(Provider provider, String source) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("providerId", provider.getId());
-        payload.put("name", provider.getName());
-        payload.put("specialty", provider.getSpecialty());
-        payload.put("status", provider.getStatus() != null ? provider.getStatus().name() : null);
-        payload.put("details", Map.of("source", source));
+        payload.put("indexedFields", INDEXED_FIELDS);
+        payload.put("source", source);
         return payload;
     }
 

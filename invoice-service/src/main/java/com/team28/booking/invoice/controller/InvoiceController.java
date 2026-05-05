@@ -24,6 +24,7 @@ import com.team28.booking.invoice.dto.RefundRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
 import com.team28.booking.invoice.dto.ServiceTypeRevenueDTO;
+import com.team28.booking.invoice.dto.PaymentMethodAnalyticsDTO;
 import com.team28.booking.invoice.dto.UserInvoiceSummaryDTO;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
@@ -136,6 +137,16 @@ public class InvoiceController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         List<ServiceTypeRevenueDTO> result = invoiceService.getRevenueByServiceType(startDate, endDate);
         invoiceService.emitAnalyticsViewed("S5-F10");
+        return ResponseEntity.ok(result);
+    }
+
+    // ── S5-F11: Payment Method Breakdown ─────────────────────────────────
+    @GetMapping("/analytics/methods")
+    public ResponseEntity<List<PaymentMethodAnalyticsDTO>> getPaymentMethodBreakdown(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        List<PaymentMethodAnalyticsDTO> result = invoiceService.getPaymentMethodBreakdown(startDate, endDate);
+        invoiceService.emitAnalyticsViewed("S5-F11");
         return ResponseEntity.ok(result);
     }
 

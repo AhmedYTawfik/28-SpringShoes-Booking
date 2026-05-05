@@ -40,7 +40,7 @@ public class CacheConfig implements CachingConfigurer {
         perCache.put("user-service::S1-F8", baseline.entryTtl(Duration.ofMinutes(5)));
         perCache.put("user-service::S1-F9", baseline.entryTtl(Duration.ofMinutes(10)));
         perCache.put("user-service::S1-F10", baseline.entryTtl(Duration.ofMinutes(10)));
-        perCache.put("user-service::S1-F12", baseline.entryTtl(Duration.ofMinutes(10)));
+        perCache.put("user-service::S1-F12", baseline.entryTtl(Duration.ofMinutes(5)));
         perCache.put("user-service::user", baseline.entryTtl(Duration.ofMinutes(15)));
 
         return RedisCacheManager.builder(cf)
