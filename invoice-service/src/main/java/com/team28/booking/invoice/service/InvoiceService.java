@@ -67,7 +67,7 @@ public class InvoiceService extends Observable {
                           MongoEventLogger mongoEventLogger,
                           ObjectArrayDtoAdapter objectArrayDtoAdapter,
                           CacheInvalidator cacheInvalidator,
-                          RefundStrategySelector refundStrategySelector) {
+                          RefundStrategySelector refundStrategySelector,
                           PaymentAuditEventRepository paymentAuditEventRepository) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
