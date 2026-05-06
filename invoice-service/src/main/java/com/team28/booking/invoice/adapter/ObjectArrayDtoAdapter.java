@@ -34,9 +34,9 @@ public class ObjectArrayDtoAdapter {
         long totalTransactions = row[1] != null ? ((Number) row[1]).longValue() : 0L;
         BigDecimal refundedAmount = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
         long refundCount = row[3] != null ? ((Number) row[3]).longValue() : 0L;
-        BigDecimal averageInvoiceAmount = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
+        BigDecimal averageInvoice = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
         BigDecimal netRevenue = totalRevenue.subtract(refundedAmount);
         return new RevenueReportDTO(startDate, endDate, totalRevenue, totalTransactions,
-                refundedAmount, refundCount, netRevenue, averageInvoiceAmount);
+                refundedAmount, refundCount, netRevenue, averageInvoice);
     }
 }

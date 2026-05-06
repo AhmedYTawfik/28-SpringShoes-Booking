@@ -11,7 +11,7 @@ public record RevenueReportDTO(
         BigDecimal refundedAmount,
         Long refundCount,
         BigDecimal netRevenue,
-        BigDecimal averageInvoiceAmount
+        BigDecimal averageInvoice
 ) {
     public static RevenueReportDTOBuilder builder() { return new RevenueReportDTOBuilder(); }
 }

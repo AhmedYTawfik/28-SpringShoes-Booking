@@ -11,7 +11,7 @@ public class RevenueReportDTOBuilder {
     private BigDecimal refundedAmount;
     private Long refundCount;
     private BigDecimal netRevenue;
-    private BigDecimal averageInvoiceAmount;
+    private BigDecimal averageInvoice;
 
     public RevenueReportDTOBuilder startDate(LocalDate startDate) { this.startDate = startDate; return this; }
     public RevenueReportDTOBuilder endDate(LocalDate endDate) { this.endDate = endDate; return this; }
@@ -20,10 +20,10 @@ public class RevenueReportDTOBuilder {
     public RevenueReportDTOBuilder refundedAmount(BigDecimal refundedAmount) { this.refundedAmount = refundedAmount; return this; }
     public RevenueReportDTOBuilder refundCount(Long refundCount) { this.refundCount = refundCount; return this; }
     public RevenueReportDTOBuilder netRevenue(BigDecimal netRevenue) { this.netRevenue = netRevenue; return this; }
-    public RevenueReportDTOBuilder averageInvoiceAmount(BigDecimal averageInvoiceAmount) { this.averageInvoiceAmount = averageInvoiceAmount; return this; }
+    public RevenueReportDTOBuilder averageInvoice(BigDecimal averageInvoice) { this.averageInvoice = averageInvoice; return this; }
 
     public RevenueReportDTO build() {
         return new RevenueReportDTO(startDate, endDate, totalRevenue, totalTransactions,
-                refundedAmount, refundCount, netRevenue, averageInvoiceAmount);
+                refundedAmount, refundCount, netRevenue, averageInvoice);
     }
 }

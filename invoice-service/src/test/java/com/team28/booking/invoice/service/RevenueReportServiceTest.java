@@ -66,7 +66,7 @@ class RevenueReportServiceTest {
         assertThat(dto.refundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(100.0));
         assertThat(dto.refundCount()).isEqualTo(1L);
         assertThat(dto.netRevenue()).isEqualByComparingTo(BigDecimal.valueOf(500.0));          // 600 - 100
-        assertThat(dto.averageInvoiceAmount()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
+        assertThat(dto.averageInvoice()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
     }
 
     @Test
@@ -81,7 +81,7 @@ class RevenueReportServiceTest {
         assertThat(dto.refundedAmount()).isZero();
         assertThat(dto.refundCount()).isZero();
         assertThat(dto.netRevenue()).isZero();
-        assertThat(dto.averageInvoiceAmount()).isZero();
+        assertThat(dto.averageInvoice()).isZero();
     }
 
     @Test
@@ -118,10 +118,10 @@ class RevenueReportServiceTest {
         assertThat(dto.totalTransactions()).isZero();
         assertThat(dto.refundedAmount()).isZero();
         assertThat(dto.refundCount()).isZero();
-        assertThat(dto.averageInvoiceAmount()).isZero();
+        assertThat(dto.averageInvoice()).isZero();
     }
 
-    // ── invalid date range ────────────────────────────────────────────────────
+    // ── invalid date range</####################################################################################> ────────────────────────────────────────────────────
 
     @Test
     void getRevenueReport_startAfterEnd_throws400() {
