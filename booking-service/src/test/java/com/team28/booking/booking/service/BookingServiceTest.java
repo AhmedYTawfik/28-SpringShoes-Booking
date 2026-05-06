@@ -20,6 +20,9 @@ import org.springframework.cache.CacheManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.EmptyResultDataAccessException;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -48,6 +51,9 @@ public class BookingServiceTest {
 
     @Mock
     private UserNodeRepository userNodeRepository;
+
+    @Mock
+    private JdbcTemplate jdbcTemplate;
 
     @InjectMocks
     private BookingService bookingService;
@@ -506,5 +512,24 @@ public class BookingServiceTest {
 
         // ANALYTICS_VIEWED must be logged on both calls
         verify(mongoEventLogger, times(2)).onEvent(eq("ANALYTICS_VIEWED"), any());
+    }
+
+    @Test
+    void testRecordInteraction_Success() {
+        Booking completedBooking = new Booking();
+        completedBooking.setId(10L);
+        completedBooking.setUserId(2L);
+        completedBooking.setProviderId(3L);
+        completedBooking.setStatus(Booking.Status.COMPLETED);
+
+        when(bookingRepository.findById(10L)).thenReturn(Optional.of(completedBooking));
+        when(userNodeRepository.hasRecordedBooking(2L, 3L, 10L)).thenReturn(false);
+        when(jdbcTemplate.queryForObject(eq("SELECT id FROM users WHERE id = ?"), eq(Long.class), eq(2L))).thenReturn(2L);
+        when(jdbcTemplate.queryForObject(eq("SELECT id FROM providers WHERE id = ?"), eq(Long.class), eq(3L))).thenReturn(3L);
+
+        bookingService.recordInteraction(10L);
+
+        verify(userNodeRepository, times(1)).recordInteraction(2L, 3L, 10L);
+        verify(mongoEventLogger, times(1)).onEvent(eq("INTERACTION_RECORDED"), anyMap());
     }
 }
