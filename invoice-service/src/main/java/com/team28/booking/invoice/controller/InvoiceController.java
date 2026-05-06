@@ -80,9 +80,7 @@ public class InvoiceController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
-        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : null;
-        LocalDateTime end   = endDate   != null ? endDate.atTime(23, 59, 59, 999_000_000) : null;
-        return ResponseEntity.ok(invoiceService.searchInvoices(status, start, end));
+        return ResponseEntity.ok(invoiceService.searchInvoices(status, startDate, endDate));
     }
 
     @PutMapping("/{id}")
