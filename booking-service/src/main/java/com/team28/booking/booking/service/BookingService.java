@@ -12,7 +12,6 @@ import com.team28.booking.booking.dto.ProviderRecommendationDTO;
 import com.team28.booking.booking.dto.ServiceDetailsDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.model.BookingItem;
-import com.team28.booking.booking.neo4j.UserNodeRepository;
 import com.team28.booking.booking.observer.MongoEventLogger;
 import com.team28.booking.booking.observer.Observable;
 import com.team28.booking.booking.repository.BookingItemRepository;
@@ -22,6 +21,7 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,8 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.dao.EmptyResultDataAccessException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -54,23 +52,20 @@ public class BookingService extends Observable {
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidator cacheInvalidator;
     private final CacheManager cacheManager;
-    private final UserNodeRepository userNodeRepository;
-    private final JdbcTemplate jdbcTemplate;
+    private final Neo4jClient neo4jClient;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingItemRepository bookingItemRepository,
                           MongoEventLogger mongoEventLogger,
                           CacheInvalidator cacheInvalidator,
                           CacheManager cacheManager,
-                          UserNodeRepository userNodeRepository,
-                          JdbcTemplate jdbcTemplate) {
+                          Neo4jClient neo4jClient) {
         this.bookingRepository = bookingRepository;
         this.bookingItemRepository = bookingItemRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
         this.cacheManager = cacheManager;
-        this.userNodeRepository = userNodeRepository;
-        this.jdbcTemplate = jdbcTemplate;
+        this.neo4jClient = neo4jClient;
     }
 
     @PostConstruct
@@ -148,6 +143,10 @@ public class BookingService extends Observable {
         if (booking.getStatus() != Booking.Status.REQUESTED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Booking must be in REQUESTED status to assign a provider");
+        }
+        if (!bookingRepository.existsProviderById(providerId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Provider not found with id: " + providerId);
         }
         booking.setProviderId(providerId);
         booking.setStatus(Booking.Status.CONFIRMED);
@@ -500,9 +499,19 @@ public class BookingService extends Observable {
                     "User not found with id: " + userId);
         }
 
-        // d) Traverse the Neo4j recommendation graph
-        List<Map<String, Object>> neo4jResults =
-                userNodeRepository.findRecommendations(userId, limit);
+        // d) Traverse the Neo4j recommendation graph via Neo4jClient
+        List<Map<String, Object>> neo4jResults = new java.util.ArrayList<>(
+                neo4jClient.query(
+                        "MATCH (u:User {id: $userId})-[:BOOKED]->(shared:Provider)<-[:BOOKED]-(similar:User) " +
+                        "WHERE similar.id <> $userId " +
+                        "MATCH (similar)-[:BOOKED]->(candidate:Provider) " +
+                        "WHERE NOT (u)-[:BOOKED]->(candidate) " +
+                        "RETURN candidate.id AS providerId, count(distinct similar) AS score " +
+                        "ORDER BY score DESC " +
+                        "LIMIT $limit")
+                        .bind(userId).to("userId")
+                        .bind(limit).to("limit")
+                        .fetch().all());
 
         if (neo4jResults.isEmpty()) {
             return List.of();
@@ -558,29 +567,37 @@ public class BookingService extends Observable {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking has no provider assigned");
         }
 
-        // Check idempotency via Neo4j — resilient to missing nodes
+        // Check idempotency — skip if this bookingId was already recorded
         try {
-            Boolean alreadyRecorded = userNodeRepository.hasRecordedBooking(userId, providerId, bookingId);
-            if (Boolean.TRUE.equals(alreadyRecorded)) {
+            var rows = neo4jClient.query(
+                    "OPTIONAL MATCH (u:User {id: $userId})-[r:BOOKED]->(p:Provider {id: $providerId}) " +
+                    "RETURN $bookingId IN coalesce(r.recorded_booking_ids, []) AS alreadyRecorded")
+                    .bind(userId).to("userId")
+                    .bind(providerId).to("providerId")
+                    .bind(bookingId).to("bookingId")
+                    .fetch().all();
+            if (!rows.isEmpty() && Boolean.TRUE.equals(rows.iterator().next().get("alreadyRecorded"))) {
                 return;
             }
         } catch (Exception e) {
-            // Neo4j node/relationship doesn't exist yet — that's fine, proceed to create
+            // Neo4j not yet populated — proceed to create
         }
 
-        try {
-            jdbcTemplate.queryForObject("SELECT id FROM users WHERE id = ?", Long.class, userId);
-        } catch (EmptyResultDataAccessException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId);
-        }
-
-        try {
-            jdbcTemplate.queryForObject("SELECT id FROM providers WHERE id = ?", Long.class, providerId);
-        } catch (EmptyResultDataAccessException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found: " + providerId);
-        }
-
-        userNodeRepository.recordInteraction(userId, providerId, bookingId);
+        // SDN 8.0.3 NPEs on @Query write operations via the repository layer;
+        // use Neo4jClient directly so the Cypher is sent without result-type mapping.
+        neo4jClient.query(
+                "MERGE (u:User {id: $userId}) " +
+                "MERGE (p:Provider {id: $providerId}) " +
+                "MERGE (u)-[r:BOOKED]->(p) " +
+                "ON CREATE SET r.bookingCount = 1, r.lastBookingDate = localdatetime(), r.recorded_booking_ids = [$bookingId] " +
+                "ON MATCH SET " +
+                "  r.bookingCount = r.bookingCount + CASE WHEN $bookingId IN coalesce(r.recorded_booking_ids, []) THEN 0 ELSE 1 END, " +
+                "  r.lastBookingDate = localdatetime(), " +
+                "  r.recorded_booking_ids = CASE WHEN $bookingId IN coalesce(r.recorded_booking_ids, []) THEN coalesce(r.recorded_booking_ids, []) ELSE coalesce(r.recorded_booking_ids, []) + $bookingId END")
+                .bind(userId).to("userId")
+                .bind(providerId).to("providerId")
+                .bind(bookingId).to("bookingId")
+                .run();
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("bookingId", bookingId);
