@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.team28.booking.invoice.dto.CancellationRefundRequest;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
@@ -98,6 +99,15 @@ public class InvoiceController {
         @RequestBody RefundRequest refundRequest
     ) {
         return ResponseEntity.ok(invoiceService.processRefund(id, refundRequest.reason()));
+    }
+
+    // ── S5-F12: Process Cancellation Refund with Timing Handling ────────────
+
+    @PostMapping("/{id}/refund-cancellation")
+    public ResponseEntity<Invoice> processCancellationRefund(
+            @PathVariable Long id,
+            @RequestBody CancellationRefundRequest request) {
+        return ResponseEntity.ok(invoiceService.processCancellationRefund(id, request));
     }
 
     // Get User Invoice Summary
