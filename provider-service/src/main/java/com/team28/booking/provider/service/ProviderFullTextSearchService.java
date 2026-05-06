@@ -8,6 +8,8 @@ import com.team28.booking.provider.search.ProviderSearchDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
@@ -37,6 +39,9 @@ public class ProviderFullTextSearchService {
                                                Provider.ProviderStatus status,
                                                Double minRating,
                                                Double maxRating) {
+        if (minRating != null && maxRating != null && minRating > maxRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
+        }
         try {
             BoolQuery.Builder bool = new BoolQuery.Builder();
 
