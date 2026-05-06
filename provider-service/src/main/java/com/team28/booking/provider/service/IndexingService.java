@@ -8,6 +8,7 @@ import com.team28.booking.provider.search.ProviderSearchRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -26,13 +27,16 @@ public class IndexingService extends Observable {
     private final ProviderSearchRepository providerSearchRepository;
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidationService cacheInvalidationService;
+    private final ElasticsearchOperations elasticsearchOperations;
 
     public IndexingService(ProviderSearchRepository providerSearchRepository,
                            MongoEventLogger mongoEventLogger,
-                           CacheInvalidationService cacheInvalidationService) {
+                           CacheInvalidationService cacheInvalidationService,
+                           ElasticsearchOperations elasticsearchOperations) {
         this.providerSearchRepository = providerSearchRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidationService = cacheInvalidationService;
+        this.elasticsearchOperations = elasticsearchOperations;
     }
 
     @PostConstruct
@@ -43,6 +47,7 @@ public class IndexingService extends Observable {
     public void indexProvider(Provider provider, String source) {
         try {
             providerSearchRepository.save(toDocument(provider));
+            elasticsearchOperations.indexOps(ProviderSearchDocument.class).refresh();
             cacheInvalidationService.invalidateProviderSearch();
             Map<String, Object> payload = providerPayload(provider, source);
             emitAfterCommit("INDEXED", payload);
