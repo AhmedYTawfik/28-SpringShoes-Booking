@@ -337,7 +337,7 @@ public class InvoiceService extends Observable {
         invoice.setBookingId(request.getBookingId());
         invoice.setUserId(request.getUserId());
         invoice.setAmount(totalPrice);
-        invoice.setMethod(Invoice.PaymentMethod.valueOf(request.getMethod()));
+        invoice.setMethod(parsePaymentMethod(request.getMethod()));
         invoice.setCreatedAt(LocalDateTime.now());
 
         Map<String, Object> details = new HashMap<>();
@@ -480,7 +480,7 @@ public class InvoiceService extends Observable {
         }
 
         if (request.getMethod() != null && !request.getMethod().isBlank()) {
-            invoice.setMethod(Invoice.PaymentMethod.valueOf(request.getMethod()));
+            invoice.setMethod(parsePaymentMethod(request.getMethod()));
         }
 
         Map<String, Object> details = invoice.getTransactionDetails();
@@ -663,5 +663,17 @@ public class InvoiceService extends Observable {
         payload.put("status", invoice.getStatus() != null ? invoice.getStatus().name() : null);
         payload.put("amount", invoice.getAmount());
         return payload;
+    }
+
+    private Invoice.PaymentMethod parsePaymentMethod(String rawMethod) {
+        if (rawMethod == null || rawMethod.isBlank()) {
+            throw new BadRequestException("Invalid payment method: " + rawMethod);
+        }
+
+        try {
+            return Invoice.PaymentMethod.valueOf(rawMethod);
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Invalid payment method: " + rawMethod);
+        }
     }
 }
