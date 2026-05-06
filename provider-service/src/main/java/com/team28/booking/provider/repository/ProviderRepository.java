@@ -6,6 +6,7 @@ import com.team28.booking.provider.dto.ProviderSummary;
 import com.team28.booking.provider.model.Provider;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -111,6 +112,19 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
         WHERE id = :bookingId
     """, nativeQuery = true)
     Optional<BookingSummary> getBookingSummary(@Param("bookingId") Long bookingId);
+
+    /**
+     * Atomically mark a booking as rated using the metadata JSONB field.
+     * Returns 1 if marked (first rating), 0 if already rated (duplicate).
+     */
+    @Modifying
+    @Query(value = """
+        UPDATE bookings
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"rated": true}'::jsonb
+        WHERE id = :bookingId
+          AND (metadata IS NULL OR NOT (metadata ? 'rated'))
+    """, nativeQuery = true)
+    int markBookingAsRated(@Param("bookingId") Long bookingId);
 
 
     @Query(value = """

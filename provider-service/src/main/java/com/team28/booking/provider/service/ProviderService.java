@@ -341,6 +341,12 @@ public class ProviderService extends Observable {
         if (rateProvider.rating() < 1.0 || rateProvider.rating() > 5.0)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
 
+        // TC340: Duplicate rating check — atomically mark booking as rated
+        int updated = providerRepository.markBookingAsRated(rateProvider.bookingId());
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This booking has already been rated");
+        }
+
         int previousRating = provider.getTotalRatings();
         int newTotalRatings = previousRating + 1;
         double newRating = (provider.getRating() * previousRating + rateProvider.rating()) / newTotalRatings;
