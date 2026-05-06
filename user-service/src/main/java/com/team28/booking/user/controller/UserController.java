@@ -47,14 +47,38 @@ public class UserController {
         return ResponseEntity.ok(userService.findAll());
     }
 
-    // CRUD: Get User by ID
+    // CRUD: Get User by ID — ownership check (TC17: IDOR read protection)
     @GetMapping("/{id}")      // ← Maps to GET /api/users/{id}
     public ResponseEntity<User> getUser(@PathVariable Long id) {
+        // Ownership check: only owner or ADMIN may read
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!currentUser.getId().equals(id) && currentUser.getRole() != Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         User user = userService.findById(id);
         if (user == null) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(user);
+    }
+
+    // CRUD: Update User — ownership check (TC20: owner update, TC22: admin update)
+    @PutMapping("/{id}")
+    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User updatedUser) {
+        // Ownership check: only owner or ADMIN may update
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!currentUser.getId().equals(id) && currentUser.getRole() != Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        try {
+            User result = userService.updateUser(id, updatedUser);
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException e) {
+            if ("User not found".equals(e.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
     }
 
     // CC-2: Change user role (ADMIN-only — gated by SecurityConfig + RoleAuthorizationHandler).
@@ -83,9 +107,14 @@ public class UserController {
         }
     }
 
-    // CRUD: Delete User
+    // CRUD: Delete User — ownership check (TC19: IDOR delete protection)
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        // Ownership check: only owner or ADMIN may delete
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!currentUser.getId().equals(id) && currentUser.getRole() != Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         try {
             userService.deleteUser(id);
             return ResponseEntity.noContent().build();
