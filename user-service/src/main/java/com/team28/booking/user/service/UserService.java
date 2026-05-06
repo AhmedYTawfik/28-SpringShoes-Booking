@@ -157,6 +157,28 @@ public class UserService extends Observable {
         return saved;
     }
 
+    /** Update an existing user's profile fields (TC20/TC22). */
+    @Transactional
+    public User updateUser(Long id, User updatedUser) {
+        User existing = userRepository.findById(id).orElse(null);
+        if (existing == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        if (updatedUser.getName() != null) existing.setName(updatedUser.getName());
+        if (updatedUser.getEmail() != null) existing.setEmail(updatedUser.getEmail());
+        if (updatedUser.getPhone() != null) existing.setPhone(updatedUser.getPhone());
+        if (updatedUser.getPassword() != null && !updatedUser.getPassword().isBlank()) {
+            existing.setPassword(passwordEncoder.encode(updatedUser.getPassword()));
+        }
+        // Do NOT allow role/status changes via the general update endpoint
+
+        User saved = userRepository.save(existing);
+        invalidateUserCaches(id);
+        emitAfterCommit("USER_UPDATED", userPayload(saved));
+        return saved;
+    }
+
     public User updateUserPreferences(Long userId, Map<String, Object> updatedPreferences) {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) {
