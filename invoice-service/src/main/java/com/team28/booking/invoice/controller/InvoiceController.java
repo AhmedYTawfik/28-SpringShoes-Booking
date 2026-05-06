@@ -2,6 +2,7 @@ package com.team28.booking.invoice.controller;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 import org.springframework.format.annotation.DateTimeFormat;
@@ -61,7 +62,7 @@ public class InvoiceController {
         return ResponseEntity.ok(invoiceService.getInvoiceDetails(invoiceId));
     }
 
-    @PutMapping("/{invoiceId}/discounts/{discountId}")
+    @PostMapping("/{invoiceId}/discounts/{discountId}")
     public ResponseEntity<Invoice> applyDiscountToInvoice(@PathVariable Long invoiceId, @PathVariable Long discountId) {
         return ResponseEntity.ok(invoiceService.applyDiscountToInvoice(invoiceId, discountId));
     }
@@ -76,10 +77,10 @@ public class InvoiceController {
     @GetMapping("/search")
     public ResponseEntity<List<Invoice>> searchInvoices(
         @RequestParam(required = false) InvoiceStatus status,
-        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
-        return ResponseEntity.ok(invoiceService.searchInvoices(status, startDate, endDate));
+        return ResponseEntity.ok(invoiceService.searchInvoices(status, startDate.atStartOfDay(), endDate.atTime(LocalTime.MAX)));
     }
 
     @PutMapping("/{id}")
@@ -93,7 +94,7 @@ public class InvoiceController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/refund")
+    @PutMapping("/{id}/refund")
     public ResponseEntity<Invoice> processRefund(
         @PathVariable Long id,
         @RequestBody RefundRequest refundRequest
