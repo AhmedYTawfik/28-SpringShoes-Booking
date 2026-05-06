@@ -544,7 +544,6 @@ public class BookingService extends Observable {
      *
      * @param bookingId the booking to record
      */
-    @Transactional
     public void recordInteraction(Long bookingId) {
         Booking booking = findById(bookingId);
 
@@ -559,9 +558,14 @@ public class BookingService extends Observable {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking has no provider assigned");
         }
 
-        Boolean alreadyRecorded = userNodeRepository.hasRecordedBooking(userId, providerId, bookingId);
-        if (Boolean.TRUE.equals(alreadyRecorded)) {
-            return;
+        // Check idempotency via Neo4j — resilient to missing nodes
+        try {
+            Boolean alreadyRecorded = userNodeRepository.hasRecordedBooking(userId, providerId, bookingId);
+            if (Boolean.TRUE.equals(alreadyRecorded)) {
+                return;
+            }
+        } catch (Exception e) {
+            // Neo4j node/relationship doesn't exist yet — that's fine, proceed to create
         }
 
         try {
