@@ -42,4 +42,10 @@ public interface UserNodeRepository extends Neo4jRepository<UserNode, Long> {
            "RETURN $bookingId IN coalesce(r.recorded_booking_ids, [])")
     Boolean hasRecordedBooking(@Param("userId") Long userId, @Param("providerId") Long providerId, @Param("bookingId") Long bookingId);
 
+    @Query("MERGE (u:User {id: $userId}) " +
+           "MERGE (p:Provider {id: $providerId}) " +
+           "MERGE (u)-[r:BOOKED]->(p) " +
+           "ON CREATE SET r.bookingCount = 1, r.lastBookingDate = localdatetime(), r.recorded_booking_ids = [$bookingId] " +
+           "ON MATCH SET r.bookingCount = r.bookingCount + 1, r.lastBookingDate = localdatetime(), r.recorded_booking_ids = coalesce(r.recorded_booking_ids, []) + $bookingId")
+    void recordInteraction(@Param("userId") Long userId, @Param("providerId") Long providerId, @Param("bookingId") Long bookingId);
 }
