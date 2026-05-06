@@ -26,10 +26,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
      // Search invoices by status and date range using native SQL
     // Returns invoices matching any non-null filter criteria
     @Query(value = """
-        SELECT * FROM invoices i
+        SELECT DISTINCT i.*
+        FROM invoices i
+        JOIN bookings b ON b.id = i.booking_id
         WHERE (CAST(:status AS text) IS NULL OR i.status = CAST(:status AS text))
-        AND (CAST(:startDate AS timestamp) IS NULL OR i.created_at >= CAST(:startDate AS timestamp))
-        AND (CAST(:endDate AS timestamp) IS NULL OR i.created_at <= CAST(:endDate AS timestamp))
+        AND (CAST(:startDate AS timestamp) IS NULL OR b.requested_at >= CAST(:startDate AS timestamp))
+        AND (CAST(:endDate AS timestamp) IS NULL OR b.requested_at <= CAST(:endDate AS timestamp))
         ORDER BY i.created_at DESC
         """, nativeQuery = true)
     List<Invoice> searchInvoices(
