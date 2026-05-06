@@ -185,10 +185,15 @@ public class UserService extends Observable {
             throw new RuntimeException("User not found");
         }
 
-        Map<String, Object> userPreferences = user.getPreferences();
-        for (String key : updatedPreferences.keySet()) {
-            userPreferences.put(key, updatedPreferences.get(key));
+        Map<String, Object> userPreferences = user.getPreferences() == null
+                ? new HashMap<>()
+                : new HashMap<>(user.getPreferences());
+        if (updatedPreferences != null) {
+            for (String key : updatedPreferences.keySet()) {
+                userPreferences.put(key, updatedPreferences.get(key));
+            }
         }
+        user.setPreferences(userPreferences);
 
         User saved = userRepository.save(user);
         invalidateUserCaches(userId);

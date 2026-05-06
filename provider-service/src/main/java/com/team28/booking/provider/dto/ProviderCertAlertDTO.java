@@ -11,4 +11,6 @@ public record ProviderCertAlertDTO (
     Provider.ProviderStatus providerStatus,
     List<ProviderCertification> expiredCertifications,
     Integer expiredCount
-) { }
+) {
+    public static ProviderCertAlertDTOBuilder builder() { return new ProviderCertAlertDTOBuilder(); }
+}

@@ -5,4 +5,6 @@ public record TopProviderDTO (
     String name,
     Double rating,
     Integer totalBookings
-) {}
+) {
+    public static TopProviderDTOBuilder builder() { return new TopProviderDTOBuilder(); }
+}
