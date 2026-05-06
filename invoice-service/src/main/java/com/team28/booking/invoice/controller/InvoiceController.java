@@ -76,10 +76,12 @@ public class InvoiceController {
     @GetMapping("/search")
     public ResponseEntity<List<Invoice>> searchInvoices(
         @RequestParam(required = false) InvoiceStatus status,
-        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
-        return ResponseEntity.ok(invoiceService.searchInvoices(status, startDate, endDate));
+        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : null;
+        LocalDateTime end   = endDate   != null ? endDate.atTime(23, 59, 59) : null;
+        return ResponseEntity.ok(invoiceService.searchInvoices(status, start, end));
     }
 
     @PutMapping("/{id}")
