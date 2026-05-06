@@ -463,7 +463,7 @@ public class InvoiceService extends Observable {
         }
 
         LocalDateTime from = startDate.atStartOfDay();
-        LocalDateTime to   = endDate.atTime(23, 59, 59);
+        LocalDateTime to   = endDate.atTime(23, 59, 59, 999_000_000);
 
         Object[] row = (Object[])(invoiceRepository.getRevenueStats(from, to)[0]);
         return objectArrayDtoAdapter.toRevenueReportDTO(startDate, endDate, row);

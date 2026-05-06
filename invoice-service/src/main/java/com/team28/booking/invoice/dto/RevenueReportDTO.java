@@ -7,9 +7,9 @@ public record RevenueReportDTO(
         LocalDate startDate,
         LocalDate endDate,
         BigDecimal totalRevenue,
-        Long totalInvoices,
-        Long completedInvoices,
+        Long totalTransactions,
         BigDecimal refundedAmount,
+        Long refundCount,
         BigDecimal netRevenue,
         BigDecimal averageInvoiceAmount
 ) {

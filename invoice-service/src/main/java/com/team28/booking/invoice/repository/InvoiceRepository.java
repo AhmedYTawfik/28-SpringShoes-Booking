@@ -52,16 +52,17 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query(value = "SELECT status, total_price FROM bookings WHERE id = :bookingId", nativeQuery = true)
     List<Object[]> findBookingDetails(@Param("bookingId") Long bookingId);
 
-    // S5-F6: aggregate COMPLETED and REFUNDED invoices within a date range
+    // S5-F6: aggregate COMPLETED and REFUNDED invoices within a booking date range
     @Query(value = """
             SELECT
-                COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN amount ELSE 0 END), 0),
-                COUNT(CASE WHEN status IN ('COMPLETED', 'REFUNDED') THEN 1 END),
-                COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END),
-                COALESCE(SUM(CASE WHEN status = 'REFUNDED' THEN amount ELSE 0 END), 0),
-                COALESCE(AVG(CASE WHEN status IN ('COMPLETED', 'REFUNDED') THEN amount END), 0)
-            FROM invoices
-            WHERE created_at >= :startDate AND created_at <= :endDate
+                COALESCE(SUM(CASE WHEN i.status = 'COMPLETED' THEN i.amount ELSE 0 END), 0),
+                COUNT(CASE WHEN i.status = 'COMPLETED' THEN 1 END),
+                COALESCE(SUM(CASE WHEN i.status = 'REFUNDED' THEN i.amount ELSE 0 END), 0),
+                COUNT(CASE WHEN i.status = 'REFUNDED' THEN 1 END),
+                COALESCE(AVG(CASE WHEN i.status IN ('COMPLETED', 'REFUNDED') THEN i.amount END), 0)
+            FROM invoices i
+            JOIN bookings b ON b.id = i.booking_id
+            WHERE b.requested_at >= :startDate AND b.requested_at <= :endDate
             """, nativeQuery = true)
     Object[] getRevenueStats(@Param("startDate") LocalDateTime startDate,
                              @Param("endDate") LocalDateTime endDate);
