@@ -303,6 +303,10 @@ public class InvoiceService extends Observable {
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
 
+    public Long getUserIdFromBooking(Long bookingId) {
+        return invoiceRepository.findUserIdByBookingId(bookingId);
+    }
+
     @Transactional
     public Invoice processInvoiceForBooking(ProcessInvoiceRequest request) {
         return processInvoiceForBooking(request, false);

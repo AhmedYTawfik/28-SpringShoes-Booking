@@ -61,7 +61,7 @@ public class InvoiceController {
         return ResponseEntity.ok(invoiceService.getInvoiceDetails(invoiceId));
     }
 
-    @PutMapping("/{invoiceId}/discounts/{discountId}")
+    @PostMapping("/{invoiceId}/discounts/{discountId}")
     public ResponseEntity<Invoice> applyDiscountToInvoice(@PathVariable Long invoiceId, @PathVariable Long discountId) {
         return ResponseEntity.ok(invoiceService.applyDiscountToInvoice(invoiceId, discountId));
     }
@@ -93,7 +93,7 @@ public class InvoiceController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/refund")
+    @PutMapping("/{id}/refund")
     public ResponseEntity<Invoice> processRefund(
         @PathVariable Long id,
         @RequestBody RefundRequest refundRequest
@@ -117,6 +117,19 @@ public class InvoiceController {
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
+
+    @PostMapping("/booking/{bookingId}")
+    public ResponseEntity<Invoice> processInvoiceByBookingPath(
+            @PathVariable Long bookingId,
+            @RequestBody ProcessInvoiceRequest request) {
+        request.setBookingId(bookingId);
+        if (request.getUserId() == null) {
+            Long userId = invoiceService.getUserIdFromBooking(bookingId);
+            request.setUserId(userId);
+        }
+        Invoice invoice = invoiceService.processInvoiceForBooking(request, false);
+        return ResponseEntity.status(201).body(invoice);
+    }
 
     @PostMapping("/process")
     public ResponseEntity<Invoice> processInvoiceForBooking(
