@@ -149,6 +149,10 @@ public class BookingService extends Observable {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Booking must be in REQUESTED status to assign a provider");
         }
+        if (!bookingRepository.existsProviderById(providerId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Provider not found with id: " + providerId);
+        }
         booking.setProviderId(providerId);
         booking.setStatus(Booking.Status.CONFIRMED);
         Booking saved = bookingRepository.save(booking);
