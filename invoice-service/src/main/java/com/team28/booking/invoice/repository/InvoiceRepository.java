@@ -38,6 +38,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
         @Param("endDate") LocalDateTime endDate
     );
 
+    // S5-F4: get user_id from a booking
+    @Query(value = "SELECT user_id FROM bookings WHERE id = :bookingId", nativeQuery = true)
+    Long findUserIdByBookingId(@Param("bookingId") Long bookingId);
+
     // S5-F4: check if an invoice already exists for a given booking
     @Query(value = "SELECT EXISTS(SELECT 1 FROM invoices WHERE booking_id = :bookingId)", nativeQuery = true)
     boolean existsByBookingId(@Param("bookingId") Long bookingId);
