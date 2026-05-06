@@ -130,7 +130,7 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
     @Query(value = """
         SELECT p.*, COUNT(b.id) as booking_count
         FROM providers p
-        INNER JOIN bookings b ON b.provider_id = p.id
+        LEFT JOIN bookings b ON b.provider_id = p.id
         GROUP BY p.id
         ORDER BY p.rating DESC
     """, nativeQuery = true)
