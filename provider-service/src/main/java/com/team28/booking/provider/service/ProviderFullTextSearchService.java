@@ -11,7 +11,9 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -37,6 +39,9 @@ public class ProviderFullTextSearchService {
                                                Provider.ProviderStatus status,
                                                Double minRating,
                                                Double maxRating) {
+        if (minRating != null && maxRating != null && minRating > maxRating)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
+
         try {
             BoolQuery.Builder bool = new BoolQuery.Builder();
 
