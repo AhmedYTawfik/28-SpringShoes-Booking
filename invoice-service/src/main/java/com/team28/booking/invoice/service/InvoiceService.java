@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -251,7 +252,10 @@ public class InvoiceService extends Observable {
     /** S5-F1: search invoices by status/date — 5 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "invoice-service::S5-F1",
                key = "T(java.util.Objects).hash(#status, #startDate, #endDate)")
-    public List<Invoice> searchInvoices(InvoiceStatus status, LocalDateTime startDate, LocalDateTime endDate) {
+    public List<Invoice> searchInvoices(InvoiceStatus status, LocalDate start, LocalDate end) {
+        LocalDateTime startDate = start != null ? start.atStartOfDay() : null;
+        LocalDateTime endDate = end != null ? end.atTime(LocalTime.MAX) : null;
+        
         if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new BadRequestException("startDate must not be after endDate");
         }
@@ -337,7 +341,7 @@ public class InvoiceService extends Observable {
         invoice.setBookingId(request.getBookingId());
         invoice.setUserId(request.getUserId());
         invoice.setAmount(totalPrice);
-        invoice.setMethod(Invoice.PaymentMethod.valueOf(request.getMethod()));
+        invoice.setMethod(parsePaymentMethod(request.getMethod()));
         invoice.setCreatedAt(LocalDateTime.now());
 
         Map<String, Object> details = new HashMap<>();
@@ -381,7 +385,7 @@ public class InvoiceService extends Observable {
             throw new BadRequestException("startDate must not be after endDate");
         }
         LocalDateTime from = startDate.atStartOfDay();
-        LocalDateTime to   = endDate.atTime(23, 59, 59, 999_000_000);
+        LocalDateTime to   = endDate.atTime(LocalTime.MAX);
 
         List<Object[]> rows = invoiceRepository.getRevenueByServiceType(from, to);
         List<ServiceTypeRevenueDTO> result = new ArrayList<>();
@@ -416,7 +420,7 @@ public class InvoiceService extends Observable {
             throw new BadRequestException("startDate must not be after endDate");
         }
         java.time.LocalDateTime from = startDate.atStartOfDay();
-        java.time.LocalDateTime to   = endDate.atTime(23, 59, 59, 999_000_000);
+        java.time.LocalDateTime to   = endDate.atTime(LocalTime.MAX);
 
         List<String> actions = java.util.List.of("COMPLETED", "FAILED");
         List<PaymentMethodBreakdown> rows = paymentAuditEventRepository.findMethodBreakdown(from, to, actions);
@@ -463,7 +467,7 @@ public class InvoiceService extends Observable {
         }
 
         LocalDateTime from = startDate.atStartOfDay();
-        LocalDateTime to   = endDate.atTime(23, 59, 59);
+        LocalDateTime to   = endDate.atTime(LocalTime.MAX);
 
         Object[] row = (Object[])(invoiceRepository.getRevenueStats(from, to)[0]);
         return objectArrayDtoAdapter.toRevenueReportDTO(startDate, endDate, row);
@@ -480,7 +484,7 @@ public class InvoiceService extends Observable {
         }
 
         if (request.getMethod() != null && !request.getMethod().isBlank()) {
-            invoice.setMethod(Invoice.PaymentMethod.valueOf(request.getMethod()));
+            invoice.setMethod(parsePaymentMethod(request.getMethod()));
         }
 
         Map<String, Object> details = invoice.getTransactionDetails();
@@ -663,5 +667,17 @@ public class InvoiceService extends Observable {
         payload.put("status", invoice.getStatus() != null ? invoice.getStatus().name() : null);
         payload.put("amount", invoice.getAmount());
         return payload;
+    }
+
+    private Invoice.PaymentMethod parsePaymentMethod(String rawMethod) {
+        if (rawMethod == null || rawMethod.isBlank()) {
+            throw new BadRequestException("Invalid payment method: " + rawMethod);
+        }
+
+        try {
+            return Invoice.PaymentMethod.valueOf(rawMethod);
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Invalid payment method: " + rawMethod);
+        }
     }
 }

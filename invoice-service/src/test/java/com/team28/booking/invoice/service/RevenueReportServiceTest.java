@@ -43,11 +43,11 @@ class RevenueReportServiceTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    /** Build the Object[] that the native query returns */
-    private Object[] statsRow(double totalRevenue, long totalInvoices,
-                              long completedInvoices, double refundedAmount,
+    /** Build the wrapped Object[] shape returned by the repository */
+    private Object[] statsRow(double totalRevenue, long totalTransactions,
+                              double refundedAmount, long refundCount,
                               double avgAmount) {
-        return new Object[]{totalRevenue, totalInvoices, completedInvoices, refundedAmount, avgAmount};
+        return new Object[]{new Object[]{totalRevenue, totalTransactions, refundedAmount, refundCount, avgAmount}};
     }
 
     // ── happy path ────────────────────────────────────────────────────────────
@@ -55,39 +55,39 @@ class RevenueReportServiceTest {
     @Test
     void getRevenueReport_validRange_returnsCorrectDTO() {
         when(invoiceRepository.getRevenueStats(any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(statsRow(600.0, 4L, 3L, 100.0, 150.0));
+                .thenReturn(statsRow(600.0, 3L, 100.0, 1L, 150.0));
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
         assertThat(dto.startDate()).isEqualTo(START);
         assertThat(dto.endDate()).isEqualTo(END);
         assertThat(dto.totalRevenue()).isEqualByComparingTo(BigDecimal.valueOf(600.0));
-        assertThat(dto.totalInvoices()).isEqualTo(4L);
-        assertThat(dto.completedInvoices()).isEqualTo(3L);
+        assertThat(dto.totalTransactions()).isEqualTo(3L);
         assertThat(dto.refundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(100.0));
+        assertThat(dto.refundCount()).isEqualTo(1L);
         assertThat(dto.netRevenue()).isEqualByComparingTo(BigDecimal.valueOf(500.0));          // 600 - 100
-        assertThat(dto.averageInvoiceAmount()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
+        assertThat(dto.averageInvoice()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
     }
 
     @Test
     void getRevenueReport_noData_returnsAllZeroes() {
         when(invoiceRepository.getRevenueStats(any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(statsRow(0.0, 0L, 0L, 0.0, 0.0));
+                .thenReturn(statsRow(0.0, 0L, 0.0, 0L, 0.0));
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
         assertThat(dto.totalRevenue()).isZero();
-        assertThat(dto.totalInvoices()).isZero();
-        assertThat(dto.completedInvoices()).isZero();
+        assertThat(dto.totalTransactions()).isZero();
         assertThat(dto.refundedAmount()).isZero();
+        assertThat(dto.refundCount()).isZero();
         assertThat(dto.netRevenue()).isZero();
-        assertThat(dto.averageInvoiceAmount()).isZero();
+        assertThat(dto.averageInvoice()).isZero();
     }
 
     @Test
     void getRevenueReport_netRevenue_isTotalMinusRefunded() {
         when(invoiceRepository.getRevenueStats(any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(statsRow(1000.0, 5L, 4L, 250.0, 200.0));
+                .thenReturn(statsRow(1000.0, 4L, 250.0, 1L, 200.0));
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
@@ -98,7 +98,7 @@ class RevenueReportServiceTest {
     void getRevenueReport_sameDayRange_isAllowed() {
         LocalDate sameDay = LocalDate.of(2026, 3, 15);
         when(invoiceRepository.getRevenueStats(any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(statsRow(100.0, 1L, 1L, 0.0, 100.0));
+                .thenReturn(statsRow(100.0, 1L, 0.0, 0L, 100.0));
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(sameDay, sameDay);
 
@@ -110,17 +110,18 @@ class RevenueReportServiceTest {
     @Test
     void getRevenueReport_nullDbValues_defaultToZero() {
         when(invoiceRepository.getRevenueStats(any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(new Object[]{null, null, null, null, null});
+                .thenReturn(new Object[]{new Object[]{null, null, null, null, null}});
 
         RevenueReportDTO dto = invoiceService.getRevenueReport(START, END);
 
         assertThat(dto.totalRevenue()).isZero();
-        assertThat(dto.totalInvoices()).isZero();
+        assertThat(dto.totalTransactions()).isZero();
         assertThat(dto.refundedAmount()).isZero();
-        assertThat(dto.averageInvoiceAmount()).isZero();
+        assertThat(dto.refundCount()).isZero();
+        assertThat(dto.averageInvoice()).isZero();
     }
 
-    // ── invalid date range ────────────────────────────────────────────────────
+    // ── invalid date range</####################################################################################> ────────────────────────────────────────────────────
 
     @Test
     void getRevenueReport_startAfterEnd_throws400() {

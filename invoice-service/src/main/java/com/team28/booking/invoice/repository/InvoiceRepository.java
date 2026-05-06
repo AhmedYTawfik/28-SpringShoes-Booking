@@ -26,10 +26,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
      // Search invoices by status and date range using native SQL
     // Returns invoices matching any non-null filter criteria
     @Query(value = """
-        SELECT * FROM invoices i
+        SELECT DISTINCT i.*
+        FROM invoices i
+        JOIN bookings b ON b.id = i.booking_id
         WHERE (CAST(:status AS text) IS NULL OR i.status = CAST(:status AS text))
-        AND (CAST(:startDate AS timestamp) IS NULL OR i.created_at >= CAST(:startDate AS timestamp))
-        AND (CAST(:endDate AS timestamp) IS NULL OR i.created_at <= CAST(:endDate AS timestamp))
+        AND (CAST(:startDate AS timestamp) IS NULL OR b.requested_at >= CAST(:startDate AS timestamp))
+        AND (CAST(:endDate AS timestamp) IS NULL OR b.requested_at <= CAST(:endDate AS timestamp))
         ORDER BY i.created_at DESC
         """, nativeQuery = true)
     List<Invoice> searchInvoices(
@@ -50,16 +52,17 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query(value = "SELECT status, total_price FROM bookings WHERE id = :bookingId", nativeQuery = true)
     List<Object[]> findBookingDetails(@Param("bookingId") Long bookingId);
 
-    // S5-F6: aggregate COMPLETED and REFUNDED invoices within a date range
+    // S5-F6: aggregate COMPLETED and REFUNDED invoices within a booking date range
     @Query(value = """
             SELECT
-                COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN amount ELSE 0 END), 0),
-                COUNT(CASE WHEN status IN ('COMPLETED', 'REFUNDED') THEN 1 END),
-                COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END),
-                COALESCE(SUM(CASE WHEN status = 'REFUNDED' THEN amount ELSE 0 END), 0),
-                COALESCE(AVG(CASE WHEN status IN ('COMPLETED', 'REFUNDED') THEN amount END), 0)
-            FROM invoices
-            WHERE created_at >= :startDate AND created_at <= :endDate
+                COALESCE(SUM(CASE WHEN i.status = 'COMPLETED' THEN i.amount ELSE 0 END), 0),
+                COUNT(CASE WHEN i.status = 'COMPLETED' THEN 1 END),
+                COALESCE(SUM(CASE WHEN i.status = 'REFUNDED' THEN i.amount ELSE 0 END), 0),
+                COUNT(CASE WHEN i.status = 'REFUNDED' THEN 1 END),
+                COALESCE(AVG(CASE WHEN i.status IN ('COMPLETED', 'REFUNDED') THEN i.amount END), 0)
+            FROM invoices i
+            JOIN bookings b ON b.id = i.booking_id
+            WHERE b.requested_at >= :startDate AND b.requested_at <= :endDate
             """, nativeQuery = true)
     Object[] getRevenueStats(@Param("startDate") LocalDateTime startDate,
                              @Param("endDate") LocalDateTime endDate);
@@ -115,7 +118,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
                                    - COALESCE(CAST(i.transaction_details->>'refundAmount' AS NUMERIC), 0)
                          ELSE 0 END
                 ), 0)                                                                   AS net_booking_revenue,
-                COUNT(DISTINCT b.id)                                                    AS booking_count,
+                COUNT(DISTINCT CASE WHEN i.status IN ('COMPLETED', 'REFUNDED')
+                                    THEN b.id END)                                      AS booking_count,
                 COALESCE(SUM(CASE WHEN b.status = 'CANCELLED' THEN 1 ELSE 0 END), 0)  AS cancelled_count
             FROM bookings b
             JOIN providers p     ON p.id = b.provider_id
