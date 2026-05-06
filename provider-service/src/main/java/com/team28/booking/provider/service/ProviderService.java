@@ -169,10 +169,14 @@ public class ProviderService extends Observable {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Certificate has already expired");
 
         if (!certificationService.verifyCertificateAdmin(verifiedBy.verifier()))
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "The verifier is not admin");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The verifier is not admin");
 
         providerCertification.setVerified(true);
         Map<String, Object> metadata = providerCertification.getMetadata();
+        if (metadata == null) {
+            metadata = new HashMap<>();
+            providerCertification.setMetadata(metadata);
+        }
         metadata.put("verifiedAt", currentDate);
         metadata.put("verifiedBy", verifiedBy.verifier());
         certificationService.updateCertification(certificationId, providerCertification);
