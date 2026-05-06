@@ -19,14 +19,14 @@ import java.util.Optional;
 public interface ProviderRepository extends JpaRepository<Provider, Long> {
     @Query(value = """
         SELECT * FROM providers
-        WHERE service_details ->> 'pricingTier' = :tier
+        WHERE service_details ->> 'tier' = :tier
     """,nativeQuery = true)
     List<Provider> findByTier(@Param("tier") String tier);
 
     @Query(value = """
         SELECT * FROM providers
         WHERE status = :status
-        AND service_details ->> 'pricingTier' = :tier
+        AND service_details ->> 'tier' = :tier
     """, nativeQuery = true)
     List<Provider> findByTierAndStatus(
             @Param("tier") String tier,
