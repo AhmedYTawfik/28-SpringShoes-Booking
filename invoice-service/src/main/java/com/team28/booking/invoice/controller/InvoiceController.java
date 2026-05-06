@@ -80,7 +80,9 @@ public class InvoiceController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
-        return ResponseEntity.ok(invoiceService.searchInvoices(status, startDate.atStartOfDay(), endDate.atTime(LocalTime.MAX)));
+        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : null;
+        LocalDateTime end   = endDate   != null ? endDate.atTime(23, 59, 59) : null;
+        return ResponseEntity.ok(invoiceService.searchInvoices(status, start, end));
     }
 
     @PutMapping("/{id}")
@@ -118,6 +120,19 @@ public class InvoiceController {
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
+
+    @PostMapping("/booking/{bookingId}")
+    public ResponseEntity<Invoice> processInvoiceByBookingPath(
+            @PathVariable Long bookingId,
+            @RequestBody ProcessInvoiceRequest request) {
+        request.setBookingId(bookingId);
+        if (request.getUserId() == null) {
+            Long userId = invoiceService.getUserIdFromBooking(bookingId);
+            request.setUserId(userId);
+        }
+        Invoice invoice = invoiceService.processInvoiceForBooking(request, false);
+        return ResponseEntity.status(201).body(invoice);
+    }
 
     @PostMapping("/process")
     public ResponseEntity<Invoice> processInvoiceForBooking(
