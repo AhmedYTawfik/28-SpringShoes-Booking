@@ -115,7 +115,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
                                    - COALESCE(CAST(i.transaction_details->>'refundAmount' AS NUMERIC), 0)
                          ELSE 0 END
                 ), 0)                                                                   AS net_booking_revenue,
-                COUNT(DISTINCT b.id)                                                    AS booking_count,
+                COUNT(DISTINCT CASE WHEN i.status IN ('COMPLETED', 'REFUNDED')
+                                    THEN b.id END)                                      AS booking_count,
                 COALESCE(SUM(CASE WHEN b.status = 'CANCELLED' THEN 1 ELSE 0 END), 0)  AS cancelled_count
             FROM bookings b
             JOIN providers p     ON p.id = b.provider_id
