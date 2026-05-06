@@ -242,6 +242,11 @@ public class UserService extends Observable {
             throw new RuntimeException("User not found");
         }
 
+        // TC333: Reject if already deactivated
+        if (user.getStatus() == Status.DEACTIVATED) {
+            throw new IllegalStateException("User is already deactivated");
+        }
+
         Long activeBookings = userRepository.countActiveBookings(userId);
         if (activeBookings != null && activeBookings > 0) {
             throw new IllegalStateException("User has active bookings");
