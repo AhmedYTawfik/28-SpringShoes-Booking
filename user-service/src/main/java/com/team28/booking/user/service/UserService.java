@@ -368,12 +368,18 @@ public class UserService extends Observable {
         }
 
         Object[] summaryRow = userRepository.findUserBookingSummary(userId);
-        if (summaryRow == null) {
+        if (summaryRow == null || summaryRow.length == 0) {
             return new UserBookingSummaryDTO(
                     user.getId(), user.getName(), 0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO);
         }
 
-        return objectArrayDtoAdapter.toUserBookingSummaryDTO(summaryRow);
+        // Unwrap: JPA native queries can return Object[][] (array of rows)
+        // where the first element is itself an Object[] containing the actual data
+        Object[] row = (summaryRow[0] instanceof Object[])
+                ? (Object[]) summaryRow[0]
+                : summaryRow;
+
+        return objectArrayDtoAdapter.toUserBookingSummaryDTO(row);
     }
 
     /** S1-F8: users by JSON preference key-value — 5 min TTL (§4.4.1). */
