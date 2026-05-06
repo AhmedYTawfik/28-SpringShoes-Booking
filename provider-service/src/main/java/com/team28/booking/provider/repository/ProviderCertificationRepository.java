@@ -14,4 +14,6 @@ public interface ProviderCertificationRepository extends JpaRepository<ProviderC
         SELECT 1 FROM users WHERE id = :id AND role = 'ADMIN'
         )""", nativeQuery = true)
     boolean verifyVerifierIsAdmin(@Param("id") Long id);
+
+    boolean existsByIdAndProvider_Id(Long id, Long providerId);
 }

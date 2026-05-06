@@ -8,6 +8,7 @@ import com.team28.booking.provider.search.ProviderSearchRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -26,13 +27,16 @@ public class IndexingService extends Observable {
     private final ProviderSearchRepository providerSearchRepository;
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidationService cacheInvalidationService;
+    private final ElasticsearchOperations elasticsearchOperations;
 
     public IndexingService(ProviderSearchRepository providerSearchRepository,
                            MongoEventLogger mongoEventLogger,
-                           CacheInvalidationService cacheInvalidationService) {
+                           CacheInvalidationService cacheInvalidationService,
+                           ElasticsearchOperations elasticsearchOperations) {
         this.providerSearchRepository = providerSearchRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidationService = cacheInvalidationService;
+        this.elasticsearchOperations = elasticsearchOperations;
     }
 
     @PostConstruct
@@ -41,24 +45,23 @@ public class IndexingService extends Observable {
     }
 
     public void indexProvider(Provider provider, String source) {
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
-            try {
-                providerSearchRepository.save(toDocument(provider));
-                cacheInvalidationService.invalidateProviderSearch();
-                Map<String, Object> payload = providerPayload(provider, source);
-                emitAfterCommit("INDEXED", payload);
-            } catch (Exception ex) {
-                log.warn("Failed to auto-index provider {}: {}", provider.getId(), ex.getMessage());
-                boolean isRefreshBug = ex.getMessage() != null && 
-                                       ex.getMessage().contains("indices.refresh") && 
-                                       ex.getMessage().contains("media_type_header_exception"); 
-                if (isRefreshBug) {
-                    log.info("Ignored Elasticsearch refresh bug. Provider {} was successfully indexed.", provider.getId());
-                } else if ("explicit".equals(source)) {
-                    log.error("Indexing failed: " + ex.getMessage(), ex);
-                }
+        try {
+            providerSearchRepository.save(toDocument(provider));
+            elasticsearchOperations.indexOps(ProviderSearchDocument.class).refresh();
+            cacheInvalidationService.invalidateProviderSearch();
+            Map<String, Object> payload = providerPayload(provider, source);
+            emitAfterCommit("INDEXED", payload);
+        } catch (Exception ex) {
+            log.warn("Failed to auto-index provider {}: {}", provider.getId(), ex.getMessage());
+            boolean isRefreshBug = ex.getMessage() != null &&
+                                   ex.getMessage().contains("indices.refresh") &&
+                                   ex.getMessage().contains("media_type_header_exception");
+            if (isRefreshBug) {
+                log.info("Ignored Elasticsearch refresh bug. Provider {} was successfully indexed.", provider.getId());
+            } else if ("explicit".equals(source)) {
+                log.error("Indexing failed: " + ex.getMessage(), ex);
             }
-        });
+        }
     }
 
     public void deleteProvider(Provider provider) {

@@ -68,6 +68,10 @@ public class ProviderCertificationService {
         return providerCertificationRepository.verifyVerifierIsAdmin(id);
     }
 
+    public boolean belongsToProvider(Long certId, Long providerId) {
+        return providerCertificationRepository.existsByIdAndProvider_Id(certId, providerId);
+    }
+
     /** Non-cached DB fetch used by all write paths (§4.4.4). */
     ProviderCertification findById(Long id) {
         return providerCertificationRepository.findById(id)

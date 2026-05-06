@@ -227,7 +227,7 @@ public class TimeSlotService extends Observable {
         Object[] row = (Object[]) stats[0];
         Long totalSlots = ((Number) row[0]).longValue();
         Long bookedSlots = ((Number) row[1]).longValue();
-        Double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots * 100.0 : 0.0;
+        Double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots : 0.0;
         String peakDay = timeSlotRepository.findPeakDay(providerId, startDate, endDate);
         if (peakDay != null) peakDay = peakDay.trim();
         return objectArrayDtoAdapter.toProviderUtilizationDTO(providerId, row, utilizationRate, peakDay);
