@@ -122,7 +122,7 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
         UPDATE bookings
         SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"rated": true}'::jsonb
         WHERE id = :bookingId
-          AND (metadata IS NULL OR NOT (metadata ? 'rated'))
+          AND (metadata IS NULL OR NOT jsonb_exists(metadata, 'rated'))
     """, nativeQuery = true)
     int markBookingAsRated(@Param("bookingId") Long bookingId);
 
