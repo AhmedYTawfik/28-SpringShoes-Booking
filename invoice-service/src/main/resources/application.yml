@@ -55,3 +55,13 @@ feign:
     url: http://${FEIGN_CALENDAR_SERVICE_URL:calendar-service:8080}
   invoice-service:
     url: http://${FEIGN_INVOICE_SERVICE_URL:invoice-service:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "prometheus,health,info"
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
