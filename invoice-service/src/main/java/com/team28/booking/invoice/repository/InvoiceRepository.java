@@ -48,6 +48,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query(value = "SELECT EXISTS(SELECT 1 FROM invoices WHERE booking_id = :bookingId)", nativeQuery = true)
     boolean existsByBookingId(@Param("bookingId") Long bookingId);
 
+    Optional<Invoice> findByBookingId(Long bookingId);
+
     // S5-F4: fetch booking status and totalPrice from the shared bookings table
     @Query(value = "SELECT status, total_price FROM bookings WHERE id = :bookingId", nativeQuery = true)
     List<Object[]> findBookingDetails(@Param("bookingId") Long bookingId);
