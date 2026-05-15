@@ -9,10 +9,12 @@ import com.team28.booking.calendar.repository.TimeSlotRepository;
 import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.RabbitHandler;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 
 @Service
+@RabbitListener(queues = "calendar.booking.saga-listener")
 public class CalendarBookingEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(CalendarBookingEventListener.class);
@@ -29,7 +31,7 @@ public class CalendarBookingEventListener {
         this.publisher = publisher;
     }
 
-    @RabbitListener(queues = "calendar.booking.saga-listener")
+    @RabbitHandler
     public void handleBookingPlaced(BookingPlacedEvent event) {
         log.info("Received booking.placed: bookingId={} providerId={}", event.bookingId(), event.providerId());
 
@@ -53,7 +55,7 @@ public class CalendarBookingEventListener {
         ).ifPresent(slot -> publisher.publishSlotReserved(slot.getId(), event.providerId(), event.bookingId()));
     }
 
-    @RabbitListener(queues = "calendar.booking.saga-listener")
+    @RabbitHandler
     public void handleBookingCancelled(BookingCancelledEvent event) {
         log.info("Received booking.cancelled: bookingId={} providerId={}", event.bookingId(), event.providerId());
 
@@ -77,7 +79,7 @@ public class CalendarBookingEventListener {
         ).ifPresent(slot -> publisher.publishSlotReleased(slot.getId(), event.providerId(), event.bookingId()));
     }
 
-    @RabbitListener(queues = "calendar.booking.saga-listener")
+    @RabbitHandler
     public void handleBookingCompleted(BookingCompletedEvent event) {
         log.info("Received booking.completed: bookingId={} providerId={} — no calendar state change needed",
                 event.bookingId(), event.providerId());
