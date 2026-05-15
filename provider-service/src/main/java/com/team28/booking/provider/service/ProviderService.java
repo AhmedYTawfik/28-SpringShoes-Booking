@@ -7,6 +7,7 @@ import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.contracts.dto.BookingDTO;
 import com.team28.booking.contracts.dto.UserDTO;
+import com.team28.booking.contracts.dto.ProviderAvailabilityDTO;
 import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.contracts.feign.UserServiceClient;
 import com.team28.booking.provider.observer.MongoEventLogger;
@@ -126,12 +127,17 @@ public class ProviderService extends Observable {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Status is required");
         }
         if (newStatus == Provider.ProviderStatus.OFFLINE) {
-            Long activeBookings = providerRepository.countActiveBookings(providerId);
-            if (activeBookings != null && activeBookings > 0) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "Cannot set provider to OFFLINE while having active bookings"
-                );
+            try {
+                int activeCount = bookingServiceClient.getProviderActiveCount(providerId);
+                if (activeCount > 0) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Cannot set provider to OFFLINE while having active bookings"
+                    );
+                }
+            } catch (FeignException e) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "Booking service temporarily unavailable");
             }
         }
 
@@ -233,6 +239,14 @@ public class ProviderService extends Observable {
     @Cacheable(cacheNames = "provider-service::provider", key = "#id")
     public Provider getProviderById(Long id) {
         return findById(id);
+    }
+
+    /** M3 S2: convenience endpoint returning the provider's current status (called by S3 via Feign). */
+    public ProviderAvailabilityDTO getProviderAvailability(Long id) {
+        Provider provider = findById(id);
+        return new ProviderAvailabilityDTO(
+                provider.getStatus() != null ? provider.getStatus().name() : null
+        );
     }
 
     public void indexProviderExplicitly(Long id) {

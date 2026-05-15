@@ -2,7 +2,7 @@ FROM eclipse-temurin:25.0.2_10-jdk
 
 WORKDIR /app
 
-COPY target/invoice-service-0.0.1-SNAPSHOT.jar app.jar
+COPY target/invoice-service-1.0-SNAPSHOT.jar app.jar
 
 EXPOSE 8080
 
