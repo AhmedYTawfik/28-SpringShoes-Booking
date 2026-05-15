@@ -1,0 +1,35 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://user-service:8080}
+          predicates:
+            - Path=/api/users/**,/api/auth/**
+        - id: provider-service
+          uri: ${PROVIDER_SERVICE_URL:http://provider-service:8080}
+          predicates:
+            - Path=/api/providers/**
+        - id: booking-service
+          uri: ${BOOKING_SERVICE_URL:http://booking-service:8080}
+          predicates:
+            - Path=/api/bookings/**,/api/booking-services/**
+        - id: calendar-service
+          uri: ${CALENDAR_SERVICE_URL:http://calendar-service:8080}
+          predicates:
+            - Path=/api/timeslots/**,/api/calendar/**
+        - id: invoice-service
+          uri: ${INVOICE_SERVICE_URL:http://invoice-service:8080}
+          predicates:
+            - Path=/api/invoices/**,/api/discounts/**,/api/invoice-discounts/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
