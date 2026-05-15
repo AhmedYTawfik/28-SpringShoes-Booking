@@ -57,7 +57,16 @@ public class Booking {
     private List<BookingItem> bookingServices = new ArrayList<>();
 
     public enum Status {
-        REQUESTED, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED
+        REQUESTED,
+        CONFIRMED,
+        IN_PROGRESS,
+        COMPLETED,
+        CANCELLED,
+        COMPLETING,
+        PAYMENT_PENDING,
+        PAID,
+        PAYMENT_FAILED,
+        REFUNDED
     }
 
     @PrePersist
