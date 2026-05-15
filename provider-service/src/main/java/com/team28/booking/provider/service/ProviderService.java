@@ -8,6 +8,7 @@ import com.team28.booking.contracts.dto.BookingDTO;
 import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.contracts.dto.UserDTO;
 import com.team28.booking.contracts.dto.ProviderAvailabilityDTO;
+import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.contracts.feign.UserServiceClient;
 import com.team28.booking.provider.observer.MongoEventLogger;
@@ -277,9 +278,23 @@ public class ProviderService extends Observable {
         if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
         }
-        List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
-        Object[] row = results.isEmpty() ? new Object[]{null, null, null} : results.get(0);
-        return objectArrayDtoAdapter.toProviderEarningsDTO(provider.getId(), provider.getName(), row);
+        try {
+            ProviderBookingSummaryDTO summary = bookingServiceClient.getProviderBookingSummary(
+                    providerId,
+                    startDate != null ? startDate.toString() : null,
+                    endDate != null ? endDate.toString() : null
+            );
+            return new ProviderEarningsDTO(
+                    provider.getId(),
+                    provider.getName(),
+                    summary.totalBookings(),
+                    summary.totalEarnings().doubleValue(),
+                    summary.averageBookingPrice().doubleValue()
+            );
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Booking service temporarily unavailable");
+        }
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
