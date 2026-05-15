@@ -21,6 +21,7 @@ import com.team28.booking.user.mongo.AuthEvent;
 import com.team28.booking.user.mongo.AuthEventRepository;
 import com.team28.booking.user.observer.MongoEventLogger;
 import com.team28.booking.user.observer.Observable;
+import com.team28.booking.user.messaging.UserEventPublisher;
 import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
 
@@ -75,6 +76,9 @@ public class UserService extends Observable {
     @Autowired
     private CacheInvalidator cacheInvalidator;
 
+    @Autowired
+    private UserEventPublisher eventPublisher;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
@@ -116,6 +120,8 @@ public class UserService extends Observable {
 
         Map<String, Object> payload = userPayload(saved);
         emitAfterCommit("REGISTERED", payload);
+        publishAfterCommit(() -> eventPublisher.publishUserRegistered(
+                saved.getId(), saved.getEmail(), saved.getRole().name()));
 
         String token = jwtService.issue(saved.getEmail(), saved.getId(), saved.getRole().name());
         return new AuthResponse(token, jwtService.getExpirationMs());
@@ -262,6 +268,7 @@ public class UserService extends Observable {
         User saved = userRepository.save(user);
         invalidateUserCaches(userId);
         emitAfterCommit("USER_DEACTIVATED", userPayload(saved));
+        publishAfterCommit(() -> eventPublisher.publishUserDeactivated(saved.getId()));
         return saved;
     }
 
@@ -479,6 +486,19 @@ public class UserService extends Observable {
             }
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd");
+        }
+    }
+
+    private void publishAfterCommit(Runnable publish) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            publish.run();
         }
     }
 
