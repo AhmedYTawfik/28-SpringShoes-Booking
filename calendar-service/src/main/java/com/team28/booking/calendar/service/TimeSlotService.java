@@ -265,7 +265,6 @@ public class TimeSlotService extends Observable {
     /** S4-F9: idle providers — 10 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "calendar-service::S4-F9",
                key = "T(java.util.Objects).hash(#maxBookedSlots, #sinceDays)")
-    @Transactional(readOnly = true)
     public List<IdleProviderDTO> findIdleProviders(int maxBookedSlots, int sinceDays) {
         if (maxBookedSlots < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "maxBookedSlots must be greater than or equal to 0");
