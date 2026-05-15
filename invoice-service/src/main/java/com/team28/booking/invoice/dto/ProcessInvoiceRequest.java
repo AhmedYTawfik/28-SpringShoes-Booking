@@ -4,6 +4,7 @@ public class ProcessInvoiceRequest {
     private Long bookingId;
     private Long userId;
     private String method;
+    private String cardLastFour;
 
     public Long getBookingId() { return bookingId; }
     public void setBookingId(Long bookingId) { this.bookingId = bookingId; }
@@ -13,4 +14,7 @@ public class ProcessInvoiceRequest {
 
     public String getMethod() { return method; }
     public void setMethod(String method) { this.method = method; }
+
+    public String getCardLastFour() { return cardLastFour; }
+    public void setCardLastFour(String cardLastFour) { this.cardLastFour = cardLastFour; }
 }
