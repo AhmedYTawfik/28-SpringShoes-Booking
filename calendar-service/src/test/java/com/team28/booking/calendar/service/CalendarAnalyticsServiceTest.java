@@ -41,7 +41,8 @@ class CalendarAnalyticsServiceTest {
                 null,  // MongoEventLogger — not needed for read-only analytics
                 null,  // ObjectArrayDtoAdapter
                 null,  // CacheInvalidator
-                null   // CalendarAvailabilityEventRepository — not needed here
+                null,  // CalendarAvailabilityEventRepository — not needed here
+                null   // ProviderServiceClient — not needed here
         );
     }
 

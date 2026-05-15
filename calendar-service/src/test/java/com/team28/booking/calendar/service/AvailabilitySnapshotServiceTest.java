@@ -52,7 +52,8 @@ class AvailabilitySnapshotServiceTest {
                 null,         // MongoEventLogger — replaced by mock observer below
                 null,         // ObjectArrayDtoAdapter
                 cacheInvalidator,
-                cassandraRepo
+                cassandraRepo,
+                null          // ProviderServiceClient — not needed for snapshot tests
         );
         // Register the mock observer so we can verify it gets called
         timeSlotService.register(observer);

@@ -15,7 +15,12 @@ import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.observer.MongoEventLogger;
 import com.team28.booking.calendar.observer.Observable;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
+import com.team28.booking.contracts.dto.ProviderDTO;
+import com.team28.booking.contracts.feign.ProviderServiceClient;
+import feign.FeignException;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,6 +34,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,22 +45,27 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 public class TimeSlotService extends Observable {
 
+    private static final Logger log = LoggerFactory.getLogger(TimeSlotService.class);
+
     private final TimeSlotRepository timeSlotRepository;
     private final MongoEventLogger mongoEventLogger;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
     private final CalendarAvailabilityEventRepository cassandraRepo;
+    private final ProviderServiceClient providerServiceClient;
 
     public TimeSlotService(TimeSlotRepository timeSlotRepository,
                            MongoEventLogger mongoEventLogger,
                            ObjectArrayDtoAdapter objectArrayDtoAdapter,
                            CacheInvalidator cacheInvalidator,
-                           CalendarAvailabilityEventRepository cassandraRepo) {
+                           CalendarAvailabilityEventRepository cassandraRepo,
+                           ProviderServiceClient providerServiceClient) {
         this.timeSlotRepository = timeSlotRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
         this.cassandraRepo = cassandraRepo;
+        this.providerServiceClient = providerServiceClient;
     }
 
     @PostConstruct
@@ -181,10 +192,36 @@ public class TimeSlotService extends Observable {
                key = "T(java.util.Objects).hash(#date, #specialty)")
     @Transactional(readOnly = true)
     public List<AvailableProviderDTO> findAvailableProviders(LocalDate date, String specialty) {
-        List<Object[]> results = timeSlotRepository.findAvailableProvidersByDate(date, specialty);
-        return results.stream()
-                .map(objectArrayDtoAdapter::toAvailableProviderDTO)
-                .toList();
+        List<Object[]> localResults = timeSlotRepository.countAvailableSlotsByProviderAndDate(date);
+        List<AvailableProviderDTO> results = new ArrayList<>();
+
+        for (Object[] row : localResults) {
+            Long providerId = ((Number) row[0]).longValue();
+            Long availableSlots = ((Number) row[1]).longValue();
+
+            try {
+                ProviderDTO provider = providerServiceClient.getProvider(providerId);
+                if (specialty != null && !specialty.equals(provider.specialty())) {
+                    continue;
+                }
+                results.add(AvailableProviderDTO.builder()
+                        .providerId(providerId)
+                        .providerName(provider.name())
+                        .specialty(provider.specialty())
+                        .rating(provider.rating())
+                        .availableSlots(availableSlots)
+                        .build());
+            } catch (FeignException.NotFound e) {
+                log.warn("Provider {} not found via Feign, skipping", providerId);
+            } catch (FeignException e) {
+                log.warn("provider-service unavailable for {}: {}", providerId, e.getMessage());
+            }
+        }
+
+        results.sort(Comparator.comparingDouble(
+                (AvailableProviderDTO provider) -> provider.rating() != null ? provider.rating() : Double.NEGATIVE_INFINITY
+        ).reversed());
+        return results;
     }
 
     /** S4-F5: JSONB metadata search — 5 min TTL (§4.4.1). */
