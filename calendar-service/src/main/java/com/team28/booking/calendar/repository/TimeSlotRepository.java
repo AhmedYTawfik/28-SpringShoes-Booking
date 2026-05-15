@@ -17,9 +17,6 @@ import java.util.Optional;
 @RepositoryRestResource(exported=false)
 public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
 
-    @Query(value = "SELECT COUNT(*) FROM providers WHERE id = :providerId", nativeQuery = true)
-    Long countProviderById(@Param("providerId") Long providerId);
-
     Optional<TimeSlot> findTopByProviderIdOrderByDateDescStartTimeDesc(Long providerId);
 
     Optional<TimeSlot> findByProviderIdAndDateAndStartTime(Long providerId, LocalDate date, LocalTime startTime);
@@ -47,19 +44,13 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
                     @Param("startTime") LocalTime startTime);
 
     @Query(value = """
-            SELECT p.id AS providerId, p.name AS providerName, p.specialty,
-                   p.rating, COUNT(ts.id) AS availableSlots
-            FROM time_slots ts
-            JOIN providers p ON ts.provider_id = p.id
-            WHERE ts.date = :date
-              AND ts.available = true
-              AND (:specialty IS NULL OR p.specialty = :specialty)
-            GROUP BY p.id, p.name, p.specialty, p.rating
-            ORDER BY p.rating DESC
+            SELECT provider_id AS providerId, COUNT(*) AS availableSlots
+            FROM time_slots
+            WHERE date = :date
+              AND available = true
+            GROUP BY provider_id
             """, nativeQuery = true)
-    List<Object[]> findAvailableProvidersByDate(
-            @Param("date") LocalDate date,
-            @Param("specialty") String specialty);
+    List<Object[]> countAvailableSlotsByProviderAndDate(@Param("date") LocalDate date);
 
     @Query(value = """
             SELECT * FROM time_slots
