@@ -8,7 +8,6 @@ import com.team28.booking.contracts.dto.BookingDTO;
 import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.contracts.dto.UserDTO;
 import com.team28.booking.contracts.dto.ProviderAvailabilityDTO;
-import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.contracts.feign.UserServiceClient;
 import com.team28.booking.provider.observer.MongoEventLogger;
