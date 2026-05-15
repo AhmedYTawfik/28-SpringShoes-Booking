@@ -7,6 +7,7 @@ import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.provider.observer.MongoEventLogger;
 import com.team28.booking.provider.observer.Observable;
+import com.team28.booking.provider.messaging.ProviderEventPublisher;
 import com.team28.booking.provider.repository.ProviderRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
@@ -31,6 +32,7 @@ public class ProviderService extends Observable {
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
     private final ProviderDashboardService dashboardService;
+    private final ProviderEventPublisher eventPublisher;
 
     public ProviderService(
             ProviderRepository providerRepository,
@@ -40,7 +42,8 @@ public class ProviderService extends Observable {
             IndexingService indexingService,
             ObjectArrayDtoAdapter objectArrayDtoAdapter,
             CacheInvalidator cacheInvalidator,
-            ProviderDashboardService dashboardService
+            ProviderDashboardService dashboardService,
+            ProviderEventPublisher eventPublisher
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
@@ -50,6 +53,7 @@ public class ProviderService extends Observable {
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
         this.dashboardService = dashboardService;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostConstruct
@@ -120,10 +124,12 @@ public class ProviderService extends Observable {
             }
         }
 
+        String oldStatus = provider.getStatus() != null ? provider.getStatus().name() : null;
         provider.setStatus(newStatus);
         Provider saved = providerRepository.save(provider);
         invalidateProviderCaches(providerId);
         emitAfterCommit("AVAILABILITY_TOGGLED", providerPayload(saved));
+        publishAfterCommit(() -> eventPublisher.publishStatusChanged(providerId, oldStatus, newStatus.name()));
         indexingService.indexProvider(saved, "auto_crud_update");
     }
 
@@ -182,6 +188,8 @@ public class ProviderService extends Observable {
         payload.put("certificationId", certificationId);
         payload.put("verifiedBy", verifiedBy.verifier());
         emitAfterCommit("CERTIFICATION_VERIFIED", payload);
+        Long verifierVal = verifiedBy.verifier() instanceof Long l ? l : null;
+        publishAfterCommit(() -> eventPublisher.publishCertificationVerified(providerId, certificationId, verifierVal));
         return provider;
     }
 
@@ -275,6 +283,19 @@ public class ProviderService extends Observable {
         provider.setServiceDetails(serviceDetails);
     }
 
+    private void publishAfterCommit(Runnable publish) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            publish.run();
+        }
+    }
+
     private void emitAfterCommit(String action, Map<String, Object> payload) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -355,6 +376,8 @@ public class ProviderService extends Observable {
         provider.setRating(newRating);
         provider.setTotalRatings(newTotalRatings);
         updateProvider(providerId, provider);
+        publishAfterCommit(() -> eventPublisher.publishProviderRated(
+                providerId, rateProvider.bookingId(), rateProvider.rating()));
     }
 
     public List<TopProviderDTO> getTopRatedProviders(int limit) {
