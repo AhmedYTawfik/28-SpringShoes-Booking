@@ -89,6 +89,22 @@ services:
       retries: 5
       start_period: 10s
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: booking-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   cassandra:
     image: cassandra:latest
     container_name: booking-cassandra
@@ -192,6 +208,10 @@ services:
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration
@@ -201,6 +221,8 @@ services:
       mongo:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   provider-service:
@@ -214,6 +236,10 @@ services:
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
       SPRING_MAIN_LAZY_INITIALIZATION: "true"
       MANAGEMENT_HEALTH_ELASTICSEARCH_ENABLED: "false"
@@ -229,6 +255,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   booking-service:
     build: ./booking-service
@@ -241,6 +269,10 @@ services:
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
       SPRING_NEO4J_URI: bolt://neo4j:7687
       SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
       SPRING_NEO4J_AUTHENTICATION_PASSWORD: neo4jpass
@@ -256,6 +288,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   calendar-service:
     build: ./calendar-service
@@ -268,6 +302,10 @@ services:
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
       SPRING_CASSANDRA_CONTACTPOINTS: cassandra
       SPRING_CASSANDRA_PORT: 9042
       SPRING_CASSANDRA_LOCALDATACENTER: datacenter1
@@ -284,6 +322,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   invoice-service:
     build: ./invoice-service
@@ -296,6 +336,10 @@ services:
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration
@@ -305,6 +349,8 @@ services:
       invoice-postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
 volumes:
