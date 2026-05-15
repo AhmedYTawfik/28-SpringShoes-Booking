@@ -24,6 +24,28 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
 
     Optional<TimeSlot> findByProviderIdAndDateAndStartTime(Long providerId, LocalDate date, LocalTime startTime);
 
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE time_slots SET available = false
+            WHERE provider_id = :providerId AND date = :date AND start_time = :startTime
+            AND available = true
+            """, nativeQuery = true)
+    int reserveSlot(@Param("providerId") Long providerId,
+                    @Param("date") LocalDate date,
+                    @Param("startTime") LocalTime startTime);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE time_slots SET available = true
+            WHERE provider_id = :providerId AND date = :date AND start_time = :startTime
+            AND available = false
+            """, nativeQuery = true)
+    int releaseSlot(@Param("providerId") Long providerId,
+                    @Param("date") LocalDate date,
+                    @Param("startTime") LocalTime startTime);
+
     @Query(value = """
             SELECT p.id AS providerId, p.name AS providerName, p.specialty,
                    p.rating, COUNT(ts.id) AS availableSlots
