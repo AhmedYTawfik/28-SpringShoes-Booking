@@ -7,8 +7,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import java.time.LocalDate;
-
 @FeignClient(name = "calendar-service", url = "${feign.calendar-service.url}")
 public interface CalendarServiceClient {
     @GetMapping("/api/timeslots/provider/{providerId}/slot")
@@ -21,7 +19,7 @@ public interface CalendarServiceClient {
     @GetMapping("/api/timeslots/provider/{providerId}/utilization")
     ProviderUtilizationDTO getProviderUtilization(
             @PathVariable("providerId") Long providerId,
-            @RequestParam("startDate") LocalDate startDate,
-            @RequestParam("endDate") LocalDate endDate
+            @RequestParam("startDate") String startDate,
+            @RequestParam("endDate") String endDate
     );
 }

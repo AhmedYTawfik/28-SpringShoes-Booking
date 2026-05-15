@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Map;
 
 @FeignClient(name = "invoice-service", url = "${feign.invoice-service.url}")
@@ -18,8 +17,8 @@ public interface InvoiceServiceClient {
     @GetMapping("/api/invoices/user/{userId}/total")
     BigDecimal getUserInvoiceTotal(
             @PathVariable("userId") Long userId,
-            @RequestParam("startDate") LocalDate startDate,
-            @RequestParam("endDate") LocalDate endDate
+            @RequestParam("startDate") String startDate,
+            @RequestParam("endDate") String endDate
     );
 
     @PostMapping("/api/invoices/by-bookings")

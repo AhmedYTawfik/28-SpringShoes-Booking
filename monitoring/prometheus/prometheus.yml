@@ -1,6 +1,8 @@
 global:
   scrape_interval: 15s
 
+# Day-0 placeholder. Service slices add Prometheus registry dependencies and
+# enable /actuator/prometheus before these scrape targets become functional.
 scrape_configs:
   - job_name: booking-services
     metrics_path: /actuator/prometheus

@@ -8,8 +8,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import java.time.LocalDate;
-
 @FeignClient(name = "booking-service", url = "${feign.booking-service.url}")
 public interface BookingServiceClient {
     @GetMapping("/api/bookings/user/{userId}/summary")
@@ -24,8 +22,8 @@ public interface BookingServiceClient {
     @GetMapping("/api/bookings/provider/{providerId}/summary")
     ProviderBookingSummaryDTO getProviderBookingSummary(
             @PathVariable("providerId") Long providerId,
-            @RequestParam(name = "startDate", required = false) LocalDate startDate,
-            @RequestParam(name = "endDate", required = false) LocalDate endDate
+            @RequestParam(name = "startDate", required = false) String startDate,
+            @RequestParam(name = "endDate", required = false) String endDate
     );
 
     @GetMapping("/api/bookings/provider/{providerId}/active-count")
