@@ -24,6 +24,10 @@ import com.team28.booking.user.observer.Observable;
 import com.team28.booking.user.messaging.UserEventPublisher;
 import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
+import com.team28.booking.user.exception.ServiceUnavailableException;
+import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.dto.BookingSummaryDTO;
+import feign.FeignException;
 
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -54,6 +58,9 @@ public class UserService extends Observable {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private BookingServiceClient bookingServiceClient;
 
     @Autowired
     private AuthEventRepository authEventRepository;
@@ -376,27 +383,39 @@ public class UserService extends Observable {
         );
     }
 
-    /** S1-F6: user booking summary — 10 min TTL (§4.4.1). */
-    @Cacheable(cacheNames = "user-service::S1-F6", key = "#userId")
+    /** S1-F3: user booking summary — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F3", key = "#userId")
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) {
             throw new RuntimeException("User not found");
         }
 
-        Object[] summaryRow = userRepository.findUserBookingSummary(userId);
-        if (summaryRow == null || summaryRow.length == 0) {
+        try {
+            BookingSummaryDTO summary = bookingServiceClient.getUserBookingSummary(userId);
             return new UserBookingSummaryDTO(
-                    user.getId(), user.getName(), 0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO);
+                    user.getId(),
+                    user.getName(),
+                    summary.totalBookings(),
+                    summary.completedBookings(),
+                    summary.cancelledBookings(),
+                    summary.totalSpent(),
+                    summary.averageBookingPrice()
+            );
+        } catch (FeignException.NotFound e) {
+            return new UserBookingSummaryDTO(
+                    user.getId(),
+                    user.getName(),
+                    0L,
+                    0L,
+                    0L,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO
+            );
+        } catch (FeignException e) {
+            log.warn("booking-service unavailable for user {}: {}", userId, e.getMessage());
+            throw new ServiceUnavailableException("Booking service temporarily unavailable");
         }
-
-        // Unwrap: JPA native queries can return Object[][] (array of rows)
-        // where the first element is itself an Object[] containing the actual data
-        Object[] row = (summaryRow[0] instanceof Object[])
-                ? (Object[]) summaryRow[0]
-                : summaryRow;
-
-        return objectArrayDtoAdapter.toUserBookingSummaryDTO(row);
     }
 
     /** S1-F8: users by JSON preference key-value — 5 min TTL (§4.4.1). */
@@ -464,7 +483,7 @@ public class UserService extends Observable {
         if (id != null) {
             cacheInvalidator.deleteKey("user-service::user::" + id);
             cacheInvalidator.deleteKey("user-service::S1-F1::" + id);
-            cacheInvalidator.deleteKey("user-service::S1-F6::" + id);
+            cacheInvalidator.deleteKey("user-service::S1-F3::" + id);
         }
         cacheInvalidator.wildcardDelete("user-service::S1-F3::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F5::*");

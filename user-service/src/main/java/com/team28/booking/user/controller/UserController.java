@@ -140,7 +140,7 @@ public class UserController {
 
     // S1-F3: Get User Booking Summary
     @GetMapping("/{id}/booking-summary")
-    public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable Long id) {
+    public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable("id") Long id) {
         try {
             return ResponseEntity.ok(userService.getUserBookingSummary(id));
         } catch (RuntimeException e) {
