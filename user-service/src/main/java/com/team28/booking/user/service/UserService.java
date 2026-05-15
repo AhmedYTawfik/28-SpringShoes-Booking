@@ -369,18 +369,27 @@ public class UserService extends Observable {
         return userRepository.searchUsers(searchName, searchEmail, searchRole);
     }
 
-    /** S1-F5: users by language preference — 5 min TTL (§4.4.1). */
-    @Cacheable(cacheNames = "user-service::S1-F5",
+    /** S1-F9: users by language preference with minimum bookings — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F9",
                key = "T(java.util.Objects).hash(#language, #minBookings)")
     public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
         if (language == null || language.trim().isEmpty()) {
             throw new IllegalArgumentException("Language must not be blank");
         }
 
-        return userRepository.findUsersByLanguagePreferenceAndMinimumCompletedBookings(
-                language.trim(),
-                minBookings
-        );
+        List<User> candidates = userRepository.findUsersByLanguagePreference(language.trim());
+        List<User> result = new ArrayList<>();
+        for (User user : candidates) {
+            try {
+                long completedCount = bookingServiceClient.getCompletedBookingCount(user.getId());
+                if (completedCount >= minBookings) {
+                    result.add(user);
+                }
+            } catch (FeignException e) {
+                log.warn("booking-service unavailable for completed count of user {}: {}", user.getId(), e.getMessage());
+            }
+        }
+        return result;
     }
 
     /** S1-F3: user booking summary — 10 min TTL (§4.4.1). */

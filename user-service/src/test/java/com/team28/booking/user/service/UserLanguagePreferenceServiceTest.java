@@ -1,5 +1,6 @@
 package com.team28.booking.user.service;
 
+import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -20,12 +21,17 @@ class UserLanguagePreferenceServiceTest {
         UserService userService = new UserService();
         User userA = buildUser(1L, "User A", "ar");
         User userB = buildUser(2L, "User B", "ar");
-        List<User> expectedUsers = List.of(userA, userB);
+        List<User> expectedUsers = List.of(userA); // User B has 0 bookings in our stub, so it's filtered out
 
         ReflectionTestUtils.setField(
                 userService,
                 "userRepository",
-                stubUserRepository(expectedUsers)
+                stubUserRepository(List.of(userA, userB))
+        );
+        ReflectionTestUtils.setField(
+                userService,
+                "bookingServiceClient",
+                stubBookingServiceClient()
         );
 
         List<User> users = userService.findUsersByLanguagePreferenceWithMinimumBookings("ar", 1);
@@ -44,11 +50,15 @@ class UserLanguagePreferenceServiceTest {
                 "userRepository",
                 stubUserRepository(List.of(user), capturedCall)
         );
+        ReflectionTestUtils.setField(
+                userService,
+                "bookingServiceClient",
+                stubBookingServiceClient()
+        );
 
-        userService.findUsersByLanguagePreferenceWithMinimumBookings("  ar  ", 3);
+        userService.findUsersByLanguagePreferenceWithMinimumBookings("  ar  ", 1);
 
         assertEquals("ar", capturedCall.language);
-        assertEquals(3L, capturedCall.minBookings);
     }
 
     @Test
@@ -80,10 +90,27 @@ class UserLanguagePreferenceServiceTest {
                 UserRepository.class.getClassLoader(),
                 new Class<?>[]{UserRepository.class},
                 (proxy, method, args) -> {
-                    if ("findUsersByLanguagePreferenceAndMinimumCompletedBookings".equals(method.getName())) {
+                    if ("findUsersByLanguagePreference".equals(method.getName())) {
                         capturedCall.language = (String) args[0];
-                        capturedCall.minBookings = (Long) args[1];
                         return users;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                }
+        );
+    }
+
+    private BookingServiceClient stubBookingServiceClient() {
+        return (BookingServiceClient) Proxy.newProxyInstance(
+                BookingServiceClient.class.getClassLoader(),
+                new Class<?>[]{BookingServiceClient.class},
+                (proxy, method, args) -> {
+                    if ("getCompletedBookingCount".equals(method.getName())) {
+                        Long userId = (Long) args[0];
+                        if (userId.equals(1L)) {
+                            return 3L; // User A has 3 bookings
+                        } else {
+                            return 0L; // User B has 0 bookings
+                        }
                     }
                     throw new UnsupportedOperationException(method.getName());
                 }
@@ -92,6 +119,5 @@ class UserLanguagePreferenceServiceTest {
 
     private static class CapturedCall {
         private String language;
-        private Long minBookings;
     }
 }
