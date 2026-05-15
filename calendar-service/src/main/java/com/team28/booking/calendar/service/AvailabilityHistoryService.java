@@ -4,11 +4,8 @@ import com.team28.booking.calendar.adapter.CassandraRowAdapter;
 import com.team28.booking.calendar.cassandra.CalendarAvailabilityEvent;
 import com.team28.booking.calendar.cassandra.CalendarAvailabilityEventRepository;
 import com.team28.booking.calendar.dto.AvailabilitySnapshotDTO;
-import com.team28.booking.calendar.repository.TimeSlotRepository;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -17,14 +14,11 @@ import java.util.List;
 public class AvailabilityHistoryService {
 
     private final CalendarAvailabilityEventRepository eventRepository;
-    private final TimeSlotRepository timeSlotRepository;
     private final CassandraRowAdapter cassandraRowAdapter;
 
     public AvailabilityHistoryService(CalendarAvailabilityEventRepository eventRepository,
-                                      TimeSlotRepository timeSlotRepository,
                                       CassandraRowAdapter cassandraRowAdapter) {
         this.eventRepository = eventRepository;
-        this.timeSlotRepository = timeSlotRepository;
         this.cassandraRowAdapter = cassandraRowAdapter;
     }
 
@@ -32,10 +26,6 @@ public class AvailabilityHistoryService {
     @Cacheable(cacheNames = "calendar-service::S4-F12",
                key = "#providerId + '::' + T(java.util.Objects).hash(#startTime, #endTime)")
     public List<AvailabilitySnapshotDTO> getAvailabilityHistory(Long providerId, Instant startTime, Instant endTime) {
-        if (timeSlotRepository.countProviderById(providerId) == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
-        }
-
         if (startTime == null && endTime != null) {
             startTime = Instant.EPOCH;
         } else if (startTime != null && endTime == null) {

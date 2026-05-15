@@ -78,7 +78,6 @@ public class TimeSlotService extends Observable {
     }
 
     public TimeSlot createTimeSlotForProvider(Long providerId, TimeSlot timeSlot) {
-        validateProviderExists(providerId);
         validateTimeRange(timeSlot);
         timeSlot.setProviderId(providerId);
         validateOverlap(timeSlot);
@@ -92,7 +91,6 @@ public class TimeSlotService extends Observable {
 
     @Transactional
     public int batchCreateTimeSlots(Long providerId, List<TimeSlot> timeSlots) {
-        validateProviderExists(providerId);
         validateBatchRequest(timeSlots);
 
         LocalDateTime createdAt = LocalDateTime.now();
@@ -174,10 +172,6 @@ public class TimeSlotService extends Observable {
     @Cacheable(cacheNames = "calendar-service::S4-F1", key = "#providerId")
     @Transactional(readOnly = true)
     public TimeSlot getLatestTimeSlot(Long providerId) {
-        Long providerCount = timeSlotRepository.countProviderById(providerId);
-        if (providerCount == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
-        }
         return timeSlotRepository.findTopByProviderIdOrderByDateDescStartTimeDesc(providerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No time slots found for provider"));
     }
@@ -223,7 +217,6 @@ public class TimeSlotService extends Observable {
                key = "T(java.util.Objects).hash(#providerId, #startDate, #endDate)")
     @Transactional(readOnly = true)
     public ProviderUtilizationDTO getUtilization(Long providerId, LocalDate startDate, LocalDate endDate) {
-        validateProviderExists(providerId);
         Object[] stats = timeSlotRepository.getUtilizationStats(providerId, startDate, endDate);
         Object[] row = (Object[]) stats[0];
         Long totalSlots = ((Number) row[0]).longValue();
@@ -343,18 +336,14 @@ public class TimeSlotService extends Observable {
 
     /**
      * S4-F11: Record Provider Availability Snapshot.
-     * a) Validates provider exists (PG native query).
-     * b) Computes slot stats for the given provider+date (PG).
-     * c) Persists a time-series record to Cassandra.
-     * d) Fires TRACKING_RECORDED Observer event → MongoDB calendar_events.
-     * e) Explicitly invalidates targeted cache keys (S4-F12::{providerId} and S4-F10::*).
+     * a) Computes slot stats for the given provider+date (PG).
+     * b) Persists a time-series record to Cassandra.
+     * c) Fires TRACKING_RECORDED Observer event → MongoDB calendar_events.
+     * d) Explicitly invalidates targeted cache keys (S4-F12::{providerId} and S4-F10::*).
      */
     @Transactional(readOnly = true)
     public void recordAvailabilitySnapshot(Long providerId, AvailabilitySnapshotRequest request) {
-        // a) Provider existence check via PG native query
-        validateProviderExists(providerId);
-
-        // b) Compute slot stats from PG for the given provider + date
+        // a) Compute slot stats from PG for the given provider + date
         Object[] stats = timeSlotRepository.getSnapshotStats(providerId, request.date());
         Object[] row = (Object[]) stats[0];
         int totalSlots     = ((Number) row[0]).intValue();
@@ -362,7 +351,7 @@ public class TimeSlotService extends Observable {
         int bookedSlots    = ((Number) row[2]).intValue();
         double utilizationRate = totalSlots > 0 ? (double) bookedSlots / totalSlots : 0.0;
 
-        // c) Save to Cassandra (time-series, §7.4.1).
+        // b) Save to Cassandra (time-series, §7.4.1).
         // Add a random sub-microsecond nanosecond offset to Instant.now() so that two
         // concurrent snapshot requests for the same provider never share the same
         // Cassandra primary key (provider_id, timestamp). Without this, requests landing
@@ -381,7 +370,7 @@ public class TimeSlotService extends Observable {
         );
         cassandraRepo.save(event);
 
-        // d) Fire Observer → TRACKING_RECORDED → MongoDB calendar_events
+        // c) Fire Observer → TRACKING_RECORDED → MongoDB calendar_events
         Map<String, Object> payload = new HashMap<>();
         payload.put("providerId", providerId);
         payload.put("date", request.date().toString());
@@ -391,7 +380,7 @@ public class TimeSlotService extends Observable {
         payload.put("utilizationRate", utilizationRate);
         notifyObservers("TRACKING_RECORDED", payload);
 
-        // e) Targeted cache invalidation (§4.4.4 NoSQL-writer rules)
+        // d) Targeted cache invalidation (§4.4.4 NoSQL-writer rules)
         // S4-F12 is provider-specific — invalidate only that provider's history cache
         cacheInvalidator.wildcardDelete("calendar-service::S4-F12::" + providerId);
         // S4-F10 analytics spans all providers — invalidate entirely
@@ -445,12 +434,6 @@ public class TimeSlotService extends Observable {
         );
         if (overlapCount > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Time slot overlaps with an existing slot");
-        }
-    }
-
-    private void validateProviderExists(Long providerId) {
-        if (providerId == null || timeSlotRepository.countProviderById(providerId) == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
         }
     }
 

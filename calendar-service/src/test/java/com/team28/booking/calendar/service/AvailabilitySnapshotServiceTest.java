@@ -11,7 +11,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -69,11 +68,10 @@ class AvailabilitySnapshotServiceTest {
         return new AvailabilitySnapshotRequest(date, notes);
     }
 
-    // ── (a) Normal: provider exists, 10 slots (4 avail, 6 booked) ─────────────
+    // ── (a) Normal: 10 slots (4 avail, 6 booked) ─────────────────────────────
 
     @Test
     void testRecordSnapshot_normalCase_201() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(timeSlotRepository.getSnapshotStats(PROVIDER_ID, DATE))
                 .thenReturn(new Object[]{statsRow(10, 4, 6)});
 
@@ -93,25 +91,10 @@ class AvailabilitySnapshotServiceTest {
         assertThat(saved.getNotes()).isEqualTo("test notes");
     }
 
-    // ── (b) Provider not found → 404 ──────────────────────────────────────────
-
-    @Test
-    void testRecordSnapshot_providerNotFound_404() {
-        when(timeSlotRepository.countProviderById(999L)).thenReturn(0L);
-
-        assertThatThrownBy(() ->
-                timeSlotService.recordAvailabilitySnapshot(999L, request(DATE, null)))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Provider not found");
-
-        verify(cassandraRepo, never()).save(any());
-    }
-
-    // ── (c) Provider exists, 0 slots on that date ─────────────────────────────
+    // ── (b) 0 slots on that date ─────────────────────────────────────────────
 
     @Test
     void testRecordSnapshot_zeroSlots_savedWithZeros() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(timeSlotRepository.getSnapshotStats(PROVIDER_ID, DATE))
                 .thenReturn(new Object[]{statsRow(0, 0, 0)});
 
@@ -128,11 +111,10 @@ class AvailabilitySnapshotServiceTest {
         assertThat(saved.getUtilizationRate()).isZero();
     }
 
-    // ── (d) Two snapshots 5 minutes apart → Cassandra save called twice ───────
+    // ── (c) Two snapshots 5 minutes apart → Cassandra save called twice ───────
 
     @Test
     void testRecordSnapshot_twoSnapshots_cassandraSavedTwice() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(timeSlotRepository.getSnapshotStats(PROVIDER_ID, DATE))
                 .thenReturn(new Object[]{statsRow(5, 2, 3)});
 
@@ -142,11 +124,10 @@ class AvailabilitySnapshotServiceTest {
         verify(cassandraRepo, times(2)).save(any(CalendarAvailabilityEvent.class));
     }
 
-    // ── (e) Notes field is null → snapshot saved with null notes ─────────────
+    // ── (d) Notes field is null → snapshot saved with null notes ─────────────
 
     @Test
     void testRecordSnapshot_nullNotes_savedWithNullNotes() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(timeSlotRepository.getSnapshotStats(PROVIDER_ID, DATE))
                 .thenReturn(new Object[]{statsRow(3, 1, 2)});
 
@@ -158,11 +139,10 @@ class AvailabilitySnapshotServiceTest {
         assertThat(captor.getValue().getNotes()).isNull();
     }
 
-    // ── (f) Notes field is present → snapshot saved with notes value ──────────
+    // ── (e) Notes field is present → snapshot saved with notes value ──────────
 
     @Test
     void testRecordSnapshot_notesPresent_savedWithNotes() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(timeSlotRepository.getSnapshotStats(PROVIDER_ID, DATE))
                 .thenReturn(new Object[]{statsRow(4, 2, 2)});
 
@@ -174,12 +154,11 @@ class AvailabilitySnapshotServiceTest {
         assertThat(captor.getValue().getNotes()).isEqualTo("Morning block fully booked");
     }
 
-    // ── (g) Observer called with correct payload ──────────────────────────────
+    // ── (f) Observer called with correct payload ──────────────────────────────
 
     @SuppressWarnings("unchecked")
     @Test
     void testRecordSnapshot_observerCalledWithCorrectPayload() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(timeSlotRepository.getSnapshotStats(PROVIDER_ID, DATE))
                 .thenReturn(new Object[]{statsRow(6, 2, 4)});
 
@@ -198,11 +177,10 @@ class AvailabilitySnapshotServiceTest {
                 .isEqualTo(4.0 / 6.0);
     }
 
-    // ── (h) Cassandra save fails → exception propagates ──────────────────────
+    // ── (g) Cassandra save fails → exception propagates ──────────────────────
 
     @Test
     void testRecordSnapshot_cassandraFails_exceptionPropagates() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(timeSlotRepository.getSnapshotStats(PROVIDER_ID, DATE))
                 .thenReturn(new Object[]{statsRow(5, 2, 3)});
         doThrow(new RuntimeException("Cassandra unavailable"))
@@ -214,11 +192,10 @@ class AvailabilitySnapshotServiceTest {
                 .hasMessageContaining("Cassandra unavailable");
     }
 
-    // ── (i) Cache invalidation keys verified ─────────────────────────────────
+    // ── (h) Cache invalidation keys verified ─────────────────────────────────
 
     @Test
     void testRecordSnapshot_cacheInvalidationCalled() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(timeSlotRepository.getSnapshotStats(PROVIDER_ID, DATE))
                 .thenReturn(new Object[]{statsRow(3, 1, 2)});
 

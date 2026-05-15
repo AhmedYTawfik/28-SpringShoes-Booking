@@ -17,9 +17,6 @@ import java.util.Optional;
 @RepositoryRestResource(exported=false)
 public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
 
-    @Query(value = "SELECT COUNT(*) FROM providers WHERE id = :providerId", nativeQuery = true)
-    Long countProviderById(@Param("providerId") Long providerId);
-
     Optional<TimeSlot> findTopByProviderIdOrderByDateDescStartTimeDesc(Long providerId);
 
     Optional<TimeSlot> findByProviderIdAndDateAndStartTime(Long providerId, LocalDate date, LocalTime startTime);
