@@ -4,10 +4,23 @@ server:
 spring:
   application:
     name: invoice-service
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 1000
+          max-attempts: 3
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb}
-    username: ${POSTGRES_USER:postgres}
-    password: ${POSTGRES_PASSWORD:postgres}
+    url: jdbc:postgresql://${POSTGRES_HOST:invoice-postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb-invoices}
+    username: ${POSTGRES_USER:user}
+    password: ${POSTGRES_PASSWORD:password}
   jpa:
     hibernate:
       ddl-auto: update
@@ -30,3 +43,15 @@ spring:
 jwt:
   secret: ${JWT_SECRET:fJ8z2vK6yQ3pX9mR4wT5sN7bE1uI0aH8oL2cD6gV4eK3=}
   expiration: 86400000
+
+feign:
+  user-service:
+    url: http://${FEIGN_USER_SERVICE_URL:user-service:8080}
+  provider-service:
+    url: http://${FEIGN_PROVIDER_SERVICE_URL:provider-service:8080}
+  booking-service:
+    url: http://${FEIGN_BOOKING_SERVICE_URL:booking-service:8080}
+  calendar-service:
+    url: http://${FEIGN_CALENDAR_SERVICE_URL:calendar-service:8080}
+  invoice-service:
+    url: http://${FEIGN_INVOICE_SERVICE_URL:invoice-service:8080}
