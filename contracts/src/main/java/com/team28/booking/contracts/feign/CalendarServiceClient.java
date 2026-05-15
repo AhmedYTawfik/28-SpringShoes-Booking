@@ -13,15 +13,15 @@ import java.time.LocalDate;
 public interface CalendarServiceClient {
     @GetMapping("/api/timeslots/provider/{providerId}/slot")
     TimeSlotDTO getSlotForBooking(
-            @PathVariable Long providerId,
-            @RequestParam String date,
-            @RequestParam String startTime
+            @PathVariable("providerId") Long providerId,
+            @RequestParam("date") String date,
+            @RequestParam("startTime") String startTime
     );
 
     @GetMapping("/api/timeslots/provider/{providerId}/utilization")
     ProviderUtilizationDTO getProviderUtilization(
-            @PathVariable Long providerId,
-            @RequestParam LocalDate startDate,
-            @RequestParam LocalDate endDate
+            @PathVariable("providerId") Long providerId,
+            @RequestParam("startDate") LocalDate startDate,
+            @RequestParam("endDate") LocalDate endDate
     );
 }

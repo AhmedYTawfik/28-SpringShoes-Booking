@@ -13,27 +13,27 @@ import java.time.LocalDate;
 @FeignClient(name = "booking-service", url = "${feign.booking-service.url}")
 public interface BookingServiceClient {
     @GetMapping("/api/bookings/user/{userId}/summary")
-    BookingSummaryDTO getUserBookingSummary(@PathVariable Long userId);
+    BookingSummaryDTO getUserBookingSummary(@PathVariable("userId") Long userId);
 
     @GetMapping("/api/bookings/user/{userId}/active-count")
-    int getActiveBookingCount(@PathVariable Long userId);
+    int getActiveBookingCount(@PathVariable("userId") Long userId);
 
     @GetMapping("/api/bookings/user/{userId}/completed-count")
-    long getCompletedBookingCount(@PathVariable Long userId);
+    long getCompletedBookingCount(@PathVariable("userId") Long userId);
 
     @GetMapping("/api/bookings/provider/{providerId}/summary")
     ProviderBookingSummaryDTO getProviderBookingSummary(
-            @PathVariable Long providerId,
-            @RequestParam(required = false) LocalDate startDate,
-            @RequestParam(required = false) LocalDate endDate
+            @PathVariable("providerId") Long providerId,
+            @RequestParam(name = "startDate", required = false) LocalDate startDate,
+            @RequestParam(name = "endDate", required = false) LocalDate endDate
     );
 
     @GetMapping("/api/bookings/provider/{providerId}/active-count")
-    int getProviderActiveCount(@PathVariable Long providerId);
+    int getProviderActiveCount(@PathVariable("providerId") Long providerId);
 
     @GetMapping("/api/bookings/provider/{providerId}/completed-count")
-    long getProviderCompletedCount(@PathVariable Long providerId);
+    long getProviderCompletedCount(@PathVariable("providerId") Long providerId);
 
     @GetMapping("/api/bookings/{bookingId}")
-    BookingDTO getBooking(@PathVariable Long bookingId);
+    BookingDTO getBooking(@PathVariable("bookingId") Long bookingId);
 }

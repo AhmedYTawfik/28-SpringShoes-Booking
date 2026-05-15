@@ -9,8 +9,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 @FeignClient(name = "provider-service", url = "${feign.provider-service.url}")
 public interface ProviderServiceClient {
     @GetMapping("/api/providers/{id}")
-    ProviderDTO getProvider(@PathVariable Long id);
+    ProviderDTO getProvider(@PathVariable("id") Long id);
 
     @GetMapping("/api/providers/{id}/availability")
-    ProviderAvailabilityDTO getProviderAvailability(@PathVariable Long id);
+    ProviderAvailabilityDTO getProviderAvailability(@PathVariable("id") Long id);
 }

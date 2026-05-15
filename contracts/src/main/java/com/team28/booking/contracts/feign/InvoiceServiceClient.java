@@ -17,9 +17,9 @@ import java.util.Map;
 public interface InvoiceServiceClient {
     @GetMapping("/api/invoices/user/{userId}/total")
     BigDecimal getUserInvoiceTotal(
-            @PathVariable Long userId,
-            @RequestParam LocalDate startDate,
-            @RequestParam LocalDate endDate
+            @PathVariable("userId") Long userId,
+            @RequestParam("startDate") LocalDate startDate,
+            @RequestParam("endDate") LocalDate endDate
     );
 
     @PostMapping("/api/invoices/by-bookings")
