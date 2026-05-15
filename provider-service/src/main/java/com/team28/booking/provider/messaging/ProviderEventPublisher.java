@@ -26,10 +26,11 @@ public class ProviderEventPublisher {
         log.info("Published provider.status-changed: providerId={} {}→{}", providerId, oldStatus, newStatus);
     }
 
-    public void publishProviderRated(Long providerId, Long bookingId, Double rating) {
-        ProviderRatedEvent event = new ProviderRatedEvent(providerId, bookingId, rating, null);
+    public void publishProviderRated(Long providerId, Long bookingId, Double rating, Long userId) {
+        ProviderRatedEvent event = new ProviderRatedEvent(providerId, bookingId, rating, userId);
         rabbitTemplate.convertAndSend(EXCHANGE, "provider.rated", event);
-        log.info("Published provider.rated: providerId={} bookingId={} rating={}", providerId, bookingId, rating);
+        log.info("Published provider.rated: providerId={} bookingId={} userId={} rating={}",
+                providerId, bookingId, userId, rating);
     }
 
     public void publishCertificationVerified(Long providerId, Long certificationId, Long verifiedBy) {
