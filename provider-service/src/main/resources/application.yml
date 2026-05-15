@@ -5,9 +5,9 @@ spring:
   application:
     name: provider-service
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb}
-    username: ${POSTGRES_USER:postgres}
-    password: ${POSTGRES_PASSWORD:postgres}
+    url: jdbc:postgresql://${POSTGRES_HOST:provider-postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb-providers}
+    username: ${POSTGRES_USER:user}
+    password: ${POSTGRES_PASSWORD:password}
   jpa:
     hibernate:
       ddl-auto: update
