@@ -5,9 +5,13 @@ import com.team28.booking.provider.cache.CacheInvalidator;
 import com.team28.booking.provider.dto.*;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
+import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.provider.observer.MongoEventLogger;
 import com.team28.booking.provider.observer.Observable;
+import com.team28.booking.provider.messaging.ProviderEventPublisher;
 import com.team28.booking.provider.repository.ProviderRepository;
+import feign.FeignException;
 import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import org.springframework.cache.annotation.Cacheable;
@@ -31,6 +35,8 @@ public class ProviderService extends Observable {
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
     private final ProviderDashboardService dashboardService;
+    private final ProviderEventPublisher eventPublisher;
+    private final BookingServiceClient bookingServiceClient;
 
     public ProviderService(
             ProviderRepository providerRepository,
@@ -40,7 +46,9 @@ public class ProviderService extends Observable {
             IndexingService indexingService,
             ObjectArrayDtoAdapter objectArrayDtoAdapter,
             CacheInvalidator cacheInvalidator,
-            ProviderDashboardService dashboardService
+            ProviderDashboardService dashboardService,
+            ProviderEventPublisher eventPublisher,
+            BookingServiceClient bookingServiceClient
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
@@ -50,6 +58,8 @@ public class ProviderService extends Observable {
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
         this.dashboardService = dashboardService;
+        this.eventPublisher = eventPublisher;
+        this.bookingServiceClient = bookingServiceClient;
     }
 
     @PostConstruct
@@ -120,10 +130,12 @@ public class ProviderService extends Observable {
             }
         }
 
+        String oldStatus = provider.getStatus() != null ? provider.getStatus().name() : null;
         provider.setStatus(newStatus);
         Provider saved = providerRepository.save(provider);
         invalidateProviderCaches(providerId);
         emitAfterCommit("AVAILABILITY_TOGGLED", providerPayload(saved));
+        publishAfterCommit(() -> eventPublisher.publishStatusChanged(providerId, oldStatus, newStatus.name()));
         indexingService.indexProvider(saved, "auto_crud_update");
     }
 
@@ -182,6 +194,8 @@ public class ProviderService extends Observable {
         payload.put("certificationId", certificationId);
         payload.put("verifiedBy", verifiedBy.verifier());
         emitAfterCommit("CERTIFICATION_VERIFIED", payload);
+        Long verifierVal = verifiedBy.verifier() instanceof Long l ? l : null;
+        publishAfterCommit(() -> eventPublisher.publishCertificationVerified(providerId, certificationId, verifierVal));
         return provider;
     }
 
@@ -275,6 +289,19 @@ public class ProviderService extends Observable {
         provider.setServiceDetails(serviceDetails);
     }
 
+    private void publishAfterCommit(Runnable publish) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            publish.run();
+        }
+    }
+
     private void emitAfterCommit(String action, Map<String, Object> payload) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -329,24 +356,24 @@ public class ProviderService extends Observable {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
         }
 
-        BookingSummary bookingSummary =
-                providerRepository.getBookingSummary(rateProvider.bookingId())
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+        BookingDTO booking = fetchBooking(rateProvider.bookingId());
 
-        if (!bookingSummary.getProviderId().equals(providerId))
+        if (!Objects.equals(booking.providerId(), providerId))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not associated with given provider");
 
-        if (!bookingSummary.getStatus().equals("COMPLETED"))
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking was not completed");
+        if (!Set.of("COMPLETING", "PAYMENT_PENDING", "PAID", "COMPLETED").contains(booking.status()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not rateable");
 
         if (rateProvider.rating() < 1.0 || rateProvider.rating() > 5.0)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
 
-        // TC340: Duplicate rating check — atomically mark booking as rated
-        int updated = providerRepository.markBookingAsRated(rateProvider.bookingId());
-        if (updated == 0) {
+        Map<String, Object> serviceDetails = mutableServiceDetails(provider);
+        List<Long> ratedBookingIds = processedIds(serviceDetails, "ratedBookingIds");
+        if (ratedBookingIds.contains(rateProvider.bookingId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This booking has already been rated");
         }
+        ratedBookingIds.add(rateProvider.bookingId());
+        serviceDetails.put("ratedBookingIds", ratedBookingIds);
 
         int previousRating = provider.getTotalRatings();
         int newTotalRatings = previousRating + 1;
@@ -354,7 +381,38 @@ public class ProviderService extends Observable {
 
         provider.setRating(newRating);
         provider.setTotalRatings(newTotalRatings);
+        provider.setServiceDetails(serviceDetails);
         updateProvider(providerId, provider);
+        publishAfterCommit(() -> eventPublisher.publishProviderRated(
+                providerId, rateProvider.bookingId(), rateProvider.rating(), booking.userId()));
+    }
+
+    private BookingDTO fetchBooking(Long bookingId) {
+        try {
+            return bookingServiceClient.getBooking(bookingId);
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service temporarily unavailable");
+        }
+    }
+
+    private Map<String, Object> mutableServiceDetails(Provider provider) {
+        return provider.getServiceDetails() != null ? new HashMap<>(provider.getServiceDetails()) : new HashMap<>();
+    }
+
+    private List<Long> processedIds(Map<String, Object> details, String key) {
+        Object value = details.get(key);
+        if (!(value instanceof List<?> list)) {
+            return new ArrayList<>();
+        }
+        List<Long> ids = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Number number) {
+                ids.add(number.longValue());
+            }
+        }
+        return ids;
     }
 
     public List<TopProviderDTO> getTopRatedProviders(int limit) {
