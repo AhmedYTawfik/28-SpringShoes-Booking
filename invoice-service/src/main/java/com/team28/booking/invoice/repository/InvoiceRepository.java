@@ -108,6 +108,20 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
         """, nativeQuery = true)
     int cancelBooking(@Param("bookingId") Long bookingId);
 
+    // S5-F10: local invoice fetch for Feign-based specialty aggregation
+    @Query("""
+        SELECT i FROM Invoice i
+        WHERE i.status IN (
+            com.team28.booking.invoice.model.Invoice.InvoiceStatus.COMPLETED,
+            com.team28.booking.invoice.model.Invoice.InvoiceStatus.REFUNDED
+        )
+        AND i.createdAt >= :from
+        AND i.createdAt <= :to
+        """)
+    List<Invoice> findCompletedOrRefundedInRange(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
     // S5-F10: revenue by provider specialty, with cancellation fee breakdown (§10.5.1)
     @Query(value = """
         SELECT *

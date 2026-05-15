@@ -18,6 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.dto.ProviderDTO;
+import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.feign.ProviderServiceClient;
 import com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
@@ -64,6 +68,8 @@ public class InvoiceService extends Observable {
     private final RefundStrategySelector refundStrategySelector;
     private final PaymentAuditEventRepository paymentAuditEventRepository;
     private final PaymentEventPublisher eventPublisher;
+    private final BookingServiceClient bookingServiceClient;
+    private final ProviderServiceClient providerServiceClient;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
@@ -73,7 +79,9 @@ public class InvoiceService extends Observable {
                           CacheInvalidator cacheInvalidator,
                           RefundStrategySelector refundStrategySelector,
                           PaymentAuditEventRepository paymentAuditEventRepository,
-                          PaymentEventPublisher eventPublisher) {
+                          PaymentEventPublisher eventPublisher,
+                          BookingServiceClient bookingServiceClient,
+                          ProviderServiceClient providerServiceClient) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
         this.invoiceDiscountRepository = invoiceDiscountRepository;
@@ -83,6 +91,8 @@ public class InvoiceService extends Observable {
         this.refundStrategySelector = refundStrategySelector;
         this.paymentAuditEventRepository = paymentAuditEventRepository;
         this.eventPublisher = eventPublisher;
+        this.bookingServiceClient = bookingServiceClient;
+        this.providerServiceClient = providerServiceClient;
     }
 
     @PostConstruct
@@ -402,28 +412,99 @@ public class InvoiceService extends Observable {
         LocalDateTime from = startDate.atStartOfDay();
         LocalDateTime to   = endDate.atTime(LocalTime.MAX);
 
-        List<Object[]> rows = invoiceRepository.getRevenueByServiceType(from, to);
-        List<ServiceTypeRevenueDTO> result = new ArrayList<>();
-        for (Object[] row : rows) {
-            BigDecimal cancellationFeeRevenue = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
-            BigDecimal netBookingRevenue      = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
-            long       bookingCount           = row[3] != null ? ((Number) row[3]).longValue() : 0L;
-            long       cancelledCount         = row[4] != null ? ((Number) row[4]).longValue() : 0L;
+        long t0 = System.currentTimeMillis();
 
-            BigDecimal totalRevenue    = cancellationFeeRevenue.add(netBookingRevenue);
+        List<Invoice> invoices = invoiceRepository.findCompletedOrRefundedInRange(from, to);
+
+        // Round 1: fetch each booking once (de-duplicated by bookingId)
+        Map<Long, BookingDTO> bookingCache = new HashMap<>();
+        for (Invoice inv : invoices) {
+            bookingCache.computeIfAbsent(inv.getBookingId(), id -> {
+                try { return bookingServiceClient.getBooking(id); }
+                catch (Exception e) { return null; }
+            });
+        }
+
+        // Round 2: fetch each provider once (de-duplicated by providerId)
+        Map<Long, String> specialtyCache = new HashMap<>();
+        for (BookingDTO booking : bookingCache.values()) {
+            if (booking == null) continue;
+            specialtyCache.computeIfAbsent(booking.providerId(), pid -> {
+                try {
+                    ProviderDTO p = providerServiceClient.getProvider(pid);
+                    return p != null ? p.specialty() : "UNKNOWN";
+                } catch (Exception e) { return "UNKNOWN"; }
+            });
+        }
+
+        long elapsed = System.currentTimeMillis() - t0;
+        if (elapsed > 1000) {
+            org.slf4j.LoggerFactory.getLogger(getClass())
+                .warn("S5-F10 getRevenueByServiceType took {}ms — {} invoices, {} bookings, {} providers",
+                      elapsed, invoices.size(), bookingCache.size(), specialtyCache.size());
+        }
+
+        // Java-side aggregation per specialty
+        Map<String, long[]> counts = new HashMap<>();       // [bookingCount, cancelledCount]
+        Map<String, BigDecimal> cancFee = new HashMap<>();
+        Map<String, BigDecimal> netRev  = new HashMap<>();
+
+        for (Invoice inv : invoices) {
+            BookingDTO booking = bookingCache.get(inv.getBookingId());
+            String specialty = booking != null
+                    ? specialtyCache.getOrDefault(booking.providerId(), "UNKNOWN")
+                    : "UNKNOWN";
+
+            boolean cancelled = booking != null && "CANCELLED".equals(booking.status());
+
+            BigDecimal fee = BigDecimal.ZERO;
+            Object rawFee = inv.getTransactionDetails().get("cancellationFee");
+            if (rawFee != null) {
+                try { fee = new BigDecimal(rawFee.toString()); } catch (Exception ignored) { }
+            }
+
+            BigDecimal net;
+            if (inv.getStatus() == InvoiceStatus.REFUNDED) {
+                BigDecimal refund = BigDecimal.ZERO;
+                Object rawRefund = inv.getTransactionDetails().get("refundAmount");
+                if (rawRefund != null) {
+                    try { refund = new BigDecimal(rawRefund.toString()); } catch (Exception ignored) { }
+                }
+                net = inv.getAmount() != null ? inv.getAmount().subtract(refund) : BigDecimal.ZERO;
+            } else {
+                net = inv.getAmount() != null ? inv.getAmount() : BigDecimal.ZERO;
+            }
+
+            counts.computeIfAbsent(specialty, k -> new long[]{0, 0});
+            counts.get(specialty)[0]++;
+            if (cancelled) counts.get(specialty)[1]++;
+
+            cancFee.merge(specialty, fee, BigDecimal::add);
+            netRev.merge(specialty, net, BigDecimal::add);
+        }
+
+        List<ServiceTypeRevenueDTO> result = new ArrayList<>();
+        for (String specialty : counts.keySet()) {
+            long bookingCount   = counts.get(specialty)[0];
+            long cancelledCount = counts.get(specialty)[1];
+            BigDecimal cf       = cancFee.getOrDefault(specialty, BigDecimal.ZERO);
+            BigDecimal nr       = netRev.getOrDefault(specialty, BigDecimal.ZERO);
+            BigDecimal total    = cf.add(nr);
             BigDecimal cancellationRate = bookingCount > 0
                     ? BigDecimal.valueOf(cancelledCount).divide(BigDecimal.valueOf(bookingCount), 4, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
 
             result.add(ServiceTypeRevenueDTO.builder()
-                    .specialty(row[0] != null ? row[0].toString() : "UNKNOWN")
-                    .totalRevenue(totalRevenue)
-                    .cancellationFeeRevenue(cancellationFeeRevenue)
-                    .netBookingRevenue(netBookingRevenue)
+                    .specialty(specialty)
+                    .totalRevenue(total)
+                    .cancellationFeeRevenue(cf)
+                    .netBookingRevenue(nr)
                     .bookingCount(bookingCount)
                     .cancellationRate(cancellationRate)
                     .build());
         }
+
+        result.sort((a, b) -> b.getTotalRevenue().compareTo(a.getTotalRevenue()));
         return result;
     }
 
