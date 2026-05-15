@@ -6,7 +6,9 @@ import com.team28.booking.provider.dto.*;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.dto.UserDTO;
 import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.feign.UserServiceClient;
 import com.team28.booking.provider.observer.MongoEventLogger;
 import com.team28.booking.provider.observer.Observable;
 import com.team28.booking.provider.messaging.ProviderEventPublisher;
@@ -37,6 +39,7 @@ public class ProviderService extends Observable {
     private final ProviderDashboardService dashboardService;
     private final ProviderEventPublisher eventPublisher;
     private final BookingServiceClient bookingServiceClient;
+    private final UserServiceClient userServiceClient;
 
     public ProviderService(
             ProviderRepository providerRepository,
@@ -48,7 +51,8 @@ public class ProviderService extends Observable {
             CacheInvalidator cacheInvalidator,
             ProviderDashboardService dashboardService,
             ProviderEventPublisher eventPublisher,
-            BookingServiceClient bookingServiceClient
+            BookingServiceClient bookingServiceClient,
+            UserServiceClient userServiceClient
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
@@ -60,6 +64,7 @@ public class ProviderService extends Observable {
         this.dashboardService = dashboardService;
         this.eventPublisher = eventPublisher;
         this.bookingServiceClient = bookingServiceClient;
+        this.userServiceClient = userServiceClient;
     }
 
     @PostConstruct
@@ -179,6 +184,20 @@ public class ProviderService extends Observable {
         LocalDate currentDate = LocalDate.now();
         if (providerCertification.getExpiryDate().isBefore(currentDate))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Certificate has already expired");
+
+        //feign user-service to verify verifiedBy user is ADMIN
+        UserDTO verifier;
+        try {
+            verifier = userServiceClient.getUser(verifiedBy.verifier());
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "verifier user not found");
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "User service temporarily unavailable");
+        }
+        if (!"ADMIN".equals(verifier.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "verifier is not an admin");
+        }
 
         providerCertification.setVerified(true);
         Map<String, Object> metadata = providerCertification.getMetadata();
