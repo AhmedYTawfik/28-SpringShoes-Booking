@@ -14,9 +14,9 @@ spring:
       - org.springframework.boot.data.cassandra.autoconfigure.DataCassandraReactiveRepositoriesAutoConfiguration
       - org.springframework.boot.data.cassandra.autoconfigure.DataCassandraRepositoriesAutoConfiguration
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb}
-    username: ${POSTGRES_USER:postgres}
-    password: ${POSTGRES_PASSWORD:postgres}
+    url: jdbc:postgresql://${POSTGRES_HOST:calendar-postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb-calendar}
+    username: ${POSTGRES_USER:user}
+    password: ${POSTGRES_PASSWORD:password}
   jpa:
     hibernate:
       ddl-auto: update
