@@ -6,6 +6,7 @@ import com.team28.booking.provider.dto.*;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.dto.ProviderAvailabilityDTO;
 import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.provider.observer.MongoEventLogger;
 import com.team28.booking.provider.observer.Observable;
@@ -214,6 +215,14 @@ public class ProviderService extends Observable {
     @Cacheable(cacheNames = "provider-service::provider", key = "#id")
     public Provider getProviderById(Long id) {
         return findById(id);
+    }
+
+    /** M3 S2: convenience endpoint returning the provider's current status (called by S3 via Feign). */
+    public ProviderAvailabilityDTO getProviderAvailability(Long id) {
+        Provider provider = findById(id);
+        return new ProviderAvailabilityDTO(
+                provider.getStatus() != null ? provider.getStatus().name() : null
+        );
     }
 
     public void indexProviderExplicitly(Long id) {
