@@ -276,7 +276,7 @@ public class BookingService extends Observable {
                     "Booking must be IN_PROGRESS to complete");
         }
 
-        booking.setStatus(Booking.Status.COMPLETED);
+        booking.setStatus(Booking.Status.COMPLETING);
         booking.setCompletedAt(LocalDateTime.now());
 
         if (booking.getTotalPrice() == null) {
@@ -287,13 +287,6 @@ public class BookingService extends Observable {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             booking.setTotalPrice(total);
         }
-
-        if (booking.getProviderId() != null) {
-            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
-        }
-
-        bookingRepository.createInvoiceForBooking(
-                booking.getId(), booking.getUserId(), booking.getTotalPrice());
 
         Booking saved = bookingRepository.save(booking);
         cacheInvalidator.deleteKey("booking-service::booking::" + id);

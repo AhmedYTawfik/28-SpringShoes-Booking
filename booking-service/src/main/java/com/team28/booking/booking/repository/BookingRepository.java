@@ -99,6 +99,6 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     @Modifying
     @Query(value = "UPDATE bookings SET status = 'REFUNDED' WHERE id = :bookingId " +
-            "AND status IN ('PAID','PAYMENT_FAILED')", nativeQuery = true)
+            "AND status = 'PAYMENT_FAILED'", nativeQuery = true)
     int updateStatusToRefunded(@Param("bookingId") Long bookingId);
 }
