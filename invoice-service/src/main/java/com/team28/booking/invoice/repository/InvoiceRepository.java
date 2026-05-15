@@ -5,12 +5,15 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.team28.booking.invoice.model.Invoice;
+
+import jakarta.persistence.LockModeType;
 
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
@@ -49,6 +52,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     boolean existsByBookingId(@Param("bookingId") Long bookingId);
 
     Optional<Invoice> findByBookingId(Long bookingId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Invoice i WHERE i.bookingId = :bookingId")
+    Optional<Invoice> findByBookingIdForUpdate(@Param("bookingId") Long bookingId);
 
     // S5-F4: fetch booking status and totalPrice from the shared bookings table
     @Query(value = "SELECT status, total_price FROM bookings WHERE id = :bookingId", nativeQuery = true)
