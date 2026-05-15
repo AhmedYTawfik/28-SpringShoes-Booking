@@ -80,4 +80,25 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             "GROUP BY status", nativeQuery = true)
     List<Object[]> getDashboardStatusBreakdown(@Param("startDate") LocalDateTime startDate,
                                                @Param("endDate") LocalDateTime endDate);
+
+    // S3-EVENTS: atomic payment saga status transitions (idempotency: WHERE status IN (...))
+    @Modifying
+    @Query(value = "UPDATE bookings SET status = 'PAYMENT_PENDING' WHERE id = :bookingId " +
+            "AND status IN ('COMPLETING','COMPLETED')", nativeQuery = true)
+    int updateStatusToPaymentPending(@Param("bookingId") Long bookingId);
+
+    @Modifying
+    @Query(value = "UPDATE bookings SET status = 'PAID' WHERE id = :bookingId " +
+            "AND status = 'PAYMENT_PENDING'", nativeQuery = true)
+    int updateStatusToPaid(@Param("bookingId") Long bookingId);
+
+    @Modifying
+    @Query(value = "UPDATE bookings SET status = 'PAYMENT_FAILED' WHERE id = :bookingId " +
+            "AND status = 'PAYMENT_PENDING'", nativeQuery = true)
+    int updateStatusToPaymentFailed(@Param("bookingId") Long bookingId);
+
+    @Modifying
+    @Query(value = "UPDATE bookings SET status = 'REFUNDED' WHERE id = :bookingId " +
+            "AND status IN ('PAID','PAYMENT_FAILED')", nativeQuery = true)
+    int updateStatusToRefunded(@Param("bookingId") Long bookingId);
 }

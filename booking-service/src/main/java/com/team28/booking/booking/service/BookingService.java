@@ -1,6 +1,7 @@
 package com.team28.booking.booking.service;
 
 import com.team28.booking.booking.cache.CacheInvalidator;
+import com.team28.booking.booking.messaging.BookingEventPublisher;
 import com.team28.booking.booking.dto.AddServicesRequestDTO;
 import com.team28.booking.booking.dto.BookingAnalyticsDTO;
 import com.team28.booking.booking.dto.BookingAnalyticsDashboardDTO;
@@ -53,19 +54,22 @@ public class BookingService extends Observable {
     private final CacheInvalidator cacheInvalidator;
     private final CacheManager cacheManager;
     private final Neo4jClient neo4jClient;
+    private final BookingEventPublisher eventPublisher;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingItemRepository bookingItemRepository,
                           MongoEventLogger mongoEventLogger,
                           CacheInvalidator cacheInvalidator,
                           CacheManager cacheManager,
-                          Neo4jClient neo4jClient) {
+                          Neo4jClient neo4jClient,
+                          BookingEventPublisher eventPublisher) {
         this.bookingRepository = bookingRepository;
         this.bookingItemRepository = bookingItemRepository;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidator = cacheInvalidator;
         this.cacheManager = cacheManager;
         this.neo4jClient = neo4jClient;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostConstruct
@@ -85,6 +89,8 @@ public class BookingService extends Observable {
         cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CREATED", bookingPayload(saved));
+        publishAfterCommit(() -> eventPublisher.publishBookingPlaced(
+                saved.getId(), saved.getUserId(), saved.getProviderId()));
         return saved;
     }
 
@@ -180,6 +186,8 @@ public class BookingService extends Observable {
         cacheInvalidator.wildcardDelete("booking-service::S3-F9::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CANCELLED", bookingPayload(saved));
+        publishAfterCommit(() -> eventPublisher.publishBookingCancelled(
+                saved.getId(), saved.getUserId(), saved.getProviderId(), "cancelled by user"));
         return saved;
     }
 
@@ -295,6 +303,9 @@ public class BookingService extends Observable {
         cacheInvalidator.wildcardDelete("booking-service::S3-F9::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_COMPLETED", bookingPayload(saved));
+        double price = saved.getTotalPrice() != null ? saved.getTotalPrice().doubleValue() : 0.0;
+        publishAfterCommit(() -> eventPublisher.publishBookingCompleted(
+                saved.getId(), saved.getUserId(), saved.getProviderId(), price));
         return saved;
     }
 
@@ -657,6 +668,19 @@ public class BookingService extends Observable {
         Map<String, Object> payload = bookingPayload(booking);
         payload.put("bookingItemId", bookingItemId);
         emitAfterCommit("SERVICES_ADDED", payload);
+    }
+
+    private void publishAfterCommit(Runnable publish) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            publish.run();
+        }
     }
 
     private void emitAfterCommit(String action, Map<String, Object> payload) {
