@@ -300,6 +300,31 @@ public class InvoiceService extends Observable {
         return saved;
     }
 
+    // ── S5-ENDPOINTS: New Feign-callable Endpoints ───────────────────────────
+
+    /** S5-ENDPOINTS: total COMPLETED invoice amount for a user in a date range. */
+    public java.math.BigDecimal getUserTotalAmount(Long userId, LocalDate startDate, LocalDate endDate) {
+        LocalDateTime from = startDate != null ? startDate.atStartOfDay() : LocalDateTime.MIN;
+        LocalDateTime to   = endDate   != null ? endDate.atTime(LocalTime.MAX) : LocalDateTime.MAX;
+        java.math.BigDecimal total = invoiceRepository.sumCompletedAmountByUserAndDateRange(userId, from, to);
+        return total != null ? total : java.math.BigDecimal.ZERO;
+    }
+
+    /** S5-ENDPOINTS: batch fetch COMPLETED invoices keyed by bookingId; omits missing. */
+    public Map<Long, com.team28.booking.contracts.dto.InvoiceAmountDTO> getInvoicesByBookingIds(
+            List<Long> bookingIds) {
+        if (bookingIds == null || bookingIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Invoice> invoices = invoiceRepository.findCompletedByBookingIds(bookingIds);
+        Map<Long, com.team28.booking.contracts.dto.InvoiceAmountDTO> result = new java.util.LinkedHashMap<>();
+        for (Invoice inv : invoices) {
+            result.put(inv.getBookingId(),
+                    new com.team28.booking.contracts.dto.InvoiceAmountDTO(inv.getBookingId(), inv.getAmount()));
+        }
+        return result;
+    }
+
     /** S5-F3: user invoice summary — 10 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "invoice-service::S5-F3", key = "#userId")
     public UserInvoiceSummaryDTO getUserInvoiceSummary(Long userId) {

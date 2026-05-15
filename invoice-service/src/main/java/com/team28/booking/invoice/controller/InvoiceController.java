@@ -1,9 +1,11 @@
 package com.team28.booking.invoice.controller;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.team28.booking.contracts.dto.InvoiceAmountDTO;
+import com.team28.booking.contracts.dto.InvoiceAmountsRequest;
 import com.team28.booking.invoice.dto.CancellationRefundRequest;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
@@ -115,6 +119,22 @@ public class InvoiceController {
     @GetMapping("/user/{userId}/summary")
     public ResponseEntity<UserInvoiceSummaryDTO> getUserInvoiceSummary(@PathVariable Long userId) {
         return ResponseEntity.ok(invoiceService.getUserInvoiceSummary(userId));
+    }
+
+    // ── S5-ENDPOINTS: Feign-callable endpoints ───────────────────────────────
+
+    @GetMapping("/user/{userId}/total")
+    public ResponseEntity<BigDecimal> getUserTotalAmount(
+            @PathVariable Long userId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(invoiceService.getUserTotalAmount(userId, startDate, endDate));
+    }
+
+    @PostMapping("/by-bookings")
+    public ResponseEntity<Map<Long, InvoiceAmountDTO>> getInvoicesByBookingIds(
+            @RequestBody InvoiceAmountsRequest request) {
+        return ResponseEntity.ok(invoiceService.getInvoicesByBookingIds(request.bookingIds()));
     }
 
     // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
