@@ -190,7 +190,6 @@ public class TimeSlotService extends Observable {
     /** S4-F3: available providers DTO — 10 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "calendar-service::S4-F3",
                key = "T(java.util.Objects).hash(#date, #specialty)")
-    @Transactional(readOnly = true)
     public List<AvailableProviderDTO> findAvailableProviders(LocalDate date, String specialty) {
         List<Object[]> localResults = timeSlotRepository.countAvailableSlotsByProviderAndDate(date);
         List<AvailableProviderDTO> results = new ArrayList<>();
