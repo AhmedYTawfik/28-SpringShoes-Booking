@@ -6,6 +6,7 @@ import com.team28.booking.calendar.dto.BatchTimeSlotRequest;
 import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
 import com.team28.booking.calendar.service.TimeSlotService;
+import com.team28.booking.contracts.dto.TimeSlotDTO;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -99,6 +101,14 @@ public class TimeSlotController {
         return timeSlotService.findIdleProviders(maxBookedSlots, sinceDays);
     }
       
+    @GetMapping("/provider/{providerId}/slot")
+    public TimeSlotDTO getSlotForBooking(
+            @PathVariable Long providerId,
+            @RequestParam String date,
+            @RequestParam String startTime) {
+        return timeSlotService.getSlotForBooking(providerId, LocalDate.parse(date), LocalTime.parse(startTime));
+    }
+
     @GetMapping("/provider/{providerId}/utilization")
     public ProviderUtilizationDTO getUtilization(
             @PathVariable Long providerId,

@@ -10,6 +10,7 @@ import org.springframework.data.rest.core.annotation.RepositoryRestResource;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,6 +21,8 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
     Long countProviderById(@Param("providerId") Long providerId);
 
     Optional<TimeSlot> findTopByProviderIdOrderByDateDescStartTimeDesc(Long providerId);
+
+    Optional<TimeSlot> findByProviderIdAndDateAndStartTime(Long providerId, LocalDate date, LocalTime startTime);
 
     @Query(value = """
             SELECT p.id AS providerId, p.name AS providerName, p.specialty,

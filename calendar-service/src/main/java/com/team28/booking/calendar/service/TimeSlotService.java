@@ -2,6 +2,7 @@ package com.team28.booking.calendar.service;
 
 import com.team28.booking.calendar.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.calendar.cache.CacheInvalidator;
+import com.team28.booking.contracts.dto.TimeSlotDTO;
 import com.team28.booking.calendar.cassandra.CalendarAvailabilityEvent;
 import com.team28.booking.calendar.cassandra.CalendarAvailabilityEventRepository;
 import com.team28.booking.calendar.dto.AvailabilitySnapshotRequest;
@@ -260,6 +261,28 @@ public class TimeSlotService extends Observable {
 
     public List<TimeSlot> getAllTimeSlots() {
         return timeSlotRepository.findAll();
+    }
+
+    // ── S4: Feign contract endpoint ───────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public TimeSlotDTO getSlotForBooking(Long providerId, LocalDate date, LocalTime startTime) {
+        TimeSlot slot = timeSlotRepository.findByProviderIdAndDateAndStartTime(providerId, date, startTime)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No slot found for provider " + providerId + " at " + date + " " + startTime));
+        return toTimeSlotDTO(slot);
+    }
+
+    public TimeSlotDTO toTimeSlotDTO(TimeSlot slot) {
+        return new TimeSlotDTO(
+                slot.getId(),
+                slot.getProviderId(),
+                slot.getDate(),
+                slot.getStartTime(),
+                slot.getEndTime(),
+                slot.getAvailable() != null && slot.getAvailable(),
+                slot.getMetadata()
+        );
     }
 
     // ── S4-F10: Calendar Analytics Dashboard ──────────────────────────────
