@@ -1,11 +1,11 @@
 package com.team28.booking.provider.service;
 
-import com.team28.booking.provider.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.provider.cache.CacheInvalidator;
 import com.team28.booking.provider.dto.*;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.contracts.dto.UserDTO;
 import com.team28.booking.contracts.dto.ProviderAvailabilityDTO;
 import com.team28.booking.contracts.feign.BookingServiceClient;
@@ -35,7 +35,6 @@ public class ProviderService extends Observable {
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidationService cacheInvalidationService;
     private final IndexingService indexingService;
-    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
     private final ProviderDashboardService dashboardService;
     private final ProviderEventPublisher eventPublisher;
@@ -48,7 +47,6 @@ public class ProviderService extends Observable {
             MongoEventLogger mongoEventLogger,
             CacheInvalidationService cacheInvalidationService,
             IndexingService indexingService,
-            ObjectArrayDtoAdapter objectArrayDtoAdapter,
             CacheInvalidator cacheInvalidator,
             ProviderDashboardService dashboardService,
             ProviderEventPublisher eventPublisher,
@@ -60,7 +58,6 @@ public class ProviderService extends Observable {
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidationService = cacheInvalidationService;
         this.indexingService = indexingService;
-        this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
         this.dashboardService = dashboardService;
         this.eventPublisher = eventPublisher;
@@ -451,15 +448,13 @@ public class ProviderService extends Observable {
     public List<TopProviderDTO> getTopRatedProviders(int limit) {
         if (limit == 0) limit = 50;
         PageRequest paging = PageRequest.of(0, limit);
-        List<ProviderSummary> topProviders = providerRepository.findTopProvidersWithBookingCount(paging);
-
+        List<Provider> topProviders = providerRepository.findTopRatedProviders(paging);
 
         List<TopProviderDTO> topProviderDTOS = new ArrayList<>();
         topProviders.forEach(provider -> topProviderDTOS.add(
-                // The total bookings are left as 0 for now
                 new TopProviderDTO(
                         provider.getId(), provider.getName(),
-                        provider.getRating(), provider.getBookingCount().intValue()
+                        provider.getRating(), provider.getTotalRatings()
                 )
         ));
 
