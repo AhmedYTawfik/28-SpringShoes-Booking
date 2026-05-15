@@ -121,12 +121,17 @@ public class ProviderService extends Observable {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Status is required");
         }
         if (newStatus == Provider.ProviderStatus.OFFLINE) {
-            Long activeBookings = providerRepository.countActiveBookings(providerId);
-            if (activeBookings != null && activeBookings > 0) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "Cannot set provider to OFFLINE while having active bookings"
-                );
+            try {
+                int activeCount = bookingServiceClient.getProviderActiveCount(providerId);
+                if (activeCount > 0) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Cannot set provider to OFFLINE while having active bookings"
+                    );
+                }
+            } catch (FeignException e) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "Booking service temporarily unavailable");
             }
         }
 
