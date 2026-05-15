@@ -64,10 +64,6 @@ public class ProviderCertificationService {
         cacheInvalidator.deleteKey("provider-service::provider-certification::" + id);
     }
 
-    public boolean verifyCertificateAdmin(Long id) {
-        return providerCertificationRepository.verifyVerifierIsAdmin(id);
-    }
-
     public boolean belongsToProvider(Long certId, Long providerId) {
         return providerCertificationRepository.existsByIdAndProvider_Id(certId, providerId);
     }
