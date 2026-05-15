@@ -6,12 +6,16 @@ import com.team28.booking.contracts.events.BookingCompletedEvent;
 import com.team28.booking.contracts.events.BookingPlacedEvent;
 import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.calendar.repository.TimeSlotRepository;
+import com.team28.booking.calendar.service.TimeSlotService;
 import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitHandler;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RabbitListener(queues = "calendar.booking.saga-listener")
@@ -22,13 +26,16 @@ public class CalendarBookingEventListener {
     private final TimeSlotRepository timeSlotRepository;
     private final BookingServiceClient bookingServiceClient;
     private final CalendarEventPublisher publisher;
+    private final TimeSlotService timeSlotService;
 
     public CalendarBookingEventListener(TimeSlotRepository timeSlotRepository,
                                         BookingServiceClient bookingServiceClient,
-                                        CalendarEventPublisher publisher) {
+                                        CalendarEventPublisher publisher,
+                                        TimeSlotService timeSlotService) {
         this.timeSlotRepository = timeSlotRepository;
         this.bookingServiceClient = bookingServiceClient;
         this.publisher = publisher;
+        this.timeSlotService = timeSlotService;
     }
 
     @RabbitHandler
@@ -81,8 +88,15 @@ public class CalendarBookingEventListener {
 
     @RabbitHandler
     public void handleBookingCompleted(BookingCompletedEvent event) {
-        log.info("Received booking.completed: bookingId={} providerId={} — no calendar state change needed",
+        log.info("Received booking.completed: bookingId={} providerId={} - recording calendar audit event",
                 event.bookingId(), event.providerId());
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("bookingId", event.bookingId());
+        payload.put("userId", event.userId());
+        payload.put("providerId", event.providerId());
+        payload.put("totalPrice", event.totalPrice());
+        timeSlotService.fireEvent("TRIP_COMPLETED", payload);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
