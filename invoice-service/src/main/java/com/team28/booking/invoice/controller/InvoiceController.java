@@ -1,12 +1,13 @@
 package com.team28.booking.invoice.controller;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -117,30 +118,35 @@ public class InvoiceController {
         return ResponseEntity.ok(invoiceService.getUserInvoiceSummary(userId));
     }
 
-    // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
+    // ── S5-F4: Process Invoice for Booking (saga-aware) ─────────────────────
 
     @PostMapping("/booking/{bookingId}")
     public ResponseEntity<Invoice> processInvoiceByBookingPath(
             @PathVariable Long bookingId,
-            @RequestBody ProcessInvoiceRequest request) {
-        request.setBookingId(bookingId);
-        if (request.getUserId() == null) {
-            Long userId = invoiceService.getUserIdFromBooking(bookingId);
-            request.setUserId(userId);
+            @RequestBody ProcessInvoiceRequest request,
+            @RequestParam(defaultValue = "false") boolean simulateFailure) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Long callerUserId = extractUserId(auth);
+        boolean isAdmin = auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        Invoice invoice = invoiceService.processInvoiceForBooking(
+                bookingId, request.getMethod(), request.getCardLastFour(),
+                callerUserId, isAdmin, simulateFailure);
+        if (simulateFailure) {
+            return ResponseEntity.badRequest().body(invoice);
         }
-        Invoice invoice = invoiceService.processInvoiceForBooking(request, false);
         return ResponseEntity.status(201).body(invoice);
     }
 
-    @PostMapping("/process")
-    public ResponseEntity<Invoice> processInvoiceForBooking(
-            @RequestBody ProcessInvoiceRequest request,
-            @RequestParam(defaultValue = "false") boolean simulateFailure) {
-        Invoice invoice = invoiceService.processInvoiceForBooking(request, simulateFailure);
-        if (simulateFailure) {
-            return ResponseEntity.ok(invoice);
+    @SuppressWarnings("unchecked")
+    private Long extractUserId(Authentication auth) {
+        if (auth == null || auth.getPrincipal() == null) return null;
+        Object principal = auth.getPrincipal();
+        if (principal instanceof Map) {
+            Object id = ((Map<String, Object>) principal).get("id");
+            return id != null ? ((Number) id).longValue() : null;
         }
-        return ResponseEntity.status(201).body(invoice);
+        return null;
     }
 
     // ── S5-F10: Revenue by Service Type with Cancellation Fee Breakdown ─────

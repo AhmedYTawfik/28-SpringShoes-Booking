@@ -25,7 +25,6 @@ import com.team28.booking.invoice.dto.CancellationRefundRequest;
 import com.team28.booking.invoice.dto.DiscountUsageDTO;
 import com.team28.booking.invoice.dto.InvoiceDetailsDTO;
 import com.team28.booking.invoice.dto.PaymentMethodAnalyticsDTO;
-import com.team28.booking.invoice.dto.ProcessInvoiceRequest;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.dto.RevenueReportDTO;
 import com.team28.booking.invoice.dto.ServiceTypeRevenueDTO;
@@ -49,11 +48,20 @@ import com.team28.booking.invoice.strategy.NoRefundStrategy;
 import com.team28.booking.invoice.strategy.RefundResult;
 import com.team28.booking.invoice.strategy.RefundStrategy;
 import com.team28.booking.invoice.strategy.RefundStrategySelector;
+import com.team28.booking.invoice.exception.ConflictException;
+import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.dto.BookingDTO;
 
+import feign.FeignException;
 import jakarta.annotation.PostConstruct;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class InvoiceService extends Observable {
+
+    private static final Logger log = LoggerFactory.getLogger(InvoiceService.class);
 
     private final InvoiceRepository invoiceRepository;
     private final DiscountRepository discountRepository;
@@ -64,6 +72,8 @@ public class InvoiceService extends Observable {
     private final RefundStrategySelector refundStrategySelector;
     private final PaymentAuditEventRepository paymentAuditEventRepository;
     private final PaymentEventPublisher eventPublisher;
+    private final BookingServiceClient bookingServiceClient;
+    private final InvoiceStatusLockService invoiceStatusLockService;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
@@ -73,7 +83,9 @@ public class InvoiceService extends Observable {
                           CacheInvalidator cacheInvalidator,
                           RefundStrategySelector refundStrategySelector,
                           PaymentAuditEventRepository paymentAuditEventRepository,
-                          PaymentEventPublisher eventPublisher) {
+                          PaymentEventPublisher eventPublisher,
+                          BookingServiceClient bookingServiceClient,
+                          InvoiceStatusLockService invoiceStatusLockService) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
         this.invoiceDiscountRepository = invoiceDiscountRepository;
@@ -83,6 +95,8 @@ public class InvoiceService extends Observable {
         this.refundStrategySelector = refundStrategySelector;
         this.paymentAuditEventRepository = paymentAuditEventRepository;
         this.eventPublisher = eventPublisher;
+        this.bookingServiceClient = bookingServiceClient;
+        this.invoiceStatusLockService = invoiceStatusLockService;
     }
 
     @PostConstruct
@@ -312,83 +326,77 @@ public class InvoiceService extends Observable {
         return objectArrayDtoAdapter.toUserInvoiceSummaryDTO(userId, results);
     }
 
-    // ── S5-F4: Process Invoice for Booking ──────────────────────────────────
+    // ── S5-F4: Process Invoice for Booking (saga-aware) ─────────────────────
 
-    public Long getUserIdFromBooking(Long bookingId) {
-        return invoiceRepository.findUserIdByBookingId(bookingId);
-    }
+    /**
+     * Saga-aware payment flow:
+     * 1. SELECT FOR UPDATE on PENDING invoice (commits in own tx via InvoiceStatusLockService)
+     * 2. Feign-confirm booking is PAYMENT_PENDING; revert to PENDING + 400 if not
+     * 3. Mock payment; on success → COMPLETED + payment.completed; on failure → FAILED + payment.failed
+     */
+    public Invoice processInvoiceForBooking(Long bookingId, String method, String cardLastFour,
+                                            Long callerUserId, boolean isAdmin, boolean simulateFailure) {
+        log.info("S5-F4 processInvoiceForBooking: bookingId={} callerUserId={}", bookingId, callerUserId);
 
-    @Transactional
-    public Invoice processInvoiceForBooking(ProcessInvoiceRequest request) {
-        return processInvoiceForBooking(request, false);
-    }
+        // Step 1: lock + set PROCESSING in its own committed transaction
+        Invoice invoice = invoiceStatusLockService.lockAndSetProcessing(bookingId);
+        log.info("S5-F4 invoice {} set to PROCESSING for bookingId={}", invoice.getId(), bookingId);
 
-    @Transactional
-    public Invoice processInvoiceForBooking(ProcessInvoiceRequest request, boolean simulateFailure) {
-        List<Object[]> rows = invoiceRepository.findBookingDetails(request.getBookingId());
-        if (rows == null || rows.isEmpty()) {
-            throw new ResourceNotFoundException("Booking not found with id: " + request.getBookingId());
+        // Step 2: auth check — caller must be booking owner or ADMIN
+        log.info("S5-F4 Feign GET /api/bookings/{} — before", bookingId);
+        BookingDTO booking;
+        try {
+            booking = bookingServiceClient.getBooking(bookingId);
+            log.info("S5-F4 Feign GET /api/bookings/{} — after, status={}", bookingId, booking.status());
+        } catch (FeignException e) {
+            log.error("S5-F4 Feign GET /api/bookings/{} — exception: {}", bookingId, e.getMessage());
+            invoiceStatusLockService.revertToPending(invoice.getId());
+            throw new BadRequestException("booking-service unavailable: " + e.getMessage());
         }
 
-        Object[] booking = rows.get(0);
-        String bookingStatus = (String) booking[0];
-        if (!"COMPLETED".equals(bookingStatus)) {
-            throw new BadRequestException("Booking must be COMPLETED before processing an invoice");
+        if (!isAdmin && !booking.userId().equals(callerUserId)) {
+            invoiceStatusLockService.revertToPending(invoice.getId());
+            throw new ConflictException("Forbidden: caller is not the booking owner");
         }
 
-        if (invoiceRepository.existsByBookingId(request.getBookingId())) {
-            throw new BadRequestException("An invoice already exists for booking id: " + request.getBookingId());
+        // Step 3: confirm booking is PAYMENT_PENDING
+        if (!"PAYMENT_PENDING".equals(booking.status())) {
+            invoiceStatusLockService.revertToPending(invoice.getId());
+            throw new BadRequestException(
+                    "Booking must be PAYMENT_PENDING to process payment but was: " + booking.status());
         }
 
-        BigDecimal totalPrice = booking[1] != null
-                ? new BigDecimal(booking[1].toString())
-                : BigDecimal.ZERO;
+        // Step 4: update method and transactionDetails, then attempt payment
+        Invoice.PaymentMethod parsedMethod = parsePaymentMethod(method);
+        invoice.setMethod(parsedMethod);
 
-        Invoice invoice = new Invoice();
-        invoice.setBookingId(request.getBookingId());
-        invoice.setUserId(request.getUserId());
-        invoice.setAmount(totalPrice);
-        invoice.setMethod(parsePaymentMethod(request.getMethod()));
-        invoice.setCreatedAt(LocalDateTime.now());
-
-        Map<String, Object> details = new HashMap<>();
+        Map<String, Object> details = invoice.getTransactionDetails();
+        if (details == null) details = new HashMap<>();
         details.put("gateway", "internal");
-        details.put("initiatedAt", LocalDateTime.now().toString());
+        details.put("gatewayResponse", "approved");
+        details.put("cardLastFour", cardLastFour);
         details.put("cancellationFee", 0);
-        invoice.setTransactionDetails(details);
 
         if (simulateFailure) {
             invoice.setStatus(Invoice.InvoiceStatus.FAILED);
             details.put("failedAt", LocalDateTime.now().toString());
             details.put("reason", "simulated_gateway_failure");
-
+            invoice.setTransactionDetails(details);
             Invoice failed = invoiceRepository.save(invoice);
-            invalidateInvoiceCaches(null);
-            Map<String, Object> payload = invoicePayload(failed);
-            payload.put("details", Map.of("reason", "simulated_gateway_failure"));
-            emitAfterCommit("FAILED", payload);
-            publishAfterCommit(() -> eventPublisher.publishPaymentFailed(
-                    failed.getId(), failed.getBookingId(), "simulated_gateway_failure"));
+            invalidateInvoiceCaches(failed.getId());
+            log.info("S5-F4 payment FAILED for invoiceId={} bookingId={}", failed.getId(), bookingId);
+            eventPublisher.publishPaymentFailed(failed.getId(), bookingId, "simulated_gateway_failure");
             return failed;
         }
 
-        invoice.setStatus(Invoice.InvoiceStatus.PENDING);
-        Invoice created = invoiceRepository.save(invoice);
-        emitAfterCommit("CREATED", invoicePayload(created));
-        double pendingAmount = created.getAmount() != null ? created.getAmount().doubleValue() : 0.0;
-        publishAfterCommit(() -> eventPublisher.publishPaymentInitiated(
-                created.getId(), created.getBookingId(), pendingAmount));
-
-        created.setStatus(Invoice.InvoiceStatus.COMPLETED);
+        invoice.setStatus(Invoice.InvoiceStatus.COMPLETED);
         details.put("completedAt", LocalDateTime.now().toString());
-        created.setTransactionDetails(details);
-
-        Invoice completed = invoiceRepository.save(created);
-        invalidateInvoiceCaches(null);
-        emitAfterCommit("COMPLETED", invoicePayload(completed));
-        double completedAmount = completed.getAmount() != null ? completed.getAmount().doubleValue() : 0.0;
-        publishAfterCommit(() -> eventPublisher.publishPaymentCompleted(
-                completed.getId(), completed.getBookingId(), completedAmount));
+        invoice.setTransactionDetails(details);
+        Invoice completed = invoiceRepository.save(invoice);
+        invalidateInvoiceCaches(completed.getId());
+        log.info("S5-F4 payment COMPLETED for invoiceId={} bookingId={}", completed.getId(), bookingId);
+        double amt = completed.getAmount() != null ? completed.getAmount().doubleValue() : 0.0;
+        eventPublisher.publishPaymentCompleted(completed.getId(), bookingId, amt);
         return completed;
     }
 
