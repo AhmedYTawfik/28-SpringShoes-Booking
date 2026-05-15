@@ -45,6 +45,10 @@ public class User {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> preferences;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "booking_stats", columnDefinition = "jsonb")
+    private Map<String, Object> bookingStats;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -130,6 +134,14 @@ public class User {
 
     public void setPreferences(Map<String, Object> preferences) {
         this.preferences = preferences;
+    }
+
+    public Map<String, Object> getBookingStats() {
+        return bookingStats;
+    }
+
+    public void setBookingStats(Map<String, Object> bookingStats) {
+        this.bookingStats = bookingStats;
     }
 
     public LocalDateTime getCreatedAt() {
