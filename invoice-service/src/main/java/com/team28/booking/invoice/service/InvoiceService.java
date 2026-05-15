@@ -36,6 +36,7 @@ import com.team28.booking.invoice.model.Discount;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.model.Invoice.InvoiceStatus;
 import com.team28.booking.invoice.model.InvoiceDiscount;
+import com.team28.booking.invoice.messaging.PaymentEventPublisher;
 import com.team28.booking.invoice.mongo.PaymentAuditEventRepository;
 import com.team28.booking.invoice.mongo.PaymentMethodBreakdown;
 import com.team28.booking.invoice.observer.MongoEventLogger;
@@ -62,6 +63,7 @@ public class InvoiceService extends Observable {
     private final CacheInvalidator cacheInvalidator;
     private final RefundStrategySelector refundStrategySelector;
     private final PaymentAuditEventRepository paymentAuditEventRepository;
+    private final PaymentEventPublisher eventPublisher;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
@@ -70,7 +72,8 @@ public class InvoiceService extends Observable {
                           ObjectArrayDtoAdapter objectArrayDtoAdapter,
                           CacheInvalidator cacheInvalidator,
                           RefundStrategySelector refundStrategySelector,
-                          PaymentAuditEventRepository paymentAuditEventRepository) {
+                          PaymentAuditEventRepository paymentAuditEventRepository,
+                          PaymentEventPublisher eventPublisher) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
         this.invoiceDiscountRepository = invoiceDiscountRepository;
@@ -79,6 +82,7 @@ public class InvoiceService extends Observable {
         this.cacheInvalidator = cacheInvalidator;
         this.refundStrategySelector = refundStrategySelector;
         this.paymentAuditEventRepository = paymentAuditEventRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostConstruct
@@ -290,6 +294,9 @@ public class InvoiceService extends Observable {
         Map<String, Object> payload = invoicePayload(saved);
         payload.put("details", Map.of("refundReason", reason));
         emitAfterCommit("REFUNDED", payload);
+        double refundAmt = saved.getAmount() != null ? saved.getAmount().doubleValue() : 0.0;
+        publishAfterCommit(() -> eventPublisher.publishPaymentRefunded(
+                saved.getId(), saved.getBookingId(), refundAmt));
         return saved;
     }
 
@@ -360,12 +367,17 @@ public class InvoiceService extends Observable {
             Map<String, Object> payload = invoicePayload(failed);
             payload.put("details", Map.of("reason", "simulated_gateway_failure"));
             emitAfterCommit("FAILED", payload);
+            publishAfterCommit(() -> eventPublisher.publishPaymentFailed(
+                    failed.getId(), failed.getBookingId(), "simulated_gateway_failure"));
             return failed;
         }
 
         invoice.setStatus(Invoice.InvoiceStatus.PENDING);
         Invoice created = invoiceRepository.save(invoice);
         emitAfterCommit("CREATED", invoicePayload(created));
+        double pendingAmount = created.getAmount() != null ? created.getAmount().doubleValue() : 0.0;
+        publishAfterCommit(() -> eventPublisher.publishPaymentInitiated(
+                created.getId(), created.getBookingId(), pendingAmount));
 
         created.setStatus(Invoice.InvoiceStatus.COMPLETED);
         details.put("completedAt", LocalDateTime.now().toString());
@@ -374,6 +386,9 @@ public class InvoiceService extends Observable {
         Invoice completed = invoiceRepository.save(created);
         invalidateInvoiceCaches(null);
         emitAfterCommit("COMPLETED", invoicePayload(completed));
+        double completedAmount = completed.getAmount() != null ? completed.getAmount().doubleValue() : 0.0;
+        publishAfterCommit(() -> eventPublisher.publishPaymentCompleted(
+                completed.getId(), completed.getBookingId(), completedAmount));
         return completed;
     }
 
@@ -506,6 +521,9 @@ public class InvoiceService extends Observable {
         Map<String, Object> payload = invoicePayload(saved);
         payload.put("retryCount", retryCount);
         emitAfterCommit("RETRY_ATTEMPTED", payload);
+        double retryAmt = saved.getAmount() != null ? saved.getAmount().doubleValue() : 0.0;
+        publishAfterCommit(() -> eventPublisher.publishPaymentCompleted(
+                saved.getId(), saved.getBookingId(), retryAmt));
         return saved;
     }
 
@@ -609,6 +627,9 @@ public class InvoiceService extends Observable {
             "cancellationFee", result.getCancellationFee()
         ));
         emitAfterCommit("REFUNDED", payload);
+        double cancelRefundAmt = result.getRefundAmount() != null ? result.getRefundAmount().doubleValue() : 0.0;
+        publishAfterCommit(() -> eventPublisher.publishPaymentRefunded(
+                saved.getId(), saved.getBookingId(), cancelRefundAmt));
 
         return saved;
     }
@@ -643,6 +664,19 @@ public class InvoiceService extends Observable {
         cacheInvalidator.wildcardDelete("invoice-service::S5-F9::*");
         cacheInvalidator.wildcardDelete("invoice-service::S5-F10::*");
         cacheInvalidator.wildcardDelete("invoice-service::S5-F11::*");
+    }
+
+    private void publishAfterCommit(Runnable publish) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            publish.run();
+        }
     }
 
     protected void emitAfterCommit(String action, Map<String, Object> payload) {
