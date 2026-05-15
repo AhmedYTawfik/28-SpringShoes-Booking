@@ -1,17 +1,89 @@
 services:
-  postgres:
+  user-postgres:
     image: postgres:17
-    container_name: booking-db
+    container_name: booking-user-db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: bookingdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bookingdb-users
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - user-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bookingdb"]
+      test: ["CMD-SHELL", "pg_isready -U user -d bookingdb-users"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  provider-postgres:
+    image: postgres:17
+    container_name: booking-provider-db
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bookingdb-providers
+    volumes:
+      - provider-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d bookingdb-providers"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  booking-postgres:
+    image: postgres:17
+    container_name: booking-booking-db
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bookingdb-bookings
+    volumes:
+      - booking-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d bookingdb-bookings"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  calendar-postgres:
+    image: postgres:17
+    container_name: booking-calendar-db
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bookingdb-calendar
+    volumes:
+      - calendar-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d bookingdb-calendar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  invoice-postgres:
+    image: postgres:17
+    container_name: booking-invoice-db
+    ports:
+      - "5437:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bookingdb-invoices
+    volumes:
+      - invoice-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d bookingdb-invoices"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -114,9 +186,9 @@ services:
     ports:
       - "8081:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/bookingdb-users
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: password
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
@@ -124,7 +196,7 @@ services:
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
       SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration
     depends_on:
-      postgres:
+      user-postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -136,9 +208,9 @@ services:
     ports:
       - "8082:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://provider-postgres:5432/bookingdb-providers
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: password
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
@@ -153,7 +225,7 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
-      postgres:
+      provider-postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -163,9 +235,9 @@ services:
     ports:
       - "8083:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://booking-postgres:5432/bookingdb-bookings
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: password
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
@@ -180,7 +252,7 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      postgres:
+      booking-postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -190,9 +262,9 @@ services:
     ports:
       - "8084:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://calendar-postgres:5432/bookingdb-calendar
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: password
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
@@ -208,7 +280,7 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
-      postgres:
+      calendar-postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -218,9 +290,9 @@ services:
     ports:
       - "8085:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bookingdb
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://invoice-postgres:5432/bookingdb-invoices
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: password
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/bookingmongo?authSource=admin
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: redispass
@@ -230,7 +302,7 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-      postgres:
+      invoice-postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -240,4 +312,8 @@ volumes:
   es-data:
   mongo-data:
   neo4j-data:
-  pgdata:
+  user-pgdata:
+  provider-pgdata:
+  booking-pgdata:
+  calendar-pgdata:
+  invoice-pgdata:
