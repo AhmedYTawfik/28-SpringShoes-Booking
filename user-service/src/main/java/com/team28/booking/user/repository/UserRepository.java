@@ -23,13 +23,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("role") String role
     );
 
-    // S1-F4: Check if user has active bookings (cross-service native SQL)
-    // Active bookings = status IN ('REQUESTED', 'CONFIRMED', 'IN_PROGRESS')
-    @Query(value = "SELECT COUNT(*) FROM bookings b WHERE b.user_id = :userId AND " +
-            "b.status IN ('REQUESTED', 'CONFIRMED', 'IN_PROGRESS')",
-            nativeQuery = true)
-    Long countActiveBookings(@Param("userId") Long userId);
-
     // S1-F6: Top Clients by Spending (native SQL with JOIN)
     // Returns: user_id, name, total_spent, booking_count
     @Query(value = "SELECT u.id as user_id, u.name, " +
@@ -78,18 +71,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
 
-    // S1-F9: Filter users by language preference and minimum completed bookings.
-    @Query(value = "SELECT u.* " +
-            "FROM users u " +
-            "LEFT JOIN bookings b ON u.id = b.user_id AND b.status = 'COMPLETED' " +
-            "WHERE LOWER(CAST(u.preferences ->> 'language' AS TEXT)) = LOWER(:language) " +
-            "GROUP BY u.id " +
-            "HAVING COUNT(b.id) >= :minBookings " +
-            "ORDER BY u.id",
-            nativeQuery = true)
-    List<User> findUsersByLanguagePreferenceAndMinimumCompletedBookings(
-            @Param("language") String language,
-            @Param("minBookings") long minBookings
-    );
+    // S1-F9: Filter users by language preference (M3: completed bookings count via Feign)
+    @Query(value = "SELECT * FROM users WHERE LOWER(CAST(preferences ->> 'language' AS TEXT)) = LOWER(:language) ORDER BY id", nativeQuery = true)
+    List<User> findUsersByLanguagePreference(@Param("language") String language);
 
 }

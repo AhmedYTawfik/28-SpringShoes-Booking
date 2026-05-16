@@ -4,19 +4,16 @@ import com.team28.booking.calendar.adapter.CassandraRowAdapter;
 import com.team28.booking.calendar.cassandra.CalendarAvailabilityEvent;
 import com.team28.booking.calendar.cassandra.CalendarAvailabilityEventRepository;
 import com.team28.booking.calendar.dto.AvailabilitySnapshotDTO;
-import com.team28.booking.calendar.repository.TimeSlotRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -27,7 +24,6 @@ import static org.mockito.Mockito.when;
 class AvailabilityHistoryServiceTest {
 
     @Mock private CalendarAvailabilityEventRepository eventRepository;
-    @Mock private TimeSlotRepository timeSlotRepository;
 
     private final CassandraRowAdapter cassandraRowAdapter = new CassandraRowAdapter();
 
@@ -40,7 +36,7 @@ class AvailabilityHistoryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AvailabilityHistoryService(eventRepository, timeSlotRepository, cassandraRowAdapter);
+        service = new AvailabilityHistoryService(eventRepository, cassandraRowAdapter);
     }
 
     private CalendarAvailabilityEvent event(Instant ts, Double utilization) {
@@ -49,7 +45,6 @@ class AvailabilityHistoryServiceTest {
 
     @Test
     void getAvailabilityHistory_noRange_returnsAllSnapshotsInDescOrder() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(eventRepository.findByProviderId(PROVIDER_ID))
                 .thenReturn(List.of(event(T_1430, 0.9), event(T_1415, 0.6), event(T_1400, 0.3)));
 
@@ -66,7 +61,6 @@ class AvailabilityHistoryServiceTest {
     void getAvailabilityHistory_withRange_callsRangeQuery() {
         Instant from = Instant.parse("2026-05-02T14:10:00Z");
         Instant to   = Instant.parse("2026-05-02T14:20:00Z");
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(eventRepository.findByProviderIdAndTimestampBetween(eq(PROVIDER_ID), eq(from), eq(to)))
                 .thenReturn(List.of(event(T_1415, 0.6)));
 
@@ -78,18 +72,7 @@ class AvailabilityHistoryServiceTest {
     }
 
     @Test
-    void getAvailabilityHistory_providerNotFound_throws404() {
-        when(timeSlotRepository.countProviderById(999L)).thenReturn(0L);
-
-        assertThatThrownBy(() -> service.getAvailabilityHistory(999L, null, null))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Provider not found");
-        verify(eventRepository, never()).findByProviderId(any());
-    }
-
-    @Test
     void getAvailabilityHistory_providerExistsNoSnapshots_returnsEmptyList() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         when(eventRepository.findByProviderId(PROVIDER_ID)).thenReturn(List.of());
 
         List<AvailabilitySnapshotDTO> result = service.getAvailabilityHistory(PROVIDER_ID, null, null);
@@ -99,7 +82,6 @@ class AvailabilityHistoryServiceTest {
 
     @Test
     void getAvailabilityHistory_adapterMapsAllFields() {
-        when(timeSlotRepository.countProviderById(PROVIDER_ID)).thenReturn(1L);
         CalendarAvailabilityEvent row = new CalendarAvailabilityEvent(
                 PROVIDER_ID, T_1430, "2026-05-02", 12, 4, 8, 0.6667, "peak hour");
         when(eventRepository.findByProviderId(PROVIDER_ID)).thenReturn(List.of(row));

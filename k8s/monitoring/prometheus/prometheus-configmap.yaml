@@ -20,7 +20,7 @@ data:
               - api-gateway.booking.svc.cluster.local:8080
 
       - job_name: invoice-service
+        metrics_path: /actuator/prometheus
         static_configs:
           - targets:
               - invoice-service.booking.svc.cluster.local:8080
-        metrics_path: /actuator/prometheus

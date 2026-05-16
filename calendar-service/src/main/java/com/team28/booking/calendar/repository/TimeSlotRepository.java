@@ -1,6 +1,5 @@
 package com.team28.booking.calendar.repository;
 
-import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.model.TimeSlot;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -16,9 +15,6 @@ import java.util.Optional;
 
 @RepositoryRestResource(exported=false)
 public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
-
-    @Query(value = "SELECT COUNT(*) FROM providers WHERE id = :providerId", nativeQuery = true)
-    Long countProviderById(@Param("providerId") Long providerId);
 
     Optional<TimeSlot> findTopByProviderIdOrderByDateDescStartTimeDesc(Long providerId);
 
@@ -47,19 +43,13 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
                     @Param("startTime") LocalTime startTime);
 
     @Query(value = """
-            SELECT p.id AS providerId, p.name AS providerName, p.specialty,
-                   p.rating, COUNT(ts.id) AS availableSlots
-            FROM time_slots ts
-            JOIN providers p ON ts.provider_id = p.id
-            WHERE ts.date = :date
-              AND ts.available = true
-              AND (:specialty IS NULL OR p.specialty = :specialty)
-            GROUP BY p.id, p.name, p.specialty, p.rating
-            ORDER BY p.rating DESC
+            SELECT provider_id AS providerId, COUNT(*) AS availableSlots
+            FROM time_slots
+            WHERE date = :date
+              AND available = true
+            GROUP BY provider_id
             """, nativeQuery = true)
-    List<Object[]> findAvailableProvidersByDate(
-            @Param("date") LocalDate date,
-            @Param("specialty") String specialty);
+    List<Object[]> countAvailableSlotsByProviderAndDate(@Param("date") LocalDate date);
 
     @Query(value = """
             SELECT * FROM time_slots
@@ -84,21 +74,16 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
     List<TimeSlot> findByMetadataLessThan(@Param("key") String key, @Param("value") String value);
 
     @Query(value = """
-            SELECT p.id AS providerId,
-                   p.name AS providerName,
-                   p.specialty,
-                   p.rating,
-                   COUNT(ts.id) FILTER (WHERE ts.available = false) AS bookedSlotsCount,
-                   COUNT(ts.id) AS totalSlotsCount
-            FROM providers p
-            LEFT JOIN time_slots ts
-                ON ts.provider_id = p.id
-               AND ts.date >= :sinceDate
-            GROUP BY p.id, p.name, p.specialty, p.rating
-            HAVING COUNT(ts.id) FILTER (WHERE ts.available = false) <= :maxBookedSlots
-            ORDER BY p.id
+            SELECT provider_id AS providerId,
+                   COUNT(*) FILTER (WHERE available = false) AS bookedSlotsCount,
+                   COUNT(*) AS totalSlotsCount
+            FROM time_slots
+            WHERE date >= :sinceDate
+            GROUP BY provider_id
+            HAVING COUNT(*) FILTER (WHERE available = false) <= :maxBookedSlots
+            ORDER BY provider_id
             """, nativeQuery = true)
-    List<IdleProviderProjection> findIdleProviders(
+    List<Object[]> findIdleProviderIds(
             @Param("maxBookedSlots") int maxBookedSlots,
             @Param("sinceDate") LocalDate sinceDate);
            

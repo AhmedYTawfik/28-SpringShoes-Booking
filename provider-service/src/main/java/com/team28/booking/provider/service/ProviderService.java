@@ -1,12 +1,15 @@
 package com.team28.booking.provider.service;
 
-import com.team28.booking.provider.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.provider.cache.CacheInvalidator;
 import com.team28.booking.provider.dto.*;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.model.ProviderCertification;
 import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
+import com.team28.booking.contracts.dto.UserDTO;
+import com.team28.booking.contracts.dto.ProviderAvailabilityDTO;
 import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.feign.UserServiceClient;
 import com.team28.booking.provider.observer.MongoEventLogger;
 import com.team28.booking.provider.observer.Observable;
 import com.team28.booking.provider.messaging.ProviderEventPublisher;
@@ -32,11 +35,11 @@ public class ProviderService extends Observable {
     private final MongoEventLogger mongoEventLogger;
     private final CacheInvalidationService cacheInvalidationService;
     private final IndexingService indexingService;
-    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final CacheInvalidator cacheInvalidator;
     private final ProviderDashboardService dashboardService;
     private final ProviderEventPublisher eventPublisher;
     private final BookingServiceClient bookingServiceClient;
+    private final UserServiceClient userServiceClient;
 
     public ProviderService(
             ProviderRepository providerRepository,
@@ -44,22 +47,22 @@ public class ProviderService extends Observable {
             MongoEventLogger mongoEventLogger,
             CacheInvalidationService cacheInvalidationService,
             IndexingService indexingService,
-            ObjectArrayDtoAdapter objectArrayDtoAdapter,
             CacheInvalidator cacheInvalidator,
             ProviderDashboardService dashboardService,
             ProviderEventPublisher eventPublisher,
-            BookingServiceClient bookingServiceClient
+            BookingServiceClient bookingServiceClient,
+            UserServiceClient userServiceClient
     ) {
         this.providerRepository = providerRepository;
         this.certificationService = certificationService;
         this.mongoEventLogger = mongoEventLogger;
         this.cacheInvalidationService = cacheInvalidationService;
         this.indexingService = indexingService;
-        this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.cacheInvalidator = cacheInvalidator;
         this.dashboardService = dashboardService;
         this.eventPublisher = eventPublisher;
         this.bookingServiceClient = bookingServiceClient;
+        this.userServiceClient = userServiceClient;
     }
 
     @PostConstruct
@@ -121,12 +124,17 @@ public class ProviderService extends Observable {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Status is required");
         }
         if (newStatus == Provider.ProviderStatus.OFFLINE) {
-            Long activeBookings = providerRepository.countActiveBookings(providerId);
-            if (activeBookings != null && activeBookings > 0) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "Cannot set provider to OFFLINE while having active bookings"
-                );
+            try {
+                int activeCount = bookingServiceClient.getProviderActiveCount(providerId);
+                if (activeCount > 0) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Cannot set provider to OFFLINE while having active bookings"
+                    );
+                }
+            } catch (FeignException e) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "Booking service temporarily unavailable");
             }
         }
 
@@ -180,6 +188,20 @@ public class ProviderService extends Observable {
         if (providerCertification.getExpiryDate().isBefore(currentDate))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Certificate has already expired");
 
+        //feign user-service to verify verifiedBy user is ADMIN
+        UserDTO verifier;
+        try {
+            verifier = userServiceClient.getUser(verifiedBy.verifier());
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "verifier user not found");
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "User service temporarily unavailable");
+        }
+        if (!"ADMIN".equals(verifier.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "verifier is not an admin");
+        }
+
         providerCertification.setVerified(true);
         Map<String, Object> metadata = providerCertification.getMetadata();
         if (metadata == null) {
@@ -216,6 +238,14 @@ public class ProviderService extends Observable {
         return findById(id);
     }
 
+    /** M3 S2: convenience endpoint returning the provider's current status (called by S3 via Feign). */
+    public ProviderAvailabilityDTO getProviderAvailability(Long id) {
+        Provider provider = findById(id);
+        return new ProviderAvailabilityDTO(
+                provider.getStatus() != null ? provider.getStatus().name() : null
+        );
+    }
+
     public void indexProviderExplicitly(Long id) {
         Provider provider = findById(id);
         indexingService.indexProvider(provider, "explicit");
@@ -247,9 +277,23 @@ public class ProviderService extends Observable {
         if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
         }
-        List<Object[]> results = providerRepository.getProviderEarningsSummary(providerId, startDate, endDate);
-        Object[] row = results.isEmpty() ? new Object[]{null, null, null} : results.get(0);
-        return objectArrayDtoAdapter.toProviderEarningsDTO(provider.getId(), provider.getName(), row);
+        try {
+            ProviderBookingSummaryDTO summary = bookingServiceClient.getProviderBookingSummary(
+                    providerId,
+                    startDate != null ? startDate.toString() : null,
+                    endDate != null ? endDate.toString() : null
+            );
+            return new ProviderEarningsDTO(
+                    provider.getId(),
+                    provider.getName(),
+                    summary.totalBookings(),
+                    summary.totalEarnings().doubleValue(),
+                    summary.averageBookingPrice().doubleValue()
+            );
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Booking service temporarily unavailable");
+        }
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
@@ -418,15 +462,13 @@ public class ProviderService extends Observable {
     public List<TopProviderDTO> getTopRatedProviders(int limit) {
         if (limit == 0) limit = 50;
         PageRequest paging = PageRequest.of(0, limit);
-        List<ProviderSummary> topProviders = providerRepository.findTopProvidersWithBookingCount(paging);
-
+        List<Provider> topProviders = providerRepository.findTopRatedProviders(paging);
 
         List<TopProviderDTO> topProviderDTOS = new ArrayList<>();
         topProviders.forEach(provider -> topProviderDTOS.add(
-                // The total bookings are left as 0 for now
                 new TopProviderDTO(
                         provider.getId(), provider.getName(),
-                        provider.getRating(), provider.getBookingCount().intValue()
+                        provider.getRating(), provider.getTotalRatings()
                 )
         ));
 

@@ -26,10 +26,12 @@ import com.team28.booking.user.repository.SavedAddressRepository;
 import com.team28.booking.user.repository.UserRepository;
 import com.team28.booking.user.exception.ServiceUnavailableException;
 import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.feign.InvoiceServiceClient;
 import com.team28.booking.contracts.dto.BookingSummaryDTO;
 import feign.FeignException;
 
 import jakarta.annotation.PostConstruct;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +63,9 @@ public class UserService extends Observable {
 
     @Autowired
     private BookingServiceClient bookingServiceClient;
+
+    @Autowired
+    private InvoiceServiceClient invoiceServiceClient;
 
     @Autowired
     private AuthEventRepository authEventRepository;
@@ -265,8 +270,15 @@ public class UserService extends Observable {
             throw new IllegalStateException("User is already deactivated");
         }
 
-        Long activeBookings = userRepository.countActiveBookings(userId);
-        if (activeBookings != null && activeBookings > 0) {
+        int activeBookings;
+        try {
+            activeBookings = bookingServiceClient.getActiveBookingCount(userId);
+        } catch (FeignException e) {
+            log.warn("booking-service unavailable for active count of user {}: {}", userId, e.getMessage());
+            throw new ServiceUnavailableException("Booking service temporarily unavailable");
+        }
+
+        if (activeBookings > 0) {
             throw new IllegalStateException("User has active bookings");
         }
 
@@ -369,18 +381,28 @@ public class UserService extends Observable {
         return userRepository.searchUsers(searchName, searchEmail, searchRole);
     }
 
-    /** S1-F5: users by language preference — 5 min TTL (§4.4.1). */
-    @Cacheable(cacheNames = "user-service::S1-F5",
+    /** S1-F9: users by language preference with minimum bookings — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F9",
                key = "T(java.util.Objects).hash(#language, #minBookings)")
     public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
         if (language == null || language.trim().isEmpty()) {
             throw new IllegalArgumentException("Language must not be blank");
         }
 
-        return userRepository.findUsersByLanguagePreferenceAndMinimumCompletedBookings(
-                language.trim(),
-                minBookings
-        );
+        List<User> candidates = userRepository.findUsersByLanguagePreference(language.trim());
+        List<User> result = new ArrayList<>();
+        for (User user : candidates) {
+            try {
+                long completedCount = bookingServiceClient.getCompletedBookingCount(user.getId());
+                if (completedCount >= minBookings) {
+                    result.add(user);
+                }
+            } catch (FeignException e) {
+                log.warn("booking-service unavailable for completed count of user {}: {}", user.getId(), e.getMessage());
+                throw new ServiceUnavailableException("Booking service temporarily unavailable");
+            }
+        }
+        return result;
     }
 
     /** S1-F3: user booking summary — 10 min TTL (§4.4.1). */
@@ -437,8 +459,8 @@ public class UserService extends Observable {
         }
     }
 
-    /** S1-F9: top clients by spending report — 10 min TTL (§4.4.1). */
-    @Cacheable(cacheNames = "user-service::S1-F9",
+    /** S1-F6: top clients by spending report — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F6",
                key = "T(java.util.Objects).hash(#startDate, #endDate, #limit)")
     public List<TopClientDTO> getTopClientsBySpending(String startDate, String endDate, int limit) {
         validateDateRange(startDate, endDate);
@@ -446,15 +468,42 @@ public class UserService extends Observable {
         String startDateTime = startDate + " 00:00:00";
         String endDateTime = endDate + " 23:59:59";
 
-        List<Object[]> results = userRepository.findTopClientsBySpending(
-                startDateTime, endDateTime, limit);
+        // userId, userName
+        List<User> usersDetails = userRepository.findAll();
+        List<TopClientDTO> fullRows = new ArrayList<>();
+        for (User user : usersDetails) {
+            try {
+                Long userId = user.getId();
+                String userName = user.getName();
 
-        List<TopClientDTO> topClients = new ArrayList<>();
-        for (Object[] row : results) {
-            topClients.add(objectArrayDtoAdapter.toTopClientDTO(row));
+                double totalSpent = ((Number) invoiceServiceClient.getUserInvoiceTotal(userId, startDateTime,
+                        endDateTime)).doubleValue();
+
+                BookingSummaryDTO summary = bookingServiceClient.getUserBookingSummary(userId, startDateTime,
+                        endDateTime);
+
+                Long totalCompletedBookings = summary != null && summary.getCompletedBookings() != null
+                        ? summary.getCompletedBookings()
+                        : 0L;
+                fullRows.add(
+                        new TopClientDTO(userId, userName, totalSpent, totalCompletedBookings));
+            } catch (ClassCastException e) {
+                log.warn("failed to convert retrieved user Id to Long", e);
+            }
         }
 
-        return topClients;
+        fullRows.sort((a, b) -> {
+            double aTotalSpent = a.getTotalSpent();
+            double bTotalSpent = b.getTotalSpent();
+
+            if (aTotalSpent > bTotalSpent)
+                return 1;
+            if (aTotalSpent == bTotalSpent)
+                return 0;
+            return -1;
+        });
+
+        return fullRows.subList(0, limit);
     }
 
     /**
@@ -486,7 +535,7 @@ public class UserService extends Observable {
             cacheInvalidator.deleteKey("user-service::S1-F3::" + id);
         }
         cacheInvalidator.wildcardDelete("user-service::S1-F3::*");
-        cacheInvalidator.wildcardDelete("user-service::S1-F5::*");
+        cacheInvalidator.wildcardDelete("user-service::S1-F6::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F8::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F9::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F10::*");

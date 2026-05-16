@@ -1,5 +1,6 @@
 package com.team28.booking.provider.controller;
 
+import com.team28.booking.contracts.dto.ProviderAvailabilityDTO;
 import com.team28.booking.provider.dto.*;
 import com.team28.booking.provider.model.Provider;
 import com.team28.booking.provider.search.ProviderSearchDocument;
@@ -39,6 +40,11 @@ public class ProviderController {
     @GetMapping("/{id}")
     public ResponseEntity<Provider> getProviderById(@PathVariable Long id) {
         return ResponseEntity.ok(providerService.getProviderById(id));
+    }
+
+    @GetMapping("/{id}/availability")
+    public ResponseEntity<ProviderAvailabilityDTO> getProviderAvailability(@PathVariable Long id) {
+        return ResponseEntity.ok(providerService.getProviderAvailability(id));
     }
 
     @PutMapping("/{id}")
