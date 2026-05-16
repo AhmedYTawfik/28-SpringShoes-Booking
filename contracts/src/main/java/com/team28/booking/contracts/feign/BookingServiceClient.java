@@ -13,6 +13,12 @@ public interface BookingServiceClient {
     @GetMapping("/api/bookings/user/{userId}/summary")
     BookingSummaryDTO getUserBookingSummary(@PathVariable("userId") Long userId);
 
+    @GetMapping("/api/bookings/user/{userId}/summary/range")
+    BookingSummaryDTO getUserBookingSummary(
+            @PathVariable("userId") Long userId,
+            @RequestParam(name = "startDate", required = false) String startDate,
+            @RequestParam(name = "endDate", required = false) String endDate);
+
     @GetMapping("/api/bookings/user/{userId}/active-count")
     int getActiveBookingCount(@PathVariable("userId") Long userId);
 

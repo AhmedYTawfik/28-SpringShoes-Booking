@@ -141,6 +141,15 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
     }
 
+    /** GET /api/bookings/user/{userId}/summary/range — date-range variant, consumed by user-service via Feign. */
+    @GetMapping("/user/{userId}/summary/range")
+    public ResponseEntity<BookingSummaryDTO> getUserBookingSummary(
+            @PathVariable Long userId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        return ResponseEntity.ok(bookingService.getUserBookingSummary(userId, startDate, endDate));
+    }
+
     /** GET /api/bookings/user/{userId}/active-count — consumed by user-service via Feign. */
     @GetMapping("/user/{userId}/active-count")
     public ResponseEntity<Integer> getUserActiveCount(@PathVariable Long userId) {
