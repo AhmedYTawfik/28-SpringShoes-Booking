@@ -49,6 +49,8 @@ import com.team28.booking.invoice.strategy.NoRefundStrategy;
 import com.team28.booking.invoice.strategy.RefundResult;
 import com.team28.booking.invoice.strategy.RefundStrategy;
 import com.team28.booking.invoice.strategy.RefundStrategySelector;
+import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.contracts.feign.UserServiceClient;
 
 import feign.FeignException;
@@ -71,6 +73,7 @@ public class InvoiceService extends Observable {
     private final RefundStrategySelector refundStrategySelector;
     private final PaymentAuditEventRepository paymentAuditEventRepository;
     private final PaymentEventPublisher eventPublisher;
+    private final BookingServiceClient bookingServiceClient;
     private final UserServiceClient userServiceClient;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
@@ -82,6 +85,7 @@ public class InvoiceService extends Observable {
                           RefundStrategySelector refundStrategySelector,
                           PaymentAuditEventRepository paymentAuditEventRepository,
                           PaymentEventPublisher eventPublisher,
+                          BookingServiceClient bookingServiceClient,
                           UserServiceClient userServiceClient) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
@@ -92,6 +96,7 @@ public class InvoiceService extends Observable {
         this.refundStrategySelector = refundStrategySelector;
         this.paymentAuditEventRepository = paymentAuditEventRepository;
         this.eventPublisher = eventPublisher;
+        this.bookingServiceClient = bookingServiceClient;
         this.userServiceClient = userServiceClient;
     }
 
@@ -554,40 +559,40 @@ public class InvoiceService extends Observable {
             throw new BadRequestException("Refund reason must not be blank");
         }
 
-        // --- Step b-c: find invoice, validate COMPLETED ---
+        // --- find invoice, validate COMPLETED ---
         Invoice invoice = findById(invoiceId);
         if (invoice.getStatus() != InvoiceStatus.COMPLETED) {
             throw new BadRequestException(
                 "Invoice must be COMPLETED to process cancellation refund");
         }
 
-        // --- Step d: cross-service booking lookup ---
-        List<Object[]> rows = invoiceRepository.findBookingForCancellation(invoice.getBookingId());
-        if (rows == null || rows.isEmpty()) {
-            throw new ResourceNotFoundException(
-                "Booking not found for invoice: " + invoiceId);
+        // --- Feign booking lookup (replaces cross-service SQL) ---
+        log.info("S5-F12 processCancellationRefund: Feign GET /api/bookings/{} — before", invoice.getBookingId());
+        BookingDTO booking;
+        try {
+            booking = bookingServiceClient.getBooking(invoice.getBookingId());
+            log.info("S5-F12 processCancellationRefund: Feign GET /api/bookings/{} — after, status={}",
+                    invoice.getBookingId(), booking.status());
+        } catch (FeignException.NotFound e) {
+            log.warn("S5-F12 processCancellationRefund: booking {} not found via Feign", invoice.getBookingId());
+            throw new ResourceNotFoundException("Booking not found for invoice: " + invoiceId);
+        } catch (FeignException e) {
+            log.error("S5-F12 processCancellationRefund: Feign exception for bookingId={}: {}",
+                    invoice.getBookingId(), e.getMessage());
+            throw new BadRequestException("booking-service unavailable: " + e.getMessage());
         }
-        Object[] row = rows.get(0);
-        String bookingStatus = (String) row[0];
-        LocalDate appointmentDate = null;
-
-        if (row[1] instanceof LocalDate)
-            appointmentDate = (LocalDate) row[1];
-        else if (row[1] instanceof java.sql.Date)
-            appointmentDate = ((java.sql.Date) row[1]).toLocalDate();
 
         Map<String, Object> bookingData = new HashMap<>();
-        bookingData.put("status", bookingStatus);
-        bookingData.put("appointmentDate", appointmentDate);
+        bookingData.put("status", booking.status());
+        bookingData.put("appointmentDate", booking.appointmentDate());
 
-        // --- Step e: delegate strategy selection (no time-branching in this method) ---
+        // --- delegate strategy selection ---
         RefundStrategy strategy = refundStrategySelector.select(bookingData);
 
-        // --- Step f: denial path (NoRefundStrategy) ---
+        // --- denial path (NoRefundStrategy) ---
         if (strategy instanceof NoRefundStrategy) {
             RefundResult result = strategy.calculateRefund(invoice.getAmount(), bookingData, reason);
 
-            // (i) Log REFUND_DENIED to Mongo before throwing
             Map<String, Object> denialPayload = invoicePayload(invoice);
             denialPayload.put("details", Map.of(
                 "strategyName", strategy.strategyName(),
@@ -595,20 +600,18 @@ public class InvoiceService extends Observable {
             ));
             notifyObservers("REFUND_DENIED", denialPayload);
 
-            // (ii) Invalidate analytics caches
             cacheInvalidator.wildcardDelete("invoice-service::S5-F10::*");
             cacheInvalidator.wildcardDelete("invoice-service::S5-F11::*");
 
-            // (iii) Throw 400
             throw new BadRequestException(result.getReasonCode());
         }
 
-        // --- Step g: calculate refund ---
+        // --- calculate refund ---
         RefundResult result = strategy.calculateRefund(invoice.getAmount(), bookingData, reason);
 
         invoice.setStatus(InvoiceStatus.REFUNDED);
 
-        // --- Step h: record in transactionDetails JSONB ---
+        // --- record in transactionDetails JSONB ---
         Map<String, Object> details = invoice.getTransactionDetails();
         if (details == null) details = new HashMap<>();
         details.put("refundAmount", result.getRefundAmount());
@@ -620,18 +623,10 @@ public class InvoiceService extends Observable {
 
         Invoice saved = invoiceRepository.save(invoice);
 
-        // Update booking to CANCELLED
-        int updatedRows = invoiceRepository.cancelBooking(invoice.getBookingId());
-        if (updatedRows < 1) {
-            throw new BadRequestException(
-                "Failed to cancel booking because it was changed or removed concurrently"
-            );
-        }
-
-        // --- Step j: invalidate caches ---
+        // --- invalidate caches ---
         invalidateInvoiceCaches(invoiceId);
 
-        // --- Step i: emit REFUNDED (after PG commit) ---
+        // --- emit REFUNDED + publish payment.refunded (booking-service consumer will flip booking) ---
         Map<String, Object> payload = invoicePayload(saved);
         payload.put("strategyName", strategy.strategyName());
         payload.put("refundReason", reason);
