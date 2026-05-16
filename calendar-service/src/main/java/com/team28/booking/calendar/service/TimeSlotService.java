@@ -8,7 +8,6 @@ import com.team28.booking.calendar.cassandra.CalendarAvailabilityEventRepository
 import com.team28.booking.calendar.dto.AvailabilitySnapshotRequest;
 import com.team28.booking.calendar.dto.AvailableProviderDTO;
 import com.team28.booking.calendar.dto.CalendarAnalyticsDTO;
-import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.dto.IdleProviderDTO;
 import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
 import com.team28.booking.calendar.model.TimeSlot;
@@ -266,7 +265,6 @@ public class TimeSlotService extends Observable {
     /** S4-F9: idle providers — 10 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "calendar-service::S4-F9",
                key = "T(java.util.Objects).hash(#maxBookedSlots, #sinceDays)")
-    @Transactional(readOnly = true)
     public List<IdleProviderDTO> findIdleProviders(int maxBookedSlots, int sinceDays) {
         if (maxBookedSlots < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "maxBookedSlots must be greater than or equal to 0");
@@ -275,17 +273,32 @@ public class TimeSlotService extends Observable {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sinceDays must be greater than or equal to 0");
         }
         LocalDate sinceDate = LocalDate.now().minusDays(sinceDays);
-        List<IdleProviderProjection> results = timeSlotRepository.findIdleProviders(maxBookedSlots, sinceDate);
-        return results.stream()
-                .map(row -> IdleProviderDTO.builder()
-                        .providerId(row.getProviderId())
-                        .providerName(row.getProviderName())
-                        .specialty(row.getSpecialty())
-                        .rating(row.getRating())
-                        .bookedSlotsCount(row.getBookedSlotsCount())
-                        .totalSlotsCount(row.getTotalSlotsCount())
-                        .build())
-                .toList();
+        List<Object[]> localResults = timeSlotRepository.findIdleProviderIds(maxBookedSlots, sinceDate);
+        List<IdleProviderDTO> results = new ArrayList<>();
+
+        for (Object[] row : localResults) {
+            Long providerId = ((Number) row[0]).longValue();
+            Long bookedSlotsCount = ((Number) row[1]).longValue();
+            Long totalSlotsCount = ((Number) row[2]).longValue();
+
+            try {
+                ProviderDTO provider = providerServiceClient.getProvider(providerId);
+                results.add(IdleProviderDTO.builder()
+                        .providerId(providerId)
+                        .providerName(provider.name())
+                        .specialty(provider.specialty())
+                        .rating(provider.rating())
+                        .bookedSlotsCount(bookedSlotsCount)
+                        .totalSlotsCount(totalSlotsCount)
+                        .build());
+            } catch (FeignException.NotFound e) {
+                log.warn("Provider {} not found via Feign, skipping", providerId);
+            } catch (FeignException e) {
+                log.warn("provider-service unavailable for {}: {}", providerId, e.getMessage());
+            }
+        }
+
+        return results;
     }
 
     public List<TimeSlot> getAllTimeSlots() {
