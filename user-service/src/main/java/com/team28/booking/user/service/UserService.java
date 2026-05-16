@@ -265,8 +265,15 @@ public class UserService extends Observable {
             throw new IllegalStateException("User is already deactivated");
         }
 
-        Long activeBookings = userRepository.countActiveBookings(userId);
-        if (activeBookings != null && activeBookings > 0) {
+        int activeBookings;
+        try {
+            activeBookings = bookingServiceClient.getActiveBookingCount(userId);
+        } catch (FeignException e) {
+            log.warn("booking-service unavailable for user {}: {}", userId, e.getMessage());
+            throw new ServiceUnavailableException("Booking service temporarily unavailable");
+        }
+
+        if (activeBookings > 0) {
             throw new IllegalStateException("User has active bookings");
         }
 
@@ -387,6 +394,7 @@ public class UserService extends Observable {
                 }
             } catch (FeignException e) {
                 log.warn("booking-service unavailable for completed count of user {}: {}", user.getId(), e.getMessage());
+                throw new ServiceUnavailableException("Booking service temporarily unavailable");
             }
         }
         return result;
@@ -446,8 +454,8 @@ public class UserService extends Observable {
         }
     }
 
-    /** S1-F9: top clients by spending report — 10 min TTL (§4.4.1). */
-    @Cacheable(cacheNames = "user-service::S1-F9",
+    /** S1-F6: top clients by spending report — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F6",
                key = "T(java.util.Objects).hash(#startDate, #endDate, #limit)")
     public List<TopClientDTO> getTopClientsBySpending(String startDate, String endDate, int limit) {
         validateDateRange(startDate, endDate);
@@ -495,7 +503,7 @@ public class UserService extends Observable {
             cacheInvalidator.deleteKey("user-service::S1-F3::" + id);
         }
         cacheInvalidator.wildcardDelete("user-service::S1-F3::*");
-        cacheInvalidator.wildcardDelete("user-service::S1-F5::*");
+        cacheInvalidator.wildcardDelete("user-service::S1-F6::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F8::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F9::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F10::*");
