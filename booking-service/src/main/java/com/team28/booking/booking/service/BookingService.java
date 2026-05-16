@@ -47,6 +47,9 @@ import java.util.stream.Collectors;
 
 import com.team28.booking.contracts.dto.BookingSummaryDTO;
 import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
+import com.team28.booking.contracts.dto.ProviderDTO;
+import com.team28.booking.contracts.feign.ProviderServiceClient;
+import feign.FeignException;
 
 @Service
 public class BookingService extends Observable {
@@ -58,6 +61,7 @@ public class BookingService extends Observable {
     private final CacheManager cacheManager;
     private final Neo4jClient neo4jClient;
     private final BookingEventPublisher eventPublisher;
+    private final ProviderServiceClient providerServiceClient;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingItemRepository bookingItemRepository,
@@ -65,7 +69,8 @@ public class BookingService extends Observable {
                           CacheInvalidator cacheInvalidator,
                           CacheManager cacheManager,
                           Neo4jClient neo4jClient,
-                          BookingEventPublisher eventPublisher) {
+                          BookingEventPublisher eventPublisher,
+                          ProviderServiceClient providerServiceClient) {
         this.bookingRepository = bookingRepository;
         this.bookingItemRepository = bookingItemRepository;
         this.mongoEventLogger = mongoEventLogger;
@@ -73,6 +78,7 @@ public class BookingService extends Observable {
         this.cacheManager = cacheManager;
         this.neo4jClient = neo4jClient;
         this.eventPublisher = eventPublisher;
+        this.providerServiceClient = providerServiceClient;
     }
 
     @PostConstruct
@@ -92,8 +98,6 @@ public class BookingService extends Observable {
         cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CREATED", bookingPayload(saved));
-        publishAfterCommit(() -> eventPublisher.publishBookingPlaced(
-                saved.getId(), saved.getUserId(), saved.getProviderId()));
         return saved;
     }
 
@@ -153,9 +157,17 @@ public class BookingService extends Observable {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Booking must be in REQUESTED status to assign a provider");
         }
-        if (!bookingRepository.existsProviderById(providerId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Provider not found with id: " + providerId);
+        // Validate provider exists and is AVAILABLE via Feign — no cross-DB query
+        ProviderDTO provider;
+        try {
+            provider = providerServiceClient.getProvider(providerId);
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Provider service unavailable");
+        }
+        if (!"AVAILABLE".equals(provider.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provider is not available");
         }
         booking.setProviderId(providerId);
         booking.setStatus(Booking.Status.CONFIRMED);
@@ -163,6 +175,10 @@ public class BookingService extends Observable {
         cacheInvalidator.deleteKey("booking-service::booking::" + bookingId);
         cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
         emitAfterCommit("PROVIDER_ASSIGNED", bookingPayload(saved));
+        // Publish booking.placed here (not at creation) so provider-service marks provider BUSY
+        // only after assignment is confirmed
+        publishAfterCommit(() -> eventPublisher.publishBookingPlaced(
+                saved.getId(), saved.getUserId(), saved.getProviderId()));
         return saved;
     }
 
@@ -241,11 +257,6 @@ public class BookingService extends Observable {
                 .map(s -> BigDecimal.valueOf(s.price()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Verify provider exists
-        if (!bookingRepository.existsProviderById(request.providerId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Provider not found with id: " + request.providerId());
-        }
 
         Long activeCount = bookingRepository.countActiveBookingsByProviderAndDate(
                 request.providerId(), request.appointmentDate());

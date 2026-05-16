@@ -19,9 +19,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE id = :userId", nativeQuery = true)
         boolean existsUserById(@Param("userId") Long userId);
 
-        // S3-F3: check if provider exists in PG
-        @Query(value = "SELECT COUNT(*) > 0 FROM providers WHERE id = :providerId", nativeQuery = true)
-        boolean existsProviderById(@Param("providerId") Long providerId);
+
 
         // S3-F12: bulk-fetch provider name + specialty for enrichment
         @Query(value = "SELECT id, name, specialty FROM providers WHERE id IN (:ids)", nativeQuery = true)
