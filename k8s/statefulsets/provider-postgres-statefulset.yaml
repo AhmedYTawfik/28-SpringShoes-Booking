@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: provider-postgres
+  namespace: booking
+spec:
+  serviceName: provider-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: provider-postgres
+  template:
+    metadata:
+      labels:
+        app: provider-postgres
+    spec:
+      containers:
+        - name: provider-postgres
+          image: postgres:17
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: provider-postgres-secret
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "user"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "user"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: provider-postgres-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: provider-postgres-data
+          persistentVolumeClaim:
+            claimName: provider-postgres-pvc

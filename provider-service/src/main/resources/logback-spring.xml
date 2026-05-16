@@ -17,7 +17,20 @@
                 <pattern>service=provider-service,level=%level</pattern>
             </label>
             <message>
-                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+                <pattern>
+                    {
+                      "timestamp": "%d{ISO8601}",
+                      "level": "%level",
+                      "service": "provider-service",
+                      "thread": "%thread",
+                      "logger": "%logger{36}",
+                      "correlationId": "%X{correlationId:-}",
+                      "providerId": "%X{providerId:-}",
+                      "bookingId": "%X{bookingId:-}",
+                      "routingKey": "%X{routingKey:-}",
+                      "message": "%msg"
+                    }
+                </pattern>
             </message>
         </format>
     </appender>

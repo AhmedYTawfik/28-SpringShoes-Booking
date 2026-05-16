@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: calendar-postgres
+  namespace: booking
+spec:
+  serviceName: calendar-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: calendar-postgres
+  template:
+    metadata:
+      labels:
+        app: calendar-postgres
+    spec:
+      containers:
+        - name: calendar-postgres
+          image: postgres:17
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: calendar-postgres-secret
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "user"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "user"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: calendar-postgres-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: calendar-postgres-data
+          persistentVolumeClaim:
+            claimName: calendar-postgres-pvc
