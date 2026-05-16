@@ -587,6 +587,19 @@ public class BookingService extends Observable {
         return new BookingSummaryDTO(total, completed, cancelled, totalSpent, avgPrice);
     }
 
+    /** S3 new: date-range user booking summary — consumed by user-service via Feign (S1-F3 date filter). */
+    @Transactional(readOnly = true)
+    public BookingSummaryDTO getUserBookingSummaryByDateRange(Long userId, String startDate, String endDate) {
+        Object[] result = bookingRepository.getUserBookingSummaryByDateRange(userId, startDate, endDate);
+        Object[] row = (result.length > 0 && result[0] instanceof Object[]) ? (Object[]) result[0] : result;
+        long total     = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        long completed = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        long cancelled = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+        BigDecimal totalSpent = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
+        BigDecimal avgPrice   = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
+        return new BookingSummaryDTO(total, completed, cancelled, totalSpent, avgPrice);
+    }
+
     /** S3 new: active booking count for a user, consumed by user-service via Feign (S1-F4). */
     @Transactional(readOnly = true)
     public int getUserActiveCount(Long userId) {
