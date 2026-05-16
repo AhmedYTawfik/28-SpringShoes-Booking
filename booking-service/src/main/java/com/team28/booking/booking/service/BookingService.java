@@ -31,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,9 +47,20 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.team28.booking.contracts.dto.BookingSummaryDTO;
+import com.team28.booking.contracts.dto.InvoiceAmountDTO;
+import com.team28.booking.contracts.dto.InvoiceAmountsRequest;
+import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
+import com.team28.booking.contracts.dto.ProviderDTO;
+import com.team28.booking.contracts.feign.InvoiceServiceClient;
+import com.team28.booking.contracts.feign.ProviderServiceClient;
+import feign.FeignException;
+import java.math.RoundingMode;
+
 @Service
 public class BookingService extends Observable {
 
+    private static final Logger log = LoggerFactory.getLogger(BookingService.class);
     private final BookingRepository bookingRepository;
     private final BookingItemRepository bookingItemRepository;
     private final MongoEventLogger mongoEventLogger;
@@ -55,6 +68,8 @@ public class BookingService extends Observable {
     private final CacheManager cacheManager;
     private final Neo4jClient neo4jClient;
     private final BookingEventPublisher eventPublisher;
+    private final ProviderServiceClient providerServiceClient;
+    private final InvoiceServiceClient invoiceServiceClient;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingItemRepository bookingItemRepository,
@@ -62,7 +77,9 @@ public class BookingService extends Observable {
                           CacheInvalidator cacheInvalidator,
                           CacheManager cacheManager,
                           Neo4jClient neo4jClient,
-                          BookingEventPublisher eventPublisher) {
+                          BookingEventPublisher eventPublisher,
+                          ProviderServiceClient providerServiceClient,
+                          InvoiceServiceClient invoiceServiceClient) {
         this.bookingRepository = bookingRepository;
         this.bookingItemRepository = bookingItemRepository;
         this.mongoEventLogger = mongoEventLogger;
@@ -70,6 +87,8 @@ public class BookingService extends Observable {
         this.cacheManager = cacheManager;
         this.neo4jClient = neo4jClient;
         this.eventPublisher = eventPublisher;
+        this.providerServiceClient = providerServiceClient;
+        this.invoiceServiceClient = invoiceServiceClient;
     }
 
     @PostConstruct
@@ -89,8 +108,6 @@ public class BookingService extends Observable {
         cacheInvalidator.wildcardDelete("booking-service::S3-F6::*");
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CREATED", bookingPayload(saved));
-        publishAfterCommit(() -> eventPublisher.publishBookingPlaced(
-                saved.getId(), saved.getUserId(), saved.getProviderId()));
         return saved;
     }
 
@@ -150,9 +167,17 @@ public class BookingService extends Observable {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Booking must be in REQUESTED status to assign a provider");
         }
-        if (!bookingRepository.existsProviderById(providerId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Provider not found with id: " + providerId);
+        // Validate provider exists and is AVAILABLE via Feign — no cross-DB query
+        ProviderDTO provider;
+        try {
+            provider = providerServiceClient.getProvider(providerId);
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found");
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Provider service unavailable");
+        }
+        if (!"AVAILABLE".equals(provider.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provider is not available");
         }
         booking.setProviderId(providerId);
         booking.setStatus(Booking.Status.CONFIRMED);
@@ -160,6 +185,10 @@ public class BookingService extends Observable {
         cacheInvalidator.deleteKey("booking-service::booking::" + bookingId);
         cacheInvalidator.wildcardDelete("booking-service::S3-F1::*");
         emitAfterCommit("PROVIDER_ASSIGNED", bookingPayload(saved));
+        // Publish booking.placed here (not at creation) so provider-service marks provider BUSY
+        // only after assignment is confirmed
+        publishAfterCommit(() -> eventPublisher.publishBookingPlaced(
+                saved.getId(), saved.getUserId(), saved.getProviderId()));
         return saved;
     }
 
@@ -173,10 +202,8 @@ public class BookingService extends Observable {
 
         booking.setStatus(Booking.Status.CANCELLED);
 
-        if (booking.getProviderId() != null) {
-            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
-        }
-
+        // Provider status flip is handled asynchronously by provider-service
+        // consuming the booking.cancelled event — no direct cross-DB update here
         Booking saved = bookingRepository.save(booking);
         // invalidate entity detail + analytics / estimate caches (§4.4.4)
         cacheInvalidator.deleteKey("booking-service::booking::" + id);
@@ -187,7 +214,7 @@ public class BookingService extends Observable {
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CANCELLED", bookingPayload(saved));
         publishAfterCommit(() -> eventPublisher.publishBookingCancelled(
-                saved.getId(), saved.getUserId(), saved.getProviderId(), "cancelled by user"));
+                saved.getId(), saved.getUserId(), saved.getProviderId(), "user_requested"));
         return saved;
     }
 
@@ -238,11 +265,6 @@ public class BookingService extends Observable {
                 .map(s -> BigDecimal.valueOf(s.price()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Verify provider exists
-        if (!bookingRepository.existsProviderById(request.providerId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Provider not found with id: " + request.providerId());
-        }
 
         Long activeCount = bookingRepository.countActiveBookingsByProviderAndDate(
                 request.providerId(), request.appointmentDate());
@@ -387,26 +409,51 @@ public class BookingService extends Observable {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
 
-        Object[] agg = bookingRepository.getDashboardAggregates(startDateTime, endDateTime);
-        Object[] row = (agg.length > 0 && agg[0] instanceof Object[]) ? (Object[]) agg[0] : agg;
-
-        long totalBookings    = row[0] != null ? ((Number) row[0]).longValue() : 0L;
-        BigDecimal totalRevenue       = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
-        BigDecimal averageBookingValue = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
-
+        // Step 1: local status breakdown — no cross-DB join
         List<Object[]> statusRows = bookingRepository.getDashboardStatusBreakdown(startDateTime, endDateTime);
         Map<String, Long> bookingsByStatus = new LinkedHashMap<>();
-        long completedCount = 0L;
+        long totalBookings = 0L;
         for (Object[] statusRow : statusRows) {
             String status = (String) statusRow[0];
             long count = ((Number) statusRow[1]).longValue();
             bookingsByStatus.put(status, count);
-            if ("COMPLETED".equals(status)) {
-                completedCount = count;
-            }
+            totalBookings += count;
         }
 
+        // Step 2: collect IDs of saga-completed bookings for Feign batch
+        List<Booking.Status> sagaCompleted = List.of(
+                Booking.Status.COMPLETING, Booking.Status.PAYMENT_PENDING,
+                Booking.Status.PAID, Booking.Status.REFUNDED);
+        List<Long> completedBookingIds = bookingRepository.findIdsByStatusInAndDateRange(
+                sagaCompleted, startDateTime, endDateTime);
+
+        // Step 3: completionRate = saga-completed / total
+        long completedCount = completedBookingIds.size();
         double completionRate = totalBookings > 0 ? (double) completedCount / totalBookings : 0.0;
+
+        // Steps 4-5: batch Feign to invoice-service; skip entirely if no completed bookings
+        BigDecimal totalRevenue = BigDecimal.ZERO;
+        BigDecimal averageBookingValue = BigDecimal.ZERO;
+        if (!completedBookingIds.isEmpty()) {
+            Map<Long, InvoiceAmountDTO> invoiceMap;
+            try {
+                invoiceMap = invoiceServiceClient
+                        .getInvoiceAmountsByBookings(new InvoiceAmountsRequest(completedBookingIds));
+            } catch (FeignException e) {
+                // Graceful degradation per spec §2.4: never let a downstream failure crash the caller
+                log.warn("invoice-service unavailable for dashboard analytics: {}", e.getMessage());
+                invoiceMap = Map.of();
+            }
+            if (invoiceMap != null && !invoiceMap.isEmpty()) {
+                totalRevenue = invoiceMap.values().stream()
+                        .map(InvoiceAmountDTO::amount)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                // Denominator = bookings that actually have an invoice entry (not totalBookings)
+                averageBookingValue = totalRevenue.divide(
+                        BigDecimal.valueOf(invoiceMap.size()), 2, RoundingMode.HALF_UP);
+            }
+        }
 
         return BookingAnalyticsDashboardDTO.builder()
                 .totalBookings(totalBookings)
@@ -464,6 +511,54 @@ public class BookingService extends Observable {
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
+    }
+
+    /** S3 new: user booking summary consumed by user-service via Feign (S1-F3). */
+    @Transactional(readOnly = true)
+    public BookingSummaryDTO getUserBookingSummary(Long userId) {
+        Object[] result = bookingRepository.getUserBookingSummary(userId);
+        Object[] row = (result.length > 0 && result[0] instanceof Object[]) ? (Object[]) result[0] : result;
+        long total     = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        long completed = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        long cancelled = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+        BigDecimal totalSpent = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
+        BigDecimal avgPrice   = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
+        return new BookingSummaryDTO(total, completed, cancelled, totalSpent, avgPrice);
+    }
+
+    /** S3 new: active booking count for a user, consumed by user-service via Feign (S1-F4). */
+    @Transactional(readOnly = true)
+    public int getUserActiveCount(Long userId) {
+        return bookingRepository.countActiveByUserId(userId);
+    }
+
+    /** S3 new: completed booking count for a user, consumed by user-service via Feign (S1-F9). */
+    @Transactional(readOnly = true)
+    public long getUserCompletedCount(Long userId) {
+        return bookingRepository.countCompletedByUserId(userId);
+    }
+
+    /** S3 new: provider booking summary (PAID only, optional date range), consumed by provider-service via Feign (S2-F3). */
+    @Transactional(readOnly = true)
+    public ProviderBookingSummaryDTO getProviderBookingSummary(Long providerId, String startDate, String endDate) {
+        Object[] result = bookingRepository.getProviderBookingSummary(providerId, startDate, endDate);
+        Object[] row = (result.length > 0 && result[0] instanceof Object[]) ? (Object[]) result[0] : result;
+        long total        = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        BigDecimal earned = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
+        BigDecimal avg    = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
+        return new ProviderBookingSummaryDTO(total, earned, avg);
+    }
+
+    /** S3 new: active booking count for a provider, consumed by provider-service via Feign (S2-F4). */
+    @Transactional(readOnly = true)
+    public int getProviderActiveCount(Long providerId) {
+        return bookingRepository.countActiveByProviderId(providerId);
+    }
+
+    /** S3 new: completed booking count for a provider, consumed by provider-service via Feign (S2-F6). */
+    @Transactional(readOnly = true)
+    public long getProviderCompletedCount(Long providerId) {
+        return bookingRepository.countCompletedByProviderId(providerId);
     }
 
     /**
