@@ -497,13 +497,13 @@ public class UserService extends Observable {
             double bTotalSpent = b.getTotalSpent();
 
             if (aTotalSpent > bTotalSpent)
-                return 1;
+                return -1;
             if (aTotalSpent == bTotalSpent)
                 return 0;
-            return -1;
+            return 1;
         });
 
-        return fullRows.subList(0, limit);
+        return fullRows.subList(0, Math.min(limit, fullRows.size()));
     }
 
     /**
