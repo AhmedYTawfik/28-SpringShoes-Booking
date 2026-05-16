@@ -589,8 +589,8 @@ public class BookingService extends Observable {
 
     /** S3 new: date-range user booking summary — consumed by user-service via Feign (S1-F3 date filter). */
     @Transactional(readOnly = true)
-    public BookingSummaryDTO getUserBookingSummaryByDateRange(Long userId, String startDate, String endDate) {
-        Object[] result = bookingRepository.getUserBookingSummaryByDateRange(userId, startDate, endDate);
+    public BookingSummaryDTO getUserBookingSummary(Long userId, String startDate, String endDate) {
+        Object[] result = bookingRepository.getUserBookingSummary(userId, startDate, endDate);
         Object[] row = (result.length > 0 && result[0] instanceof Object[]) ? (Object[]) result[0] : result;
         long total     = row[0] != null ? ((Number) row[0]).longValue() : 0L;
         long completed = row[1] != null ? ((Number) row[1]).longValue() : 0L;

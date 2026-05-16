@@ -69,6 +69,19 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                         "FROM bookings WHERE user_id = :userId", nativeQuery = true)
         Object[] getUserBookingSummary(@Param("userId") Long userId);
 
+    // User booking summary with optional date range — same aggregation filtered by appointment_date
+    @Query(value = "SELECT COUNT(*), " +
+            "COUNT(CASE WHEN status IN ('COMPLETING','PAYMENT_PENDING','PAID','REFUNDED','COMPLETED') THEN 1 END), " +
+            "COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END), " +
+            "COALESCE(SUM(CASE WHEN status IN ('COMPLETING','PAYMENT_PENDING','PAID','REFUNDED','COMPLETED') THEN total_price END),0), " +
+            "COALESCE(AVG(CASE WHEN status IN ('COMPLETING','PAYMENT_PENDING','PAID','REFUNDED','COMPLETED') THEN total_price END),0) " +
+            "FROM bookings WHERE user_id = :userId " +
+            "AND (:startDate IS NULL OR appointment_date >= CAST(:startDate AS date)) " +
+            "AND (:endDate IS NULL OR appointment_date <= CAST(:endDate AS date))", nativeQuery = true)
+    Object[] getUserBookingSummary(@Param("userId") Long userId,
+                                   @Param("startDate") String startDate,
+                                   @Param("endDate") String endDate);
+
         // Active booking count for a user: REQUESTED, CONFIRMED, IN_PROGRESS,
         // COMPLETING, PAYMENT_PENDING
         @Query(value = "SELECT COUNT(*) FROM bookings WHERE user_id = :userId " +
