@@ -464,7 +464,8 @@ public class InvoiceService extends Observable {
         }
 
         // Java-side aggregation per specialty
-        Map<String, long[]> counts = new HashMap<>();       // [bookingCount, cancelledCount]
+        Map<String, java.util.Set<Long>> bookingIdsPerSpecialty = new HashMap<>();
+        Map<String, java.util.Set<Long>> cancelledIdsPerSpecialty = new HashMap<>();
         Map<String, BigDecimal> cancFee = new HashMap<>();
         Map<String, BigDecimal> netRev  = new HashMap<>();
 
@@ -494,18 +495,19 @@ public class InvoiceService extends Observable {
                 net = inv.getAmount() != null ? inv.getAmount() : BigDecimal.ZERO;
             }
 
-            counts.computeIfAbsent(specialty, k -> new long[]{0, 0});
-            counts.get(specialty)[0]++;
-            if (cancelled) counts.get(specialty)[1]++;
+            bookingIdsPerSpecialty.computeIfAbsent(specialty, k -> new java.util.HashSet<>()).add(inv.getBookingId());
+            if (cancelled) {
+                cancelledIdsPerSpecialty.computeIfAbsent(specialty, k -> new java.util.HashSet<>()).add(inv.getBookingId());
+            }
 
             cancFee.merge(specialty, fee, BigDecimal::add);
             netRev.merge(specialty, net, BigDecimal::add);
         }
 
         List<ServiceTypeRevenueDTO> result = new ArrayList<>();
-        for (String specialty : counts.keySet()) {
-            long bookingCount   = counts.get(specialty)[0];
-            long cancelledCount = counts.get(specialty)[1];
+        for (String specialty : bookingIdsPerSpecialty.keySet()) {
+            long bookingCount   = bookingIdsPerSpecialty.getOrDefault(specialty, java.util.Set.of()).size();
+            long cancelledCount = cancelledIdsPerSpecialty.getOrDefault(specialty, java.util.Set.of()).size();
             BigDecimal cf       = cancFee.getOrDefault(specialty, BigDecimal.ZERO);
             BigDecimal nr       = netRev.getOrDefault(specialty, BigDecimal.ZERO);
             BigDecimal total    = cf.add(nr);
@@ -523,7 +525,7 @@ public class InvoiceService extends Observable {
                     .build());
         }
 
-        result.sort((a, b) -> b.getTotalRevenue().compareTo(a.getTotalRevenue()));
+        result.sort((a, b) -> b.totalRevenue().compareTo(a.totalRevenue()));
         return result;
     }
 
