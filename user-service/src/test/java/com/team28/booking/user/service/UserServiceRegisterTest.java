@@ -4,6 +4,7 @@ import com.team28.booking.user.auth.JwtService;
 import com.team28.booking.user.cache.CacheInvalidator;
 import com.team28.booking.user.dto.AuthResponse;
 import com.team28.booking.user.dto.RegisterRequest;
+import com.team28.booking.user.messaging.UserEventPublisher;
 import com.team28.booking.user.model.User;
 import com.team28.booking.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,9 @@ class UserServiceRegisterTest {
 
     @Mock
     private CacheInvalidator cacheInvalidator;
+
+    @Mock
+    private UserEventPublisher eventPublisher;
 
     @InjectMocks
     private UserService userService;

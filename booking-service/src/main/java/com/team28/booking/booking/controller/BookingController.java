@@ -7,6 +7,8 @@ import com.team28.booking.booking.dto.BookingDetailsDTO;
 import com.team28.booking.booking.dto.BookingEstimateDTO;
 import com.team28.booking.booking.dto.BookingEstimateRequestDTO;
 import com.team28.booking.booking.dto.ProviderRecommendationDTO;
+import com.team28.booking.contracts.dto.BookingSummaryDTO;
+import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.booking.model.Booking;
 import com.team28.booking.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
@@ -131,5 +133,44 @@ public class BookingController {
             @PathVariable Long id,
             @RequestBody AddServicesRequestDTO request) {
         return ResponseEntity.ok(bookingService.addServices(id, request));
+    }
+
+    /** GET /api/bookings/user/{userId}/summary — consumed by user-service via Feign. */
+    @GetMapping("/user/{userId}/summary")
+    public ResponseEntity<BookingSummaryDTO> getUserBookingSummary(@PathVariable Long userId) {
+        return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
+    }
+
+    /** GET /api/bookings/user/{userId}/active-count — consumed by user-service via Feign. */
+    @GetMapping("/user/{userId}/active-count")
+    public ResponseEntity<Integer> getUserActiveCount(@PathVariable Long userId) {
+        return ResponseEntity.ok(bookingService.getUserActiveCount(userId));
+    }
+
+    /** GET /api/bookings/user/{userId}/completed-count — consumed by user-service via Feign. */
+    @GetMapping("/user/{userId}/completed-count")
+    public ResponseEntity<Long> getUserCompletedCount(@PathVariable Long userId) {
+        return ResponseEntity.ok(bookingService.getUserCompletedCount(userId));
+    }
+
+    /** GET /api/bookings/provider/{providerId}/summary — consumed by provider-service via Feign. */
+    @GetMapping("/provider/{providerId}/summary")
+    public ResponseEntity<ProviderBookingSummaryDTO> getProviderBookingSummary(
+            @PathVariable Long providerId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        return ResponseEntity.ok(bookingService.getProviderBookingSummary(providerId, startDate, endDate));
+    }
+
+    /** GET /api/bookings/provider/{providerId}/active-count — consumed by provider-service via Feign. */
+    @GetMapping("/provider/{providerId}/active-count")
+    public ResponseEntity<Integer> getProviderActiveCount(@PathVariable Long providerId) {
+        return ResponseEntity.ok(bookingService.getProviderActiveCount(providerId));
+    }
+
+    /** GET /api/bookings/provider/{providerId}/completed-count — consumed by provider-service via Feign. */
+    @GetMapping("/provider/{providerId}/completed-count")
+    public ResponseEntity<Long> getProviderCompletedCount(@PathVariable Long providerId) {
+        return ResponseEntity.ok(bookingService.getProviderCompletedCount(providerId));
     }
 }
