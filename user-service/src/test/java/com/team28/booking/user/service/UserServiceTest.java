@@ -1,5 +1,7 @@
 package com.team28.booking.user.service;
 
+import com.team28.booking.contracts.dto.BookingSummaryDTO;
+import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.user.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.user.dto.UserBookingSummaryDTO;
 import com.team28.booking.user.model.User;
@@ -13,9 +15,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class UserServiceTest {
 
@@ -26,18 +25,13 @@ class UserServiceTest {
         user.setId(1L);
         user.setName("Ahmed");
 
-        Object[] summaryRow = new Object[]{
-                1L, "Ahmed", 5L, 3L, 1L, new BigDecimal("1000.00"), new BigDecimal("333.33")
-        };
-
-        UserRepository userRepository = stubUserRepository(Optional.of(user), summaryRow);
+        UserRepository userRepository = stubUserRepository(Optional.of(user));
         ReflectionTestUtils.setField(userService, "userRepository", userRepository);
 
-        ObjectArrayDtoAdapter adapter = mock(ObjectArrayDtoAdapter.class);
-        UserBookingSummaryDTO expectedDto = new UserBookingSummaryDTO(
-                1L, "Ahmed", 5L, 3L, 1L, new BigDecimal("1000.00"), new BigDecimal("333.33"));
-        when(adapter.toUserBookingSummaryDTO(any())).thenReturn(expectedDto);
-        ReflectionTestUtils.setField(userService, "objectArrayDtoAdapter", adapter);
+        BookingServiceClient bookingServiceClient = stubBookingServiceClient(
+                new BookingSummaryDTO(5L, 3L, 1L, new BigDecimal("1000.00"), new BigDecimal("333.33"))
+        );
+        ReflectionTestUtils.setField(userService, "bookingServiceClient", bookingServiceClient);
 
         UserBookingSummaryDTO summary = userService.getUserBookingSummary(1L);
 
@@ -57,18 +51,13 @@ class UserServiceTest {
         user.setId(2L);
         user.setName("Sara");
 
-        Object[] summaryRow = new Object[]{
-                2L, "Sara", 0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO
-        };
-
-        UserRepository userRepository = stubUserRepository(Optional.of(user), summaryRow);
+        UserRepository userRepository = stubUserRepository(Optional.of(user));
         ReflectionTestUtils.setField(userService, "userRepository", userRepository);
 
-        ObjectArrayDtoAdapter adapter = mock(ObjectArrayDtoAdapter.class);
-        UserBookingSummaryDTO expectedDto = new UserBookingSummaryDTO(
-                2L, "Sara", 0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO);
-        when(adapter.toUserBookingSummaryDTO(any())).thenReturn(expectedDto);
-        ReflectionTestUtils.setField(userService, "objectArrayDtoAdapter", adapter);
+        BookingServiceClient bookingServiceClient = stubBookingServiceClient(
+                new BookingSummaryDTO(0L, 0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO)
+        );
+        ReflectionTestUtils.setField(userService, "bookingServiceClient", bookingServiceClient);
 
         UserBookingSummaryDTO summary = userService.getUserBookingSummary(2L);
 
@@ -82,7 +71,7 @@ class UserServiceTest {
     @Test
     void getUserBookingSummaryThrowsWhenUserDoesNotExist() {
         UserService userService = new UserService();
-        UserRepository userRepository = stubUserRepository(Optional.empty(), null);
+        UserRepository userRepository = stubUserRepository(Optional.empty());
         ReflectionTestUtils.setField(userService, "userRepository", userRepository);
 
         RuntimeException exception = assertThrows(
@@ -93,16 +82,28 @@ class UserServiceTest {
         assertEquals("User not found", exception.getMessage());
     }
 
-    private UserRepository stubUserRepository(Optional<User> user, Object[] summaryRow) {
+    private UserRepository stubUserRepository(Optional<User> user) {
         return (UserRepository) Proxy.newProxyInstance(
                 UserRepository.class.getClassLoader(),
                 new Class<?>[]{UserRepository.class},
                 (proxy, method, args) -> {
-                    return switch (method.getName()) {
-                        case "findById" -> user;
-                        case "findUserBookingSummary" -> summaryRow;
-                        default -> throw new UnsupportedOperationException(method.getName());
-                    };
+                    if ("findById".equals(method.getName())) {
+                        return user;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                }
+        );
+    }
+
+    private BookingServiceClient stubBookingServiceClient(BookingSummaryDTO summary) {
+        return (BookingServiceClient) Proxy.newProxyInstance(
+                BookingServiceClient.class.getClassLoader(),
+                new Class<?>[]{BookingServiceClient.class},
+                (proxy, method, args) -> {
+                    if ("getUserBookingSummary".equals(method.getName())) {
+                        return summary;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
                 }
         );
     }

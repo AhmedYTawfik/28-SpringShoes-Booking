@@ -270,8 +270,15 @@ public class UserService extends Observable {
             throw new IllegalStateException("User is already deactivated");
         }
 
-        Long activeBookings = userRepository.countActiveBookings(userId);
-        if (activeBookings != null && activeBookings > 0) {
+        Long activeBookings;
+        try {
+            activeBookings = (long) bookingServiceClient.getActiveBookingCount(userId);
+        } catch (FeignException e) {
+            log.warn("booking-service unavailable for active count of user {}: {}", userId, e.getMessage());
+            throw new ServiceUnavailableException("Booking service temporarily unavailable");
+        }
+
+        if (activeBookings > 0) {
             throw new IllegalStateException("User has active bookings");
         }
 
