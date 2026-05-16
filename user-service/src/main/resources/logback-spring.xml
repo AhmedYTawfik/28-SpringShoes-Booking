@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
@@ -6,7 +7,7 @@
 
     <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
         <http>
-            <url>${LOKI_URL:-http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push}</url>
+            <url>http://${LOKI_HOST:-loki}:3100/loki/api/v1/push</url>
         </http>
         <format>
             <label>
