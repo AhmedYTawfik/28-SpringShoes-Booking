@@ -45,6 +45,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.team28.booking.contracts.dto.BookingSummaryDTO;
+import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
+
 @Service
 public class BookingService extends Observable {
 
@@ -464,6 +467,54 @@ public class BookingService extends Observable {
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
+    }
+
+    /** S3 new: user booking summary consumed by user-service via Feign (S1-F3). */
+    @Transactional(readOnly = true)
+    public BookingSummaryDTO getUserBookingSummary(Long userId) {
+        Object[] result = bookingRepository.getUserBookingSummary(userId);
+        Object[] row = (result.length > 0 && result[0] instanceof Object[]) ? (Object[]) result[0] : result;
+        long total     = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        long completed = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        long cancelled = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+        BigDecimal totalSpent = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
+        BigDecimal avgPrice   = row[4] != null ? new BigDecimal(row[4].toString()) : BigDecimal.ZERO;
+        return new BookingSummaryDTO(total, completed, cancelled, totalSpent, avgPrice);
+    }
+
+    /** S3 new: active booking count for a user, consumed by user-service via Feign (S1-F4). */
+    @Transactional(readOnly = true)
+    public int getUserActiveCount(Long userId) {
+        return bookingRepository.countActiveByUserId(userId);
+    }
+
+    /** S3 new: completed booking count for a user, consumed by user-service via Feign (S1-F9). */
+    @Transactional(readOnly = true)
+    public long getUserCompletedCount(Long userId) {
+        return bookingRepository.countCompletedByUserId(userId);
+    }
+
+    /** S3 new: provider booking summary (PAID only, optional date range), consumed by provider-service via Feign (S2-F3). */
+    @Transactional(readOnly = true)
+    public ProviderBookingSummaryDTO getProviderBookingSummary(Long providerId, String startDate, String endDate) {
+        Object[] result = bookingRepository.getProviderBookingSummary(providerId, startDate, endDate);
+        Object[] row = (result.length > 0 && result[0] instanceof Object[]) ? (Object[]) result[0] : result;
+        long total        = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        BigDecimal earned = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
+        BigDecimal avg    = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
+        return new ProviderBookingSummaryDTO(total, earned, avg);
+    }
+
+    /** S3 new: active booking count for a provider, consumed by provider-service via Feign (S2-F4). */
+    @Transactional(readOnly = true)
+    public int getProviderActiveCount(Long providerId) {
+        return bookingRepository.countActiveByProviderId(providerId);
+    }
+
+    /** S3 new: completed booking count for a provider, consumed by provider-service via Feign (S2-F6). */
+    @Transactional(readOnly = true)
+    public long getProviderCompletedCount(Long providerId) {
+        return bookingRepository.countCompletedByProviderId(providerId);
     }
 
     /**
