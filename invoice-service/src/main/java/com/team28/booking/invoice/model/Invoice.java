@@ -65,7 +65,7 @@ public class Invoice {
     }
 
     public enum InvoiceStatus {
-        PENDING, COMPLETED, FAILED, REFUNDED
+        PENDING, PROCESSING, COMPLETED, FAILED, REFUNDED
     }
 
     // Getters and Setters

@@ -1,6 +1,5 @@
 package com.team28.booking.calendar.repository;
 
-import com.team28.booking.calendar.dto.IdleProviderProjection;
 import com.team28.booking.calendar.model.TimeSlot;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -75,21 +74,16 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
     List<TimeSlot> findByMetadataLessThan(@Param("key") String key, @Param("value") String value);
 
     @Query(value = """
-            SELECT p.id AS providerId,
-                   p.name AS providerName,
-                   p.specialty,
-                   p.rating,
-                   COUNT(ts.id) FILTER (WHERE ts.available = false) AS bookedSlotsCount,
-                   COUNT(ts.id) AS totalSlotsCount
-            FROM providers p
-            LEFT JOIN time_slots ts
-                ON ts.provider_id = p.id
-               AND ts.date >= :sinceDate
-            GROUP BY p.id, p.name, p.specialty, p.rating
-            HAVING COUNT(ts.id) FILTER (WHERE ts.available = false) <= :maxBookedSlots
-            ORDER BY p.id
+            SELECT provider_id AS providerId,
+                   COUNT(*) FILTER (WHERE available = false) AS bookedSlotsCount,
+                   COUNT(*) AS totalSlotsCount
+            FROM time_slots
+            WHERE date >= :sinceDate
+            GROUP BY provider_id
+            HAVING COUNT(*) FILTER (WHERE available = false) <= :maxBookedSlots
+            ORDER BY provider_id
             """, nativeQuery = true)
-    List<IdleProviderProjection> findIdleProviders(
+    List<Object[]> findIdleProviderIds(
             @Param("maxBookedSlots") int maxBookedSlots,
             @Param("sinceDate") LocalDate sinceDate);
            

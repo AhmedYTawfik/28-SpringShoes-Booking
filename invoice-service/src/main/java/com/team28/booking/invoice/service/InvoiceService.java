@@ -18,6 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.dto.ProviderDTO;
+import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.feign.ProviderServiceClient;
 import com.team28.booking.invoice.adapter.ObjectArrayDtoAdapter;
 import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.AppliedDiscountDTO;
@@ -49,11 +53,20 @@ import com.team28.booking.invoice.strategy.NoRefundStrategy;
 import com.team28.booking.invoice.strategy.RefundResult;
 import com.team28.booking.invoice.strategy.RefundStrategy;
 import com.team28.booking.invoice.strategy.RefundStrategySelector;
+import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.feign.UserServiceClient;
 
+import feign.FeignException;
 import jakarta.annotation.PostConstruct;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class InvoiceService extends Observable {
+
+    private static final Logger log = LoggerFactory.getLogger(InvoiceService.class);
 
     private final InvoiceRepository invoiceRepository;
     private final DiscountRepository discountRepository;
@@ -64,6 +77,9 @@ public class InvoiceService extends Observable {
     private final RefundStrategySelector refundStrategySelector;
     private final PaymentAuditEventRepository paymentAuditEventRepository;
     private final PaymentEventPublisher eventPublisher;
+    private final BookingServiceClient bookingServiceClient;
+    private final ProviderServiceClient providerServiceClient;
+    private final UserServiceClient userServiceClient;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
@@ -73,7 +89,10 @@ public class InvoiceService extends Observable {
                           CacheInvalidator cacheInvalidator,
                           RefundStrategySelector refundStrategySelector,
                           PaymentAuditEventRepository paymentAuditEventRepository,
-                          PaymentEventPublisher eventPublisher) {
+                          PaymentEventPublisher eventPublisher,
+                          BookingServiceClient bookingServiceClient,
+                          ProviderServiceClient providerServiceClient,
+                          UserServiceClient userServiceClient) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
         this.invoiceDiscountRepository = invoiceDiscountRepository;
@@ -83,6 +102,9 @@ public class InvoiceService extends Observable {
         this.refundStrategySelector = refundStrategySelector;
         this.paymentAuditEventRepository = paymentAuditEventRepository;
         this.eventPublisher = eventPublisher;
+        this.bookingServiceClient = bookingServiceClient;
+        this.providerServiceClient = providerServiceClient;
+        this.userServiceClient = userServiceClient;
     }
 
     @PostConstruct
@@ -328,8 +350,15 @@ public class InvoiceService extends Observable {
     /** S5-F3: user invoice summary — 10 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "invoice-service::S5-F3", key = "#userId")
     public UserInvoiceSummaryDTO getUserInvoiceSummary(Long userId) {
-        Long userExists = invoiceRepository.findUserById(userId);
-        if (userExists == null) {
+        log.info("S5-F3 getUserInvoiceSummary: Feign GET /api/users/{} — before", userId);
+        try {
+            userServiceClient.getUser(userId);
+            log.info("S5-F3 getUserInvoiceSummary: Feign GET /api/users/{} — after", userId);
+        } catch (FeignException.NotFound e) {
+            log.warn("S5-F3 getUserInvoiceSummary: user {} not found via Feign", userId);
+            throw new ResourceNotFoundException("User not found with id: " + userId);
+        } catch (FeignException e) {
+            log.error("S5-F3 getUserInvoiceSummary: Feign exception for userId={}: {}", userId, e.getMessage());
             throw new ResourceNotFoundException("User not found with id: " + userId);
         }
 
@@ -427,28 +456,101 @@ public class InvoiceService extends Observable {
         LocalDateTime from = startDate.atStartOfDay();
         LocalDateTime to   = endDate.atTime(LocalTime.MAX);
 
-        List<Object[]> rows = invoiceRepository.getRevenueByServiceType(from, to);
-        List<ServiceTypeRevenueDTO> result = new ArrayList<>();
-        for (Object[] row : rows) {
-            BigDecimal cancellationFeeRevenue = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
-            BigDecimal netBookingRevenue      = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
-            long       bookingCount           = row[3] != null ? ((Number) row[3]).longValue() : 0L;
-            long       cancelledCount         = row[4] != null ? ((Number) row[4]).longValue() : 0L;
+        long t0 = System.currentTimeMillis();
 
-            BigDecimal totalRevenue    = cancellationFeeRevenue.add(netBookingRevenue);
+        List<Invoice> invoices = invoiceRepository.findCompletedOrRefundedInRange(from, to);
+
+        // Round 1: fetch each booking once (de-duplicated by bookingId)
+        Map<Long, BookingDTO> bookingCache = new HashMap<>();
+        for (Invoice inv : invoices) {
+            bookingCache.computeIfAbsent(inv.getBookingId(), id -> {
+                try { return bookingServiceClient.getBooking(id); }
+                catch (Exception e) { return null; }
+            });
+        }
+
+        // Round 2: fetch each provider once (de-duplicated by providerId)
+        Map<Long, String> specialtyCache = new HashMap<>();
+        for (BookingDTO booking : bookingCache.values()) {
+            if (booking == null) continue;
+            specialtyCache.computeIfAbsent(booking.providerId(), pid -> {
+                try {
+                    ProviderDTO p = providerServiceClient.getProvider(pid);
+                    return p != null ? p.specialty() : "UNKNOWN";
+                } catch (Exception e) { return "UNKNOWN"; }
+            });
+        }
+
+        long elapsed = System.currentTimeMillis() - t0;
+        if (elapsed > 1000) {
+            org.slf4j.LoggerFactory.getLogger(getClass())
+                .warn("S5-F10 getRevenueByServiceType took {}ms — {} invoices, {} bookings, {} providers",
+                      elapsed, invoices.size(), bookingCache.size(), specialtyCache.size());
+        }
+
+        // Java-side aggregation per specialty
+        Map<String, java.util.Set<Long>> bookingIdsPerSpecialty = new HashMap<>();
+        Map<String, java.util.Set<Long>> cancelledIdsPerSpecialty = new HashMap<>();
+        Map<String, BigDecimal> cancFee = new HashMap<>();
+        Map<String, BigDecimal> netRev  = new HashMap<>();
+
+        for (Invoice inv : invoices) {
+            BookingDTO booking = bookingCache.get(inv.getBookingId());
+            String specialty = booking != null
+                    ? specialtyCache.getOrDefault(booking.providerId(), "UNKNOWN")
+                    : "UNKNOWN";
+
+            boolean cancelled = booking != null && "CANCELLED".equals(booking.status());
+
+            BigDecimal fee = BigDecimal.ZERO;
+            Object rawFee = inv.getTransactionDetails().get("cancellationFee");
+            if (rawFee != null) {
+                try { fee = new BigDecimal(rawFee.toString()); } catch (Exception ignored) { }
+            }
+
+            BigDecimal net;
+            if (inv.getStatus() == InvoiceStatus.REFUNDED) {
+                BigDecimal refund = BigDecimal.ZERO;
+                Object rawRefund = inv.getTransactionDetails().get("refundAmount");
+                if (rawRefund != null) {
+                    try { refund = new BigDecimal(rawRefund.toString()); } catch (Exception ignored) { }
+                }
+                net = inv.getAmount() != null ? inv.getAmount().subtract(refund) : BigDecimal.ZERO;
+            } else {
+                net = inv.getAmount() != null ? inv.getAmount() : BigDecimal.ZERO;
+            }
+
+            bookingIdsPerSpecialty.computeIfAbsent(specialty, k -> new java.util.HashSet<>()).add(inv.getBookingId());
+            if (cancelled) {
+                cancelledIdsPerSpecialty.computeIfAbsent(specialty, k -> new java.util.HashSet<>()).add(inv.getBookingId());
+            }
+
+            cancFee.merge(specialty, fee, BigDecimal::add);
+            netRev.merge(specialty, net, BigDecimal::add);
+        }
+
+        List<ServiceTypeRevenueDTO> result = new ArrayList<>();
+        for (String specialty : bookingIdsPerSpecialty.keySet()) {
+            long bookingCount   = bookingIdsPerSpecialty.getOrDefault(specialty, java.util.Set.of()).size();
+            long cancelledCount = cancelledIdsPerSpecialty.getOrDefault(specialty, java.util.Set.of()).size();
+            BigDecimal cf       = cancFee.getOrDefault(specialty, BigDecimal.ZERO);
+            BigDecimal nr       = netRev.getOrDefault(specialty, BigDecimal.ZERO);
+            BigDecimal total    = cf.add(nr);
             BigDecimal cancellationRate = bookingCount > 0
                     ? BigDecimal.valueOf(cancelledCount).divide(BigDecimal.valueOf(bookingCount), 4, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
 
             result.add(ServiceTypeRevenueDTO.builder()
-                    .specialty(row[0] != null ? row[0].toString() : "UNKNOWN")
-                    .totalRevenue(totalRevenue)
-                    .cancellationFeeRevenue(cancellationFeeRevenue)
-                    .netBookingRevenue(netBookingRevenue)
+                    .specialty(specialty)
+                    .totalRevenue(total)
+                    .cancellationFeeRevenue(cf)
+                    .netBookingRevenue(nr)
                     .bookingCount(bookingCount)
                     .cancellationRate(cancellationRate)
                     .build());
         }
+
+        result.sort((a, b) -> b.totalRevenue().compareTo(a.totalRevenue()));
         return result;
     }
 
@@ -562,40 +664,40 @@ public class InvoiceService extends Observable {
             throw new BadRequestException("Refund reason must not be blank");
         }
 
-        // --- Step b-c: find invoice, validate COMPLETED ---
+        // --- find invoice, validate COMPLETED ---
         Invoice invoice = findById(invoiceId);
         if (invoice.getStatus() != InvoiceStatus.COMPLETED) {
             throw new BadRequestException(
                 "Invoice must be COMPLETED to process cancellation refund");
         }
 
-        // --- Step d: cross-service booking lookup ---
-        List<Object[]> rows = invoiceRepository.findBookingForCancellation(invoice.getBookingId());
-        if (rows == null || rows.isEmpty()) {
-            throw new ResourceNotFoundException(
-                "Booking not found for invoice: " + invoiceId);
+        // --- Feign booking lookup (replaces cross-service SQL) ---
+        log.info("S5-F12 processCancellationRefund: Feign GET /api/bookings/{} — before", invoice.getBookingId());
+        BookingDTO booking;
+        try {
+            booking = bookingServiceClient.getBooking(invoice.getBookingId());
+            log.info("S5-F12 processCancellationRefund: Feign GET /api/bookings/{} — after, status={}",
+                    invoice.getBookingId(), booking.status());
+        } catch (FeignException.NotFound e) {
+            log.warn("S5-F12 processCancellationRefund: booking {} not found via Feign", invoice.getBookingId());
+            throw new ResourceNotFoundException("Booking not found for invoice: " + invoiceId);
+        } catch (FeignException e) {
+            log.error("S5-F12 processCancellationRefund: Feign exception for bookingId={}: {}",
+                    invoice.getBookingId(), e.getMessage());
+            throw new BadRequestException("booking-service unavailable: " + e.getMessage());
         }
-        Object[] row = rows.get(0);
-        String bookingStatus = (String) row[0];
-        LocalDate appointmentDate = null;
-
-        if (row[1] instanceof LocalDate)
-            appointmentDate = (LocalDate) row[1];
-        else if (row[1] instanceof java.sql.Date)
-            appointmentDate = ((java.sql.Date) row[1]).toLocalDate();
 
         Map<String, Object> bookingData = new HashMap<>();
-        bookingData.put("status", bookingStatus);
-        bookingData.put("appointmentDate", appointmentDate);
+        bookingData.put("status", booking.status());
+        bookingData.put("appointmentDate", booking.appointmentDate());
 
-        // --- Step e: delegate strategy selection (no time-branching in this method) ---
+        // --- delegate strategy selection ---
         RefundStrategy strategy = refundStrategySelector.select(bookingData);
 
-        // --- Step f: denial path (NoRefundStrategy) ---
+        // --- denial path (NoRefundStrategy) ---
         if (strategy instanceof NoRefundStrategy) {
             RefundResult result = strategy.calculateRefund(invoice.getAmount(), bookingData, reason);
 
-            // (i) Log REFUND_DENIED to Mongo before throwing
             Map<String, Object> denialPayload = invoicePayload(invoice);
             denialPayload.put("details", Map.of(
                 "strategyName", strategy.strategyName(),
@@ -603,20 +705,18 @@ public class InvoiceService extends Observable {
             ));
             notifyObservers("REFUND_DENIED", denialPayload);
 
-            // (ii) Invalidate analytics caches
             cacheInvalidator.wildcardDelete("invoice-service::S5-F10::*");
             cacheInvalidator.wildcardDelete("invoice-service::S5-F11::*");
 
-            // (iii) Throw 400
             throw new BadRequestException(result.getReasonCode());
         }
 
-        // --- Step g: calculate refund ---
+        // --- calculate refund ---
         RefundResult result = strategy.calculateRefund(invoice.getAmount(), bookingData, reason);
 
         invoice.setStatus(InvoiceStatus.REFUNDED);
 
-        // --- Step h: record in transactionDetails JSONB ---
+        // --- record in transactionDetails JSONB ---
         Map<String, Object> details = invoice.getTransactionDetails();
         if (details == null) details = new HashMap<>();
         details.put("refundAmount", result.getRefundAmount());
@@ -628,18 +728,10 @@ public class InvoiceService extends Observable {
 
         Invoice saved = invoiceRepository.save(invoice);
 
-        // Update booking to CANCELLED
-        int updatedRows = invoiceRepository.cancelBooking(invoice.getBookingId());
-        if (updatedRows < 1) {
-            throw new BadRequestException(
-                "Failed to cancel booking because it was changed or removed concurrently"
-            );
-        }
-
-        // --- Step j: invalidate caches ---
+        // --- invalidate caches ---
         invalidateInvoiceCaches(invoiceId);
 
-        // --- Step i: emit REFUNDED (after PG commit) ---
+        // --- emit REFUNDED + publish payment.refunded (booking-service consumer will flip booking) ---
         Map<String, Object> payload = invoicePayload(saved);
         payload.put("strategyName", strategy.strategyName());
         payload.put("refundReason", reason);
