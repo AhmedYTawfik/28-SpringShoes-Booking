@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: booking-service
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/test
+    redis:
+      host: localhost
+      port: 6379
+jwt:
+  secret: fJ8z2vK6yQ3pX9mR4wT5sN7bE1uI0aH8oL2cD6gV4eK3=
+  expiration: 86400000

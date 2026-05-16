@@ -9,10 +9,26 @@
         </http>
         <format>
             <label>
-                <pattern>app=booking-service,host=${HOSTNAME},level=%level</pattern>
+                <pattern>app=booking,service=${spring.application.name},level=%level,env=k8s</pattern>
             </label>
             <message>
-                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+                <pattern>
+                    {
+                      "timestamp": "%d{ISO8601}",
+                      "level": "%level",
+                      "service": "${spring.application.name}",
+                      "thread": "%thread",
+                      "logger": "%logger{36}",
+                      "correlationId": "%X{correlationId:-}",
+                      "userId": "%X{userId:-}",
+                      "providerId": "%X{providerId:-}",
+                      "bookingId": "%X{bookingId:-}",
+                      "slotId": "%X{slotId:-}",
+                      "invoiceId": "%X{invoiceId:-}",
+                      "routingKey": "%X{routingKey:-}",
+                      "message": "%msg"
+                    }
+                </pattern>
             </message>
         </format>
     </appender>
