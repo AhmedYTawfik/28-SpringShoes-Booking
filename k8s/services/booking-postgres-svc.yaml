@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-postgres
+  namespace: booking
+spec:
+  clusterIP: None
+  selector:
+    app: booking-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
