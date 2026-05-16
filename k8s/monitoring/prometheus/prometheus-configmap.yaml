@@ -7,7 +7,18 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
+
     scrape_configs:
+      - job_name: booking-services
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets:
+              - user-service.booking.svc.cluster.local:8080
+              - provider-service.booking.svc.cluster.local:8080
+              - booking-service.booking.svc.cluster.local:8080
+              - calendar-service.booking.svc.cluster.local:8080
+              - api-gateway.booking.svc.cluster.local:8080
+
       - job_name: invoice-service
         metrics_path: /actuator/prometheus
         static_configs:

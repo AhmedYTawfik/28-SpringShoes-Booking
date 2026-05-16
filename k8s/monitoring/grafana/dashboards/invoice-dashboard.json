@@ -1,7 +1,8 @@
 {
-  "title": "Invoice Service — S5 Dashboard",
-  "uid": "invoice-s5",
+  "title": "Invoice Service Dashboard",
+  "uid": "invoice-service",
   "schemaVersion": 38,
+  "version": 1,
   "refresh": "30s",
   "panels": [
     {

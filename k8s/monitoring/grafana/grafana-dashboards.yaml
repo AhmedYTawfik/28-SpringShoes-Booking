@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-invoice-dashboard
+  namespace: booking
+  labels:
+    grafana_dashboard: "1"
+data:
+  invoice-dashboard.json: |
+    {
+      "title": "Invoice Service Dashboard",
+      "uid": "invoice-service",
+      "schemaVersion": 38,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Error Rate (ERROR logs/min)",
+          "type": "timeseries",
+          "datasource": "Loki",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "sum(rate({app=\"invoice-service\"} |= \"ERROR\" [1m])) by (app)",
+              "legendFormat": "errors/min"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Feign Call Outcomes (success vs exception)",
+          "type": "timeseries",
+          "datasource": "Loki",
+          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "sum(rate({app=\"invoice-service\"} |~ \"Feign .* — after\" [1m]))",
+              "legendFormat": "feign-success/min"
+            },
+            {
+              "expr": "sum(rate({app=\"invoice-service\"} |~ \"Feign .* — exception\" [1m]))",
+              "legendFormat": "feign-error/min"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "RabbitMQ Event Audit (initiated vs consumed)",
+          "type": "timeseries",
+          "datasource": "Loki",
+          "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "sum(rate({app=\"invoice-service\"} |= \"Published payment.initiated\" [1m]))",
+              "legendFormat": "payment.initiated published/min"
+            },
+            {
+              "expr": "sum(rate({app=\"invoice-service\"} |= \"Received booking.completed\" [1m]))",
+              "legendFormat": "booking.completed consumed/min"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "HTTP Request Rate (req/sec per endpoint)",
+          "type": "timeseries",
+          "datasource": "Prometheus",
+          "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=\"invoice-service\"}[1m])) by (uri, method)",
+              "legendFormat": "{{method}} {{uri}}"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Process Invoice Latency Percentiles (P50/P95/P99)",
+          "type": "timeseries",
+          "datasource": "Prometheus",
+          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\", uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
+              "legendFormat": "P50"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\", uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
+              "legendFormat": "P95"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\", uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
+              "legendFormat": "P99"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "HikariCP Connection Pool (active vs pool size)",
+          "type": "timeseries",
+          "datasource": "Prometheus",
+          "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
+          "targets": [
+            {
+              "expr": "hikaricp_connections_active{job=\"invoice-service\"}",
+              "legendFormat": "active connections"
+            },
+            {
+              "expr": "hikaricp_connections_max{job=\"invoice-service\"}",
+              "legendFormat": "pool max size"
+            }
+          ]
+        }
+      ]
+    }
