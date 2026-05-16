@@ -36,8 +36,8 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
 
-        // Bypass auth routes
-        if (path.startsWith("/api/auth/")) {
+        // Bypass auth and actuator routes
+        if (path.startsWith("/api/auth") || path.startsWith("/actuator")) {
             return chain.filter(exchange);
         }
 
