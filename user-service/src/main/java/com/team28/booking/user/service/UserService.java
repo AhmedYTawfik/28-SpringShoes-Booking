@@ -482,8 +482,8 @@ public class UserService extends Observable {
                 BookingSummaryDTO summary = bookingServiceClient.getUserBookingSummary(userId, startDateTime,
                         endDateTime);
 
-                Long totalCompletedBookings = summary != null && summary.getCompletedBookings() != null
-                        ? summary.getCompletedBookings()
+                Long totalCompletedBookings = summary != null
+                        ? summary.completedBookings()
                         : 0L;
                 fullRows.add(
                         new TopClientDTO(userId, userName, totalSpent, totalCompletedBookings));
