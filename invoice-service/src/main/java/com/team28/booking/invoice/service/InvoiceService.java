@@ -49,8 +49,9 @@ import com.team28.booking.invoice.strategy.NoRefundStrategy;
 import com.team28.booking.invoice.strategy.RefundResult;
 import com.team28.booking.invoice.strategy.RefundStrategy;
 import com.team28.booking.invoice.strategy.RefundStrategySelector;
-import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.contracts.dto.BookingDTO;
+import com.team28.booking.contracts.feign.BookingServiceClient;
+import com.team28.booking.contracts.feign.UserServiceClient;
 
 import feign.FeignException;
 import jakarta.annotation.PostConstruct;
@@ -73,6 +74,7 @@ public class InvoiceService extends Observable {
     private final PaymentAuditEventRepository paymentAuditEventRepository;
     private final PaymentEventPublisher eventPublisher;
     private final BookingServiceClient bookingServiceClient;
+    private final UserServiceClient userServiceClient;
 
     public InvoiceService(InvoiceRepository invoiceRepository,
                           DiscountRepository discountRepository,
@@ -83,7 +85,8 @@ public class InvoiceService extends Observable {
                           RefundStrategySelector refundStrategySelector,
                           PaymentAuditEventRepository paymentAuditEventRepository,
                           PaymentEventPublisher eventPublisher,
-                          BookingServiceClient bookingServiceClient) {
+                          BookingServiceClient bookingServiceClient,
+                          UserServiceClient userServiceClient) {
         this.invoiceRepository = invoiceRepository;
         this.discountRepository = discountRepository;
         this.invoiceDiscountRepository = invoiceDiscountRepository;
@@ -94,6 +97,7 @@ public class InvoiceService extends Observable {
         this.paymentAuditEventRepository = paymentAuditEventRepository;
         this.eventPublisher = eventPublisher;
         this.bookingServiceClient = bookingServiceClient;
+        this.userServiceClient = userServiceClient;
     }
 
     @PostConstruct
@@ -314,8 +318,15 @@ public class InvoiceService extends Observable {
     /** S5-F3: user invoice summary — 10 min TTL (§4.4.1). */
     @Cacheable(cacheNames = "invoice-service::S5-F3", key = "#userId")
     public UserInvoiceSummaryDTO getUserInvoiceSummary(Long userId) {
-        Long userExists = invoiceRepository.findUserById(userId);
-        if (userExists == null) {
+        log.info("S5-F3 getUserInvoiceSummary: Feign GET /api/users/{} — before", userId);
+        try {
+            userServiceClient.getUser(userId);
+            log.info("S5-F3 getUserInvoiceSummary: Feign GET /api/users/{} — after", userId);
+        } catch (FeignException.NotFound e) {
+            log.warn("S5-F3 getUserInvoiceSummary: user {} not found via Feign", userId);
+            throw new ResourceNotFoundException("User not found with id: " + userId);
+        } catch (FeignException e) {
+            log.error("S5-F3 getUserInvoiceSummary: Feign exception for userId={}: {}", userId, e.getMessage());
             throw new ResourceNotFoundException("User not found with id: " + userId);
         }
 

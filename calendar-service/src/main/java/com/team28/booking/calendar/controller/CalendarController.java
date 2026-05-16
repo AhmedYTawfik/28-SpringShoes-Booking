@@ -71,7 +71,7 @@ public class CalendarController {
     @PostMapping("/{providerId}/availability-snapshot")
     @ResponseStatus(HttpStatus.CREATED)
     public void recordSnapshot(
-            @PathVariable Long providerId,
+            @PathVariable("providerId") Long providerId,
             @Valid @RequestBody AvailabilitySnapshotRequest request) {
         timeSlotService.recordAvailabilitySnapshot(providerId, request);
     }
@@ -82,7 +82,7 @@ public class CalendarController {
      */
     @GetMapping("/{providerId}/availability-history")
     public List<AvailabilitySnapshotDTO> getAvailabilityHistory(
-            @PathVariable Long providerId,
+            @PathVariable("providerId") Long providerId,
             @RequestParam(required = false) String startTime,
             @RequestParam(required = false) String endTime) {
 
