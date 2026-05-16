@@ -503,7 +503,7 @@ public class UserService extends Observable {
             return 1;
         });
 
-        return fullRows.subList(0, Math.max(limit, fullRows.size()));
+        return fullRows.subList(0, Math.min(limit, fullRows.size()));
     }
 
     /**
