@@ -270,9 +270,9 @@ public class UserService extends Observable {
             throw new IllegalStateException("User is already deactivated");
         }
 
-        Long activeBookings;
+        int activeBookings;
         try {
-            activeBookings = (long) bookingServiceClient.getActiveBookingCount(userId);
+            activeBookings = bookingServiceClient.getActiveBookingCount(userId);
         } catch (FeignException e) {
             log.warn("booking-service unavailable for active count of user {}: {}", userId, e.getMessage());
             throw new ServiceUnavailableException("Booking service temporarily unavailable");
@@ -381,18 +381,28 @@ public class UserService extends Observable {
         return userRepository.searchUsers(searchName, searchEmail, searchRole);
     }
 
-    /** S1-F5: users by language preference — 5 min TTL (§4.4.1). */
-    @Cacheable(cacheNames = "user-service::S1-F5",
+    /** S1-F9: users by language preference with minimum bookings — 5 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F9",
                key = "T(java.util.Objects).hash(#language, #minBookings)")
     public List<User> findUsersByLanguagePreferenceWithMinimumBookings(String language, long minBookings) {
         if (language == null || language.trim().isEmpty()) {
             throw new IllegalArgumentException("Language must not be blank");
         }
 
-        return userRepository.findUsersByLanguagePreferenceAndMinimumCompletedBookings(
-                language.trim(),
-                minBookings
-        );
+        List<User> candidates = userRepository.findUsersByLanguagePreference(language.trim());
+        List<User> result = new ArrayList<>();
+        for (User user : candidates) {
+            try {
+                long completedCount = bookingServiceClient.getCompletedBookingCount(user.getId());
+                if (completedCount >= minBookings) {
+                    result.add(user);
+                }
+            } catch (FeignException e) {
+                log.warn("booking-service unavailable for completed count of user {}: {}", user.getId(), e.getMessage());
+                throw new ServiceUnavailableException("Booking service temporarily unavailable");
+            }
+        }
+        return result;
     }
 
     /** S1-F3: user booking summary — 10 min TTL (§4.4.1). */
@@ -449,8 +459,8 @@ public class UserService extends Observable {
         }
     }
 
-    /** S1-F9: top clients by spending report — 10 min TTL (§4.4.1). */
-    @Cacheable(cacheNames = "user-service::S1-F9",
+    /** S1-F6: top clients by spending report — 10 min TTL (§4.4.1). */
+    @Cacheable(cacheNames = "user-service::S1-F6",
                key = "T(java.util.Objects).hash(#startDate, #endDate, #limit)")
     public List<TopClientDTO> getTopClientsBySpending(String startDate, String endDate, int limit) {
         validateDateRange(startDate, endDate);
@@ -525,7 +535,7 @@ public class UserService extends Observable {
             cacheInvalidator.deleteKey("user-service::S1-F3::" + id);
         }
         cacheInvalidator.wildcardDelete("user-service::S1-F3::*");
-        cacheInvalidator.wildcardDelete("user-service::S1-F5::*");
+        cacheInvalidator.wildcardDelete("user-service::S1-F6::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F8::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F9::*");
         cacheInvalidator.wildcardDelete("user-service::S1-F10::*");
