@@ -2,7 +2,6 @@ package com.team28.booking.invoice.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.sql.Date;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -334,6 +333,7 @@ public class InvoiceService extends Observable {
      * 2. Feign-confirm booking is PAYMENT_PENDING; revert to PENDING + 400 if not
      * 3. Mock payment; on success → COMPLETED + payment.completed; on failure → FAILED + payment.failed
      */
+    @Transactional
     public Invoice processInvoiceForBooking(Long bookingId, String method, String cardLastFour,
                                             Long callerUserId, boolean isAdmin, boolean simulateFailure) {
         log.info("S5-F4 processInvoiceForBooking: bookingId={} callerUserId={}", bookingId, callerUserId);
