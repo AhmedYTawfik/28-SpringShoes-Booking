@@ -462,11 +462,12 @@ public class UserService extends Observable {
                 double totalSpent = ((Number) invoiceServiceClient.getUserInvoiceTotal(userId, startDateTime,
                         endDateTime)).doubleValue();
 
-                // BookingSummaryDTO summary =
-                // bookingServiceClient.getUserBookingSummary(userId, startDateTime,
-                // endDateTime);
+                BookingSummaryDTO summary = bookingServiceClient.getUserBookingSummary(userId, startDateTime,
+                        endDateTime);
 
-                Long totalCompletedBookings = 0L; // replace with summary.getCompletedBookings when implemented properly
+                Long totalCompletedBookings = summary != null && summary.getCompletedBookings() != null
+                        ? summary.getCompletedBookings()
+                        : 0L;
                 fullRows.add(
                         new TopClientDTO(userId, userName, totalSpent, totalCompletedBookings));
             } catch (ClassCastException e) {
