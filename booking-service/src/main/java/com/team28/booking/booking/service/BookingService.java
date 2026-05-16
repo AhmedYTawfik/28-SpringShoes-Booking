@@ -46,10 +46,14 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.team28.booking.contracts.dto.BookingSummaryDTO;
+import com.team28.booking.contracts.dto.InvoiceAmountDTO;
+import com.team28.booking.contracts.dto.InvoiceAmountsRequest;
 import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.contracts.dto.ProviderDTO;
+import com.team28.booking.contracts.feign.InvoiceServiceClient;
 import com.team28.booking.contracts.feign.ProviderServiceClient;
 import feign.FeignException;
+import java.math.RoundingMode;
 
 @Service
 public class BookingService extends Observable {
@@ -62,6 +66,7 @@ public class BookingService extends Observable {
     private final Neo4jClient neo4jClient;
     private final BookingEventPublisher eventPublisher;
     private final ProviderServiceClient providerServiceClient;
+    private final InvoiceServiceClient invoiceServiceClient;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingItemRepository bookingItemRepository,
@@ -70,7 +75,8 @@ public class BookingService extends Observable {
                           CacheManager cacheManager,
                           Neo4jClient neo4jClient,
                           BookingEventPublisher eventPublisher,
-                          ProviderServiceClient providerServiceClient) {
+                          ProviderServiceClient providerServiceClient,
+                          InvoiceServiceClient invoiceServiceClient) {
         this.bookingRepository = bookingRepository;
         this.bookingItemRepository = bookingItemRepository;
         this.mongoEventLogger = mongoEventLogger;
@@ -79,6 +85,7 @@ public class BookingService extends Observable {
         this.neo4jClient = neo4jClient;
         this.eventPublisher = eventPublisher;
         this.providerServiceClient = providerServiceClient;
+        this.invoiceServiceClient = invoiceServiceClient;
     }
 
     @PostConstruct
@@ -192,10 +199,8 @@ public class BookingService extends Observable {
 
         booking.setStatus(Booking.Status.CANCELLED);
 
-        if (booking.getProviderId() != null) {
-            bookingRepository.updateProviderStatusToAvailable(booking.getProviderId());
-        }
-
+        // Provider status flip is handled asynchronously by provider-service
+        // consuming the booking.cancelled event — no direct cross-DB update here
         Booking saved = bookingRepository.save(booking);
         // invalidate entity detail + analytics / estimate caches (§4.4.4)
         cacheInvalidator.deleteKey("booking-service::booking::" + id);
@@ -206,7 +211,7 @@ public class BookingService extends Observable {
         cacheInvalidator.wildcardDelete("booking-service::S3-F10::*");
         emitAfterCommit("BOOKING_CANCELLED", bookingPayload(saved));
         publishAfterCommit(() -> eventPublisher.publishBookingCancelled(
-                saved.getId(), saved.getUserId(), saved.getProviderId(), "cancelled by user"));
+                saved.getId(), saved.getUserId(), saved.getProviderId(), "user_requested"));
         return saved;
     }
 
@@ -401,26 +406,44 @@ public class BookingService extends Observable {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
 
-        Object[] agg = bookingRepository.getDashboardAggregates(startDateTime, endDateTime);
-        Object[] row = (agg.length > 0 && agg[0] instanceof Object[]) ? (Object[]) agg[0] : agg;
-
-        long totalBookings    = row[0] != null ? ((Number) row[0]).longValue() : 0L;
-        BigDecimal totalRevenue       = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
-        BigDecimal averageBookingValue = row[2] != null ? new BigDecimal(row[2].toString()) : BigDecimal.ZERO;
-
+        // Step 1: local status breakdown — no cross-DB join
         List<Object[]> statusRows = bookingRepository.getDashboardStatusBreakdown(startDateTime, endDateTime);
         Map<String, Long> bookingsByStatus = new LinkedHashMap<>();
-        long completedCount = 0L;
+        long totalBookings = 0L;
         for (Object[] statusRow : statusRows) {
             String status = (String) statusRow[0];
             long count = ((Number) statusRow[1]).longValue();
             bookingsByStatus.put(status, count);
-            if ("COMPLETED".equals(status)) {
-                completedCount = count;
-            }
+            totalBookings += count;
         }
 
+        // Step 2: collect IDs of saga-completed bookings for Feign batch
+        List<Booking.Status> sagaCompleted = List.of(
+                Booking.Status.COMPLETING, Booking.Status.PAYMENT_PENDING,
+                Booking.Status.PAID, Booking.Status.REFUNDED);
+        List<Long> completedBookingIds = bookingRepository.findIdsByStatusInAndDateRange(
+                sagaCompleted, startDateTime, endDateTime);
+
+        // Step 3: completionRate = saga-completed / total
+        long completedCount = completedBookingIds.size();
         double completionRate = totalBookings > 0 ? (double) completedCount / totalBookings : 0.0;
+
+        // Steps 4-5: batch Feign to invoice-service; skip entirely if no completed bookings
+        BigDecimal totalRevenue = BigDecimal.ZERO;
+        BigDecimal averageBookingValue = BigDecimal.ZERO;
+        if (!completedBookingIds.isEmpty()) {
+            Map<Long, InvoiceAmountDTO> invoiceMap = invoiceServiceClient
+                    .getInvoiceAmountsByBookings(new InvoiceAmountsRequest(completedBookingIds));
+            if (invoiceMap != null && !invoiceMap.isEmpty()) {
+                totalRevenue = invoiceMap.values().stream()
+                        .map(InvoiceAmountDTO::amount)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                // Denominator = bookings that actually have an invoice entry (not totalBookings)
+                averageBookingValue = totalRevenue.divide(
+                        BigDecimal.valueOf(invoiceMap.size()), 2, RoundingMode.HALF_UP);
+            }
+        }
 
         return BookingAnalyticsDashboardDTO.builder()
                 .totalBookings(totalBookings)

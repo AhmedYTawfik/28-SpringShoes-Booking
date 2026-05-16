@@ -15,90 +15,121 @@ import java.util.List;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
-        // S3-F12: check if user exists in PG
-        @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE id = :userId", nativeQuery = true)
-        boolean existsUserById(@Param("userId") Long userId);
+    // S3-F12: check if user exists in PG (Agent B scope — kept for recordInteraction)
+    @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE id = :userId", nativeQuery = true)
+    boolean existsUserById(@Param("userId") Long userId);
 
+    // S3-F12: bulk-fetch provider name + specialty for enrichment (Agent B scope)
+    @Query(value = "SELECT id, name, specialty FROM providers WHERE id IN (:ids)", nativeQuery = true)
+    List<Object[]> findProvidersByIds(@Param("ids") List<Long> ids);
 
+    @Query(value = "SELECT COUNT(*) FROM bookings WHERE provider_id = :providerId " +
+            "AND appointment_date = :date AND status IN ('REQUESTED','CONFIRMED','IN_PROGRESS')",
+            nativeQuery = true)
+    Long countActiveBookingsByProviderAndDate(@Param("providerId") Long providerId, @Param("date") LocalDate date);
 
-        // S3-F12: bulk-fetch provider name + specialty for enrichment
-        @Query(value = "SELECT id, name, specialty FROM providers WHERE id IN (:ids)", nativeQuery = true)
-        List<Object[]> findProvidersByIds(@Param("ids") List<Long> ids);
+    @Query(value = "SELECT * FROM bookings WHERE metadata->>:key = :value", nativeQuery = true)
+    List<Booking> findByMetadataKeyValue(@Param("key") String key, @Param("value") String value);
 
-        @Query(value = "SELECT COUNT(*) FROM bookings WHERE provider_id = :providerId " +
-                        "AND appointment_date = :date AND status IN ('REQUESTED','CONFIRMED','IN_PROGRESS')", nativeQuery = true)
-        Long countActiveBookingsByProviderAndDate(@Param("providerId") Long providerId, @Param("date") LocalDate date);
+    // Agent B scope — createInvoiceForBooking will be removed when invoice-service owns invoices
+    @Modifying
+    @Query(value = "INSERT INTO invoices (booking_id, user_id, amount, method, status, created_at) " +
+            "VALUES (:bookingId, :userId, :amount, 'CASH', 'PENDING', NOW())", nativeQuery = true)
+    void createInvoiceForBooking(@Param("bookingId") Long bookingId,
+                                 @Param("userId") Long userId,
+                                 @Param("amount") BigDecimal amount);
 
-        @Modifying
-        @Query(value = "UPDATE providers SET status = 'AVAILABLE' WHERE id = :providerId", nativeQuery = true)
-        void updateProviderStatusToAvailable(@Param("providerId") Long providerId);
+    @Query(value = "SELECT * FROM bookings WHERE " +
+            "(:status IS NULL OR status = :status) AND " +
+            "requested_at >= :startDate AND requested_at <= :endDate " +
+            "ORDER BY requested_at DESC", nativeQuery = true)
+    List<Booking> searchBookingsByStatusAndDate(
+            @Param("status") String status,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
 
-        @Query(value = "SELECT * FROM bookings WHERE metadata->>:key = :value", nativeQuery = true)
-        List<Booking> findByMetadataKeyValue(@Param("key") String key, @Param("value") String value);
+    @Query(value = "SELECT " +
+            "COUNT(*) as totalBookings, " +
+            "COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completedBookings, " +
+            "COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END) as cancelledBookings, " +
+            "COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_price END), 0) as totalRevenue, " +
+            "COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN total_price END), 0) as averageBookingPrice " +
+            "FROM bookings WHERE requested_at >= :startDate AND requested_at <= :endDate", nativeQuery = true)
+    Object[] getBookingAnalytics(@Param("startDate") LocalDateTime startDate,
+                                 @Param("endDate") LocalDateTime endDate);
 
-        @Modifying
-        @Query(value = "INSERT INTO invoices (booking_id, user_id, amount, method, status, created_at) " +
-                        "VALUES (:bookingId, :userId, :amount, 'CASH', 'PENDING', NOW())", nativeQuery = true)
-        void createInvoiceForBooking(@Param("bookingId") Long bookingId,
-                        @Param("userId") Long userId,
-                        @Param("amount") BigDecimal amount);
+    @Query(value = "SELECT status, COUNT(*) as cnt FROM bookings " +
+            "WHERE requested_at >= :startDate AND requested_at <= :endDate " +
+            "GROUP BY status", nativeQuery = true)
+    List<Object[]> getDashboardStatusBreakdown(@Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate);
 
-        @Query(value = "SELECT * FROM bookings WHERE " +
-                        "(:status IS NULL OR status = :status) AND " +
-                        "requested_at >= :startDate AND requested_at <= :endDate " +
-                        "ORDER BY requested_at DESC", nativeQuery = true)
-        List<Booking> searchBookingsByStatusAndDate(
-                        @Param("status") String status,
-                        @Param("startDate") LocalDateTime startDate,
-                        @Param("endDate") LocalDateTime endDate);
+    // JPQL: fetch saga-completed booking IDs for the dashboard Feign batch call
+    @Query("SELECT b.id FROM Booking b WHERE b.status IN :statuses " +
+            "AND b.requestedAt >= :start AND b.requestedAt <= :end")
+    List<Long> findIdsByStatusInAndDateRange(
+            @Param("statuses") List<Booking.Status> statuses,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 
-        @Query(value = "SELECT " +
-                        "COUNT(*) as totalBookings, " +
-                        "COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completedBookings, " +
-                        "COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END) as cancelledBookings, " +
-                        "COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_price END), 0) as totalRevenue, " +
-                        "COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN total_price END), 0) as averageBookingPrice "
-                        +
-                        "FROM bookings WHERE requested_at >= :startDate AND requested_at <= :endDate", nativeQuery = true)
-        Object[] getBookingAnalytics(@Param("startDate") LocalDateTime startDate,
-                        @Param("endDate") LocalDateTime endDate);
+    // ── New Feign-callable read endpoints ────────────────────────────────────
 
-        @Query(value = "SELECT " +
-                        "COUNT(b.id) as totalBookings, " +
-                        "COALESCE(SUM(i.amount), 0) as totalRevenue, " +
-                        "COALESCE(SUM(i.amount) / NULLIF(COUNT(CASE WHEN b.status = 'COMPLETED' THEN 1 END), 0), 0) as averageBookingValue "
-                        +
-                        "FROM bookings b " +
-                        "LEFT JOIN invoices i ON i.booking_id = b.id AND b.status = 'COMPLETED' " +
-                        "WHERE b.requested_at >= :startDate AND b.requested_at <= :endDate", nativeQuery = true)
-        Object[] getDashboardAggregates(@Param("startDate") LocalDateTime startDate,
-                        @Param("endDate") LocalDateTime endDate);
+    // User booking summary: total, saga-completed, cancelled, totalSpent, avgPrice
+    @Query(value = "SELECT COUNT(*), " +
+            "COUNT(CASE WHEN status IN ('COMPLETING','PAYMENT_PENDING','PAID','REFUNDED','COMPLETED') THEN 1 END), " +
+            "COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END), " +
+            "COALESCE(SUM(CASE WHEN status IN ('COMPLETING','PAYMENT_PENDING','PAID','REFUNDED','COMPLETED') THEN total_price END),0), " +
+            "COALESCE(AVG(CASE WHEN status IN ('COMPLETING','PAYMENT_PENDING','PAID','REFUNDED','COMPLETED') THEN total_price END),0) " +
+            "FROM bookings WHERE user_id = :userId", nativeQuery = true)
+    Object[] getUserBookingSummary(@Param("userId") Long userId);
 
-        @Query(value = "SELECT status, COUNT(*) as cnt FROM bookings " +
-                        "WHERE requested_at >= :startDate AND requested_at <= :endDate " +
-                        "GROUP BY status", nativeQuery = true)
-        List<Object[]> getDashboardStatusBreakdown(@Param("startDate") LocalDateTime startDate,
-                        @Param("endDate") LocalDateTime endDate);
+    // Active booking count for a user: REQUESTED, CONFIRMED, IN_PROGRESS, COMPLETING, PAYMENT_PENDING
+    @Query(value = "SELECT COUNT(*) FROM bookings WHERE user_id = :userId " +
+            "AND status IN ('REQUESTED','CONFIRMED','IN_PROGRESS','COMPLETING','PAYMENT_PENDING')", nativeQuery = true)
+    int countActiveByUserId(@Param("userId") Long userId);
 
-        // S3-EVENTS: atomic payment saga status transitions (idempotency: WHERE status
-        // IN (...))
-        @Modifying
-        @Query(value = "UPDATE bookings SET status = 'PAYMENT_PENDING' WHERE id = :bookingId " +
-                        "AND status IN ('COMPLETING','COMPLETED')", nativeQuery = true)
-        int updateStatusToPaymentPending(@Param("bookingId") Long bookingId);
+    // Completed booking count for a user: COMPLETING, PAYMENT_PENDING, PAID, REFUNDED
+    @Query(value = "SELECT COUNT(*) FROM bookings WHERE user_id = :userId " +
+            "AND status IN ('COMPLETING','PAYMENT_PENDING','PAID','REFUNDED')", nativeQuery = true)
+    long countCompletedByUserId(@Param("userId") Long userId);
 
-        @Modifying
-        @Query(value = "UPDATE bookings SET status = 'PAID' WHERE id = :bookingId " +
-                        "AND status = 'PAYMENT_PENDING'", nativeQuery = true)
-        int updateStatusToPaid(@Param("bookingId") Long bookingId);
+    // Provider booking summary with optional date range — PAID bookings only
+    @Query(value = "SELECT COUNT(*), COALESCE(SUM(total_price),0), COALESCE(AVG(total_price),0) " +
+            "FROM bookings WHERE provider_id = :providerId AND status = 'PAID' " +
+            "AND (:startDate IS NULL OR appointment_date >= CAST(:startDate AS date)) " +
+            "AND (:endDate IS NULL OR appointment_date <= CAST(:endDate AS date))", nativeQuery = true)
+    Object[] getProviderBookingSummary(@Param("providerId") Long providerId,
+                                       @Param("startDate") String startDate,
+                                       @Param("endDate") String endDate);
 
-        @Modifying
-        @Query(value = "UPDATE bookings SET status = 'PAYMENT_FAILED' WHERE id = :bookingId " +
-                        "AND status = 'PAYMENT_PENDING'", nativeQuery = true)
-        int updateStatusToPaymentFailed(@Param("bookingId") Long bookingId);
+    // Active booking count for a provider: CONFIRMED, IN_PROGRESS, COMPLETING, PAYMENT_PENDING
+    @Query(value = "SELECT COUNT(*) FROM bookings WHERE provider_id = :providerId " +
+            "AND status IN ('CONFIRMED','IN_PROGRESS','COMPLETING','PAYMENT_PENDING')", nativeQuery = true)
+    int countActiveByProviderId(@Param("providerId") Long providerId);
 
-        @Modifying
-        @Query(value = "UPDATE bookings SET status = 'REFUNDED' WHERE id = :bookingId " +
-                        "AND status = 'PAYMENT_FAILED'", nativeQuery = true)
-        int updateStatusToRefunded(@Param("bookingId") Long bookingId);
+    // Completed booking count for a provider: COMPLETING, PAYMENT_PENDING, PAID, REFUNDED
+    @Query(value = "SELECT COUNT(*) FROM bookings WHERE provider_id = :providerId " +
+            "AND status IN ('COMPLETING','PAYMENT_PENDING','PAID','REFUNDED')", nativeQuery = true)
+    long countCompletedByProviderId(@Param("providerId") Long providerId);
+
+    // S3-EVENTS: atomic payment saga status transitions (idempotency: WHERE status IN (...))
+    @Modifying
+    @Query(value = "UPDATE bookings SET status = 'PAYMENT_PENDING' WHERE id = :bookingId " +
+            "AND status IN ('COMPLETING','COMPLETED')", nativeQuery = true)
+    int updateStatusToPaymentPending(@Param("bookingId") Long bookingId);
+
+    @Modifying
+    @Query(value = "UPDATE bookings SET status = 'PAID' WHERE id = :bookingId " +
+            "AND status = 'PAYMENT_PENDING'", nativeQuery = true)
+    int updateStatusToPaid(@Param("bookingId") Long bookingId);
+
+    @Modifying
+    @Query(value = "UPDATE bookings SET status = 'PAYMENT_FAILED' WHERE id = :bookingId " +
+            "AND status = 'PAYMENT_PENDING'", nativeQuery = true)
+    int updateStatusToPaymentFailed(@Param("bookingId") Long bookingId);
+
+    @Modifying
+    @Query(value = "UPDATE bookings SET status = 'REFUNDED' WHERE id = :bookingId " +
+            "AND status = 'PAYMENT_FAILED'", nativeQuery = true)
+    int updateStatusToRefunded(@Param("bookingId") Long bookingId);
 }
