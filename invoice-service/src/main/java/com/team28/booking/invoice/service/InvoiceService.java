@@ -52,7 +52,7 @@ import com.team28.booking.invoice.strategy.NoRefundStrategy;
 import com.team28.booking.invoice.strategy.RefundResult;
 import com.team28.booking.invoice.strategy.RefundStrategy;
 import com.team28.booking.invoice.strategy.RefundStrategySelector;
-import com.team28.booking.invoice.exception.ConflictException;
+import com.team28.booking.invoice.exception.ForbiddenException;
 import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.contracts.dto.BookingDTO;
 import com.team28.booking.contracts.dto.BookingDTO;
@@ -402,7 +402,7 @@ public class InvoiceService extends Observable {
 
         if (!isAdmin && !booking.userId().equals(callerUserId)) {
             invoiceStatusLockService.revertToPending(invoice.getId());
-            throw new ConflictException("Forbidden: caller is not the booking owner");
+            throw new ForbiddenException("Forbidden: caller is not the booking owner");
         }
 
         // Step 3: confirm booking is PAYMENT_PENDING

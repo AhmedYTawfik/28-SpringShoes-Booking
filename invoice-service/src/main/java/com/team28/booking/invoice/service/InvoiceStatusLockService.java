@@ -30,7 +30,7 @@ public class InvoiceStatusLockService {
         Invoice.InvoiceStatus status = invoice.getStatus();
         if (status != Invoice.InvoiceStatus.PENDING) {
             throw new ConflictException(
-                    "Invoice is already " + status + " for bookingId: " + bookingId);
+                    "Concurrent or duplicate payment request. " + "Invoice is already " + status + " for bookingId: " + bookingId);
         }
 
         invoice.setStatus(Invoice.InvoiceStatus.PROCESSING);
