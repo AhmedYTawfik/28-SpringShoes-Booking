@@ -364,13 +364,18 @@ services:
       BOOKING_SERVICE_URL: http://booking-service:8080
       CALENDAR_SERVICE_URL: http://calendar-service:8080
       INVOICE_SERVICE_URL: http://invoice-service:8080
-      JWT_SECRET: secretcookie
+      JWT_SECRET: fJ8z2vK6yQ3pX9mR4wT5sN7bE1uI0aH8oL2cD6gV4eK3=
     depends_on:
-      - user-service
-      - provider-service
-      - booking-service
-      - calendar-service
-      - invoice-service
+      user-service:
+        condition: service_healthy
+      provider-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+      calendar-service:
+        condition: service_healthy
+      invoice-service:
+        condition: service_healthy
 
 volumes:
   cassandra-data:

@@ -35,4 +35,4 @@ management:
         include: health,info
 
 jwt:
-  secret: ${JWT_SECRET:secretcookie}
+  secret: ${JWT_SECRET:fJ8z2vK6yQ3pX9mR4wT5sN7bE1uI0aH8oL2cD6gV4eK3=}
