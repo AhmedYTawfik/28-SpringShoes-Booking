@@ -31,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -58,6 +60,7 @@ import java.math.RoundingMode;
 @Service
 public class BookingService extends Observable {
 
+    private static final Logger log = LoggerFactory.getLogger(BookingService.class);
     private final BookingRepository bookingRepository;
     private final BookingItemRepository bookingItemRepository;
     private final MongoEventLogger mongoEventLogger;
@@ -432,8 +435,15 @@ public class BookingService extends Observable {
         BigDecimal totalRevenue = BigDecimal.ZERO;
         BigDecimal averageBookingValue = BigDecimal.ZERO;
         if (!completedBookingIds.isEmpty()) {
-            Map<Long, InvoiceAmountDTO> invoiceMap = invoiceServiceClient
-                    .getInvoiceAmountsByBookings(new InvoiceAmountsRequest(completedBookingIds));
+            Map<Long, InvoiceAmountDTO> invoiceMap;
+            try {
+                invoiceMap = invoiceServiceClient
+                        .getInvoiceAmountsByBookings(new InvoiceAmountsRequest(completedBookingIds));
+            } catch (FeignException e) {
+                // Graceful degradation per spec §2.4: never let a downstream failure crash the caller
+                log.warn("invoice-service unavailable for dashboard analytics: {}", e.getMessage());
+                invoiceMap = Map.of();
+            }
             if (invoiceMap != null && !invoiceMap.isEmpty()) {
                 totalRevenue = invoiceMap.values().stream()
                         .map(InvoiceAmountDTO::amount)
