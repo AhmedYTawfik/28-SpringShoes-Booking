@@ -32,7 +32,6 @@ import feign.FeignException;
 
 import jakarta.annotation.PostConstruct;
 
-import org.bouncycastle.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
