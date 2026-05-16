@@ -354,6 +354,24 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      USER_SERVICE_URL: http://user-service:8080
+      PROVIDER_SERVICE_URL: http://provider-service:8080
+      BOOKING_SERVICE_URL: http://booking-service:8080
+      CALENDAR_SERVICE_URL: http://calendar-service:8080
+      INVOICE_SERVICE_URL: http://invoice-service:8080
+      JWT_SECRET: secretcookie
+    depends_on:
+      - user-service
+      - provider-service
+      - booking-service
+      - calendar-service
+      - invoice-service
+
 volumes:
   cassandra-data:
   es-data:
