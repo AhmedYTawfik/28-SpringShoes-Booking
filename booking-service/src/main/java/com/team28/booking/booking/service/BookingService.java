@@ -45,15 +45,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.team28.booking.contracts.feign.CalendarServiceClient;
+import com.team28.booking.contracts.feign.InvoiceServiceClient;
+import com.team28.booking.contracts.feign.ProviderServiceClient;
+import com.team28.booking.contracts.feign.UserServiceClient;
 import com.team28.booking.contracts.dto.BookingSummaryDTO;
 import com.team28.booking.contracts.dto.InvoiceAmountDTO;
 import com.team28.booking.contracts.dto.InvoiceAmountsRequest;
 import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.contracts.dto.ProviderDTO;
-import com.team28.booking.contracts.feign.InvoiceServiceClient;
-import com.team28.booking.contracts.feign.ProviderServiceClient;
+import com.team28.booking.contracts.dto.UserDTO;
 import feign.FeignException;
 import java.math.RoundingMode;
 
@@ -70,6 +74,8 @@ public class BookingService extends Observable {
     private final BookingEventPublisher eventPublisher;
     private final ProviderServiceClient providerServiceClient;
     private final InvoiceServiceClient invoiceServiceClient;
+    private final UserServiceClient userServiceClient;
+    private final CalendarServiceClient calendarServiceClient;
 
     public BookingService(BookingRepository bookingRepository,
                           BookingItemRepository bookingItemRepository,
@@ -79,7 +85,9 @@ public class BookingService extends Observable {
                           Neo4jClient neo4jClient,
                           BookingEventPublisher eventPublisher,
                           ProviderServiceClient providerServiceClient,
-                          InvoiceServiceClient invoiceServiceClient) {
+                          InvoiceServiceClient invoiceServiceClient,
+                          UserServiceClient userServiceClient,
+                          CalendarServiceClient calendarServiceClient) {
         this.bookingRepository = bookingRepository;
         this.bookingItemRepository = bookingItemRepository;
         this.mongoEventLogger = mongoEventLogger;
@@ -89,6 +97,8 @@ public class BookingService extends Observable {
         this.eventPublisher = eventPublisher;
         this.providerServiceClient = providerServiceClient;
         this.invoiceServiceClient = invoiceServiceClient;
+        this.userServiceClient = userServiceClient;
+        this.calendarServiceClient = calendarServiceClient;
     }
 
     @PostConstruct
@@ -291,16 +301,24 @@ public class BookingService extends Observable {
     /** S3-F4: complete an IN_PROGRESS booking, release provider, create PENDING invoice. */
     @Transactional
     public Booking completeBooking(Long id) {
+        // 1. ADMIN-only auth check
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        if (!isAdmin) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only ADMIN can complete bookings");
+        }
+
+        // 2. Find booking
         Booking booking = findById(id);
 
+        // 3. Status == IN_PROGRESS check
         if (booking.getStatus() != Booking.Status.IN_PROGRESS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Booking must be IN_PROGRESS to complete");
         }
 
-        booking.setStatus(Booking.Status.COMPLETING);
-        booking.setCompletedAt(LocalDateTime.now());
-
+        // 4. Calculate totalPrice if null (local, from BookingItem prices)
         if (booking.getTotalPrice() == null) {
             BigDecimal total = Optional.ofNullable(booking.getBookingServices())
                     .orElse(List.of())
@@ -309,6 +327,49 @@ public class BookingService extends Observable {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             booking.setTotalPrice(total);
         }
+
+        // 5. Three Feign pre-checks
+        // Pre-check 1: User must be ACTIVE
+        UserDTO user;
+        try {
+            user = userServiceClient.getUser(booking.getUserId());
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User not found");
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service unavailable");
+        }
+        if (!"ACTIVE".equals(user.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is not active");
+        }
+
+        // Pre-check 2: Provider must be BUSY
+        ProviderDTO provider;
+        try {
+            provider = providerServiceClient.getProvider(booking.getProviderId());
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provider not found");
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Provider service unavailable");
+        }
+        if (!"BUSY".equals(provider.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provider is not BUSY");
+        }
+
+        // Pre-check 3: Calendar slot must exist
+        try {
+            calendarServiceClient.getSlotForBooking(
+                    booking.getProviderId(),
+                    booking.getAppointmentDate().toString(),
+                    booking.getStartTime().toString());
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No calendar slot found for this booking");
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Calendar service unavailable");
+        }
+
+        // 6. Set status = COMPLETING, completedAt = now(), save
+        booking.setStatus(Booking.Status.COMPLETING);
+        booking.setCompletedAt(LocalDateTime.now());
 
         Booking saved = bookingRepository.save(booking);
         cacheInvalidator.deleteKey("booking-service::booking::" + id);
@@ -592,10 +653,13 @@ public class BookingService extends Observable {
             }
         }
 
-        // c) Verify user exists in PG
-        if (!bookingRepository.existsUserById(userId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "User not found with id: " + userId);
+        // c) Verify user exists via Feign
+        try {
+            userServiceClient.getUser(userId);
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found with id: " + userId);
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service unavailable");
         }
 
         // d) Traverse the Neo4j recommendation graph via Neo4jClient
@@ -616,27 +680,28 @@ public class BookingService extends Observable {
             return List.of();
         }
 
-        // e) Collect provider IDs and enrich with PG name/specialty
+        // e) Collect provider IDs and enrich with Feign calls
         List<Long> providerIds = neo4jResults.stream()
                 .map(r -> ((Number) r.get("providerId")).longValue())
                 .collect(Collectors.toList());
 
-        List<Object[]> pgRows = bookingRepository.findProvidersByIds(providerIds);
-
-        // Build a lookup map: providerId -> {name, specialty}
-        Map<Long, Object[]> providerMap = pgRows.stream()
-                .collect(Collectors.toMap(
-                        row -> ((Number) row[0]).longValue(),
-                        row -> row));
+        Map<Long, ProviderDTO> providerMap = new HashMap<>();
+        for (Long pid : providerIds) {
+            try {
+                providerMap.put(pid, providerServiceClient.getProvider(pid));
+            } catch (FeignException e) {
+                // skip unavailable providers
+            }
+        }
 
         // f) Assemble DTOs preserving Neo4j ranking order
         return neo4jResults.stream()
                 .map(r -> {
                     Long pid = ((Number) r.get("providerId")).longValue();
                     long score = ((Number) r.get("score")).longValue();
-                    Object[] pRow = providerMap.get(pid);
-                    String name = pRow != null && pRow[1] != null ? pRow[1].toString() : "";
-                    String specialty = pRow != null && pRow[2] != null ? pRow[2].toString() : "";
+                    ProviderDTO pDto = providerMap.get(pid);
+                    String name = pDto != null ? pDto.name() : "";
+                    String specialty = pDto != null ? pDto.specialty() : "";
                     return ProviderRecommendationDTO.builder()
                             .providerId(pid)
                             .name(name)
@@ -655,8 +720,11 @@ public class BookingService extends Observable {
     public void recordInteraction(Long bookingId) {
         Booking booking = findById(bookingId);
 
-        if (booking.getStatus() != Booking.Status.COMPLETED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be COMPLETED to record interaction");
+        Set<Booking.Status> allowed = Set.of(
+                Booking.Status.COMPLETED, Booking.Status.COMPLETING,
+                Booking.Status.PAYMENT_PENDING, Booking.Status.PAID);
+        if (!allowed.contains(booking.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed to record interaction");
         }
 
         Long userId = booking.getUserId();
@@ -664,6 +732,20 @@ public class BookingService extends Observable {
 
         if (providerId == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking has no provider assigned");
+        }
+
+        // Fetch user and provider details for Neo4j enrichment
+        UserDTO user;
+        try {
+            user = userServiceClient.getUser(userId);
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service unavailable");
+        }
+        ProviderDTO provider;
+        try {
+            provider = providerServiceClient.getProvider(providerId);
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Provider service unavailable");
         }
 
         // Check idempotency — skip if this bookingId was already recorded
@@ -685,8 +767,8 @@ public class BookingService extends Observable {
         // SDN 8.0.3 NPEs on @Query write operations via the repository layer;
         // use Neo4jClient directly so the Cypher is sent without result-type mapping.
         neo4jClient.query(
-                "MERGE (u:User {id: $userId}) " +
-                "MERGE (p:Provider {id: $providerId}) " +
+                "MERGE (u:User {id: $userId}) SET u.name = $userName " +
+                "MERGE (p:Provider {id: $providerId}) SET p.name = $providerName, p.specialty = $specialty " +
                 "MERGE (u)-[r:BOOKED]->(p) " +
                 "ON CREATE SET r.bookingCount = 1, r.lastBookingDate = localdatetime(), r.recorded_booking_ids = [$bookingId] " +
                 "ON MATCH SET " +
@@ -696,6 +778,9 @@ public class BookingService extends Observable {
                 .bind(userId).to("userId")
                 .bind(providerId).to("providerId")
                 .bind(bookingId).to("bookingId")
+                .bind(user.name()).to("userName")
+                .bind(provider.name()).to("providerName")
+                .bind(provider.specialty()).to("specialty")
                 .run();
 
         Map<String, Object> payload = new HashMap<>();
