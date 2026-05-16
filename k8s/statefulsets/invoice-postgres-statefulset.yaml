@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: invoice-postgres
+  namespace: booking
+spec:
+  serviceName: invoice-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: invoice-postgres
+  template:
+    metadata:
+      labels:
+        app: invoice-postgres
+    spec:
+      containers:
+        - name: invoice-postgres
+          image: postgres:17
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: invoice-postgres-secret
+          volumeMounts:
+            - name: invoice-postgres-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: invoice-postgres-data
+          persistentVolumeClaim:
+            claimName: invoice-postgres-pvc
