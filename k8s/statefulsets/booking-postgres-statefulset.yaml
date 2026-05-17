@@ -44,5 +44,4 @@ spec:
               mountPath: /var/lib/postgresql/data
       volumes:
         - name: booking-postgres-data
-          persistentVolumeClaim:
-            claimName: booking-postgres-pvc
+          emptyDir: {}

@@ -6,12 +6,16 @@
 
     <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
         <http>
-            <url>${LOKI_URL:-http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push}</url>
+            <url>http://${LOKI_HOST:-loki.monitoring.svc.cluster.local}:3100/loki/api/v1/push</url>
         </http>
-        <labels>app=booking,service=${appName},level=%level,env=k8s</labels>
-        <message class="ch.qos.logback.classic.PatternLayout">
-            <pattern>{"timestamp":"%d{ISO8601}","level":"%level","service":"${appName}","thread":"%thread","logger":"%logger{36}","correlationId":"%X{correlationId:-}","slotId":"%X{slotId:-}","providerId":"%X{providerId:-}","bookingId":"%X{bookingId:-}","routingKey":"%X{routingKey:-}","message":"%replace(%msg){'\"','\\\"'}"}</pattern>
-        </message>
+        <format>
+            <label>
+                <pattern>app=booking,service=${appName},level=%level,env=k8s</pattern>
+            </label>
+            <message>
+                <pattern>{"timestamp":"%d{ISO8601}","level":"%level","service":"${appName}","thread":"%thread","logger":"%logger{36}","correlationId":"%X{correlationId:-}","slotId":"%X{slotId:-}","providerId":"%X{providerId:-}","bookingId":"%X{bookingId:-}","routingKey":"%X{routingKey:-}","message":"%replace(%msg){'\"','\\\"'}"}</pattern>
+            </message>
+        </format>
     </appender>
 
     <root level="INFO">
