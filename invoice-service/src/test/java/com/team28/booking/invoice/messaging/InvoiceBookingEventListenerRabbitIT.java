@@ -37,7 +37,11 @@ class InvoiceBookingEventListenerRabbitIT {
 
     @Container
     static RabbitMQContainer rabbit = new RabbitMQContainer(DockerImageName.parse("rabbitmq:3.13-management"))
-            .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(3)));
+            .withEnv("RABBITMQ_NODENAME", "rabbit@localhost")
+            .waitingFor(Wait.forHttp("/api/overview")
+                    .withBasicCredentials("guest", "guest")
+                    .forPort(15672)
+                    .withStartupTimeout(Duration.ofMinutes(3)));
 
     @Test
     void bookingCompletedEventCreatesInvoiceAndPublishesPaymentInitiated() {
