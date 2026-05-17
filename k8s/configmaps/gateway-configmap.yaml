@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: booking
+data:
+  USER_SERVICE_URL: http://user-service:8080
+  PROVIDER_SERVICE_URL: http://provider-service:8080
+  BOOKING_SERVICE_URL: http://booking-service:8080
+  CALENDAR_SERVICE_URL: http://calendar-service:8080
+  INVOICE_SERVICE_URL: http://invoice-service:8080
