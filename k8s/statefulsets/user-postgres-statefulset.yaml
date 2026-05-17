@@ -42,7 +42,12 @@ spec:
           volumeMounts:
             - name: user-postgres-data
               mountPath: /var/lib/postgresql/data
-      volumes:
-        - name: user-postgres-data
-          persistentVolumeClaim:
-            claimName: user-postgres-pvc
+  volumeClaimTemplates:
+    - metadata:
+        name: user-postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

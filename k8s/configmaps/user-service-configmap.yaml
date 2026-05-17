@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: booking
+data:
+  POSTGRES_HOST: user-postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: bookingdb-users
+  POSTGRES_USER: user
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  MONGO_HOST: mongo
+  MONGO_PORT: "27017"
+  MONGO_DATABASE: bookingmongo
+  MONGO_USERNAME: root
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: guest
+  LOKI_HOST: loki.monitoring.svc.cluster.local
+  FEIGN_USER_SERVICE_URL: user-service:8080
+  FEIGN_PROVIDER_SERVICE_URL: provider-service:8080
+  FEIGN_BOOKING_SERVICE_URL: booking-service:8080
+  FEIGN_CALENDAR_SERVICE_URL: calendar-service:8080
+  FEIGN_INVOICE_SERVICE_URL: invoice-service:8080
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: prometheus,health,info
+  MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILES_HISTOGRAM_HTTP_SERVER_REQUESTS: "true"

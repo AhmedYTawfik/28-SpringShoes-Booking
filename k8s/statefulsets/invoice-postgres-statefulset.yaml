@@ -25,7 +25,12 @@ spec:
           volumeMounts:
             - name: invoice-postgres-data
               mountPath: /var/lib/postgresql/data
-      volumes:
-        - name: invoice-postgres-data
-          persistentVolumeClaim:
-            claimName: invoice-postgres-pvc
+  volumeClaimTemplates:
+    - metadata:
+        name: invoice-postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi
