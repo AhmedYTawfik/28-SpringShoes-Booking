@@ -32,12 +32,7 @@
             <groupId>com.team28.booking</groupId>
             <artifactId>contracts</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.team28.booking</groupId>
-            <artifactId>invoice-service</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
+
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-openfeign</artifactId>

@@ -20,11 +20,6 @@ import com.team28.booking.contracts.feign.CalendarServiceClient;
 import com.team28.booking.contracts.feign.InvoiceServiceClient;
 import com.team28.booking.contracts.feign.ProviderServiceClient;
 import com.team28.booking.contracts.feign.UserServiceClient;
-import com.team28.booking.invoice.messaging.InvoiceBookingEventListener;
-import com.team28.booking.invoice.messaging.PaymentEventPublisher;
-import com.team28.booking.invoice.model.Invoice;
-import com.team28.booking.invoice.repository.InvoiceRepository;
-import com.team28.booking.invoice.strategy.RefundStrategySelector;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.BindingBuilder;
@@ -138,29 +133,9 @@ class SagaS3F4PaymentFailureE2EIT {
             }
         };
 
-        InvoiceRepository invoiceRepository = mock(InvoiceRepository.class);
-        when(invoiceRepository.findByBookingIdForUpdate(77L)).thenReturn(Optional.empty());
-        when(invoiceRepository.saveAndFlush(any(Invoice.class))).thenAnswer(invocation -> {
-            Invoice invoice = invocation.getArgument(0);
-            invoice.setId(800L);
-            return invoice;
-        });
-        PaymentEventPublisher paymentPublisher = new PaymentEventPublisher(template) {
-            @Override
-            public void publishPaymentInitiated(Long invoiceId, Long bookingId, Double amount) {
-                template.convertAndSend("saga.payment.events", "payment.initiated",
-                        new PaymentInitiatedEvent(invoiceId, bookingId, amount));
-            }
-        };
-
-        SimpleMessageListenerContainer invoiceContainer = listenerContainer(connectionFactory, converter, invoiceQueue.getName(),
-                new InvoiceBookingEventListener(invoiceRepository, paymentPublisher,
-                        mock(BookingServiceClient.class), mock(RefundStrategySelector.class)),
-                "handleBookingCompleted");
         SimpleMessageListenerContainer bookingContainer = listenerContainer(connectionFactory, converter, feedbackQueue.getName(),
                 new BookingPaymentEventListener(bookingRepository, bookingPublisher),
                 "handlePaymentFailed");
-        invoiceContainer.start();
         bookingContainer.start();
 
         try {
@@ -181,12 +156,12 @@ class SagaS3F4PaymentFailureE2EIT {
 
             service.completeBooking(77L);
 
-            PaymentInitiatedEvent initiated = (PaymentInitiatedEvent) template.receiveAndConvert(initiatedQueue.getName(), 10000);
-            assertThat(initiated).isNotNull();
-            assertThat(initiated.bookingId()).isEqualTo(77L);
+            BookingCompletedEvent completed = (BookingCompletedEvent) template.receiveAndConvert(invoiceQueue.getName(), 10000);
+            assertThat(completed).isNotNull();
+            assertThat(completed.bookingId()).isEqualTo(77L);
 
             template.convertAndSend("saga.payment.events", "payment.failed",
-                    new PaymentFailedEvent(initiated.invoiceId(), 77L, "simulated failure"));
+                    new PaymentFailedEvent(800L, 77L, "simulated failure"));
 
             BookingCancelledEvent compensation = (BookingCancelledEvent) template.receiveAndConvert(compensationQueue.getName(), 10000);
             assertThat(compensation).isNotNull();
@@ -194,7 +169,6 @@ class SagaS3F4PaymentFailureE2EIT {
             assertThat(compensation.reason()).isEqualTo("simulated failure");
             assertThat(bookingStatus.get()).isEqualTo(Booking.Status.PAYMENT_FAILED);
         } finally {
-            invoiceContainer.stop();
             bookingContainer.stop();
             connectionFactory.destroy();
         }
