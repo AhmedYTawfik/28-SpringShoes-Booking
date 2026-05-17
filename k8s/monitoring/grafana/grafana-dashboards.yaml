@@ -22,7 +22,7 @@ data:
           "gridPos": { "x": 0, "y": 0, "w": 12, "h": 6 },
           "targets": [
             {
-              "expr": "sum(rate({app=\"invoice-service\"} |= \"ERROR\" [1m])) by (app)",
+              "expr": "sum(rate({service=\"invoice-service\"} |= \"ERROR\" [1m])) by (app)",
               "legendFormat": "errors/min"
             }
           ]
@@ -35,11 +35,11 @@ data:
           "gridPos": { "x": 12, "y": 0, "w": 12, "h": 6 },
           "targets": [
             {
-              "expr": "sum(rate({app=\"invoice-service\"} |~ \"Feign .* — after\" [1m]))",
+              "expr": "sum(rate({service=\"invoice-service\"} |~ \"Feign .* — after\" [1m]))",
               "legendFormat": "feign-success/min"
             },
             {
-              "expr": "sum(rate({app=\"invoice-service\"} |~ \"Feign .* — exception\" [1m]))",
+              "expr": "sum(rate({service=\"invoice-service\"} |~ \"Feign .* — exception\" [1m]))",
               "legendFormat": "feign-error/min"
             }
           ]
@@ -52,11 +52,11 @@ data:
           "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
           "targets": [
             {
-              "expr": "sum(rate({app=\"invoice-service\"} |= \"Published payment.initiated\" [1m]))",
+              "expr": "sum(rate({service=\"invoice-service\"} |= \"Published payment.initiated\" [1m]))",
               "legendFormat": "payment.initiated published/min"
             },
             {
-              "expr": "sum(rate({app=\"invoice-service\"} |= \"Received booking.completed\" [1m]))",
+              "expr": "sum(rate({service=\"invoice-service\"} |= \"Received booking.completed\" [1m]))",
               "legendFormat": "booking.completed consumed/min"
             }
           ]

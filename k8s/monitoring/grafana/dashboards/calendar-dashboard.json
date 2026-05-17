@@ -13,7 +13,7 @@
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate({app=\"calendar-service\"} |= \"ERROR\" [5m]))",
+          "expr": "sum(rate({service=\"calendar-service\"} |= \"ERROR\" [5m]))",
           "refId": "A"
         }
       ]
@@ -26,7 +26,7 @@
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "{app=\"calendar-service\"} |~ \"Feign (GET|POST)\"",
+          "expr": "{service=\"calendar-service\"} |~ \"Feign (GET|POST)\"",
           "refId": "A"
         }
       ]
@@ -39,7 +39,7 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
       "targets": [
         {
-          "expr": "{app=\"calendar-service\"} |~ \"(booking\\.(completed|cancelled))\"",
+          "expr": "{service=\"calendar-service\"} |~ \"(booking\\.(completed|cancelled))\"",
           "refId": "A"
         }
       ]
@@ -90,17 +90,17 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
       "targets": [
         {
-          "expr": "hikaricp_connections_active{application=\"calendar-service\"}",
+          "expr": "hikaricp_connections_active{job=\"calendar-service\"}",
           "legendFormat": "Active",
           "refId": "A"
         },
         {
-          "expr": "hikaricp_connections_pending{application=\"calendar-service\"}",
+          "expr": "hikaricp_connections_pending{job=\"calendar-service\"}",
           "legendFormat": "Pending",
           "refId": "B"
         },
         {
-          "expr": "hikaricp_connections{application=\"calendar-service\"}",
+          "expr": "hikaricp_connections{job=\"calendar-service\"}",
           "legendFormat": "Total",
           "refId": "C"
         }

@@ -13,7 +13,7 @@
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate({app=\"invoice-service\"} |= \"ERROR\" [5m]))",
+          "expr": "sum(rate({service=\"invoice-service\"} |= \"ERROR\" [5m]))",
           "refId": "A"
         }
       ]
@@ -26,7 +26,7 @@
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "{app=\"invoice-service\"} |~ \"Feign (GET|POST)\"",
+          "expr": "{service=\"invoice-service\"} |~ \"Feign (GET|POST)\"",
           "refId": "A"
         }
       ]
@@ -39,7 +39,7 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
       "targets": [
         {
-          "expr": "{app=\"invoice-service\"} |~ \"(payment\\.(completed|failed|refunded)|booking\\.(completed|cancelled))\"",
+          "expr": "{service=\"invoice-service\"} |~ \"(payment\\.(completed|failed|refunded)|booking\\.(completed|cancelled))\"",
           "refId": "A"
         }
       ]
@@ -90,17 +90,17 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
       "targets": [
         {
-          "expr": "hikaricp_connections_active{application=\"invoice-service\"}",
+          "expr": "hikaricp_connections_active{job=\"invoice-service\"}",
           "legendFormat": "Active",
           "refId": "A"
         },
         {
-          "expr": "hikaricp_connections_pending{application=\"invoice-service\"}",
+          "expr": "hikaricp_connections_pending{job=\"invoice-service\"}",
           "legendFormat": "Pending",
           "refId": "B"
         },
         {
-          "expr": "hikaricp_connections{application=\"invoice-service\"}",
+          "expr": "hikaricp_connections{job=\"invoice-service\"}",
           "legendFormat": "Total",
           "refId": "C"
         }

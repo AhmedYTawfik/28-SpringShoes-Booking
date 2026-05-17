@@ -13,7 +13,7 @@
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate({app=\"booking-service\"} |= \"ERROR\" [5m]))",
+          "expr": "sum(rate({service=\"booking-service\"} |= \"ERROR\" [5m]))",
           "refId": "A"
         }
       ]
@@ -26,7 +26,7 @@
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "{app=\"booking-service\"} |= \"transitioning\"",
+          "expr": "{service=\"booking-service\"} |= \"transitioning\"",
           "refId": "A"
         }
       ]
@@ -39,7 +39,7 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
       "targets": [
         {
-          "expr": "{app=\"booking-service\"} |~ \"(Published|Consuming|Processed)\"",
+          "expr": "{service=\"booking-service\"} |~ \"(Published|Consuming|Processed)\"",
           "refId": "A"
         }
       ]
@@ -90,17 +90,17 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
       "targets": [
         {
-          "expr": "hikaricp_connections_active{application=\"booking-service\"}",
+          "expr": "hikaricp_connections_active{job=\"booking-service\"}",
           "legendFormat": "Active",
           "refId": "A"
         },
         {
-          "expr": "hikaricp_connections_pending{application=\"booking-service\"}",
+          "expr": "hikaricp_connections_pending{job=\"booking-service\"}",
           "legendFormat": "Pending",
           "refId": "B"
         },
         {
-          "expr": "hikaricp_connections{application=\"booking-service\"}",
+          "expr": "hikaricp_connections{job=\"booking-service\"}",
           "legendFormat": "Total",
           "refId": "C"
         }
