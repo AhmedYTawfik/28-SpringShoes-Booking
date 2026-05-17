@@ -17,6 +17,7 @@ spec:
       containers:
         - name: mongo
           image: mongo:7
+          args: ["--wiredTigerCacheSizeGB", "0.25"]
           ports:
             - containerPort: 27017
           env:
@@ -28,19 +29,27 @@ spec:
               value: bookingmongo
           resources:
             requests:
-              memory: "128Mi"
+              memory: "256Mi"
               cpu: "50m"
             limits:
-              memory: "256Mi"
+              memory: "768Mi"
               cpu: "200m"
           readinessProbe:
             exec:
-              command: ["mongosh", "--eval", "db.adminCommand('ping')"]
-            initialDelaySeconds: 10
+              command: ["mongosh", "--quiet", "-u", "root", "-p", "root", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+            initialDelaySeconds: 15
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - name: mongo-data
               mountPath: /data/db
-      volumes:
-        - name: mongo-data
-          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi

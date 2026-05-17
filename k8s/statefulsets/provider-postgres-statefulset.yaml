@@ -42,6 +42,12 @@ spec:
           volumeMounts:
             - name: provider-postgres-data
               mountPath: /var/lib/postgresql/data
-      volumes:
-        - name: provider-postgres-data
-          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: provider-postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

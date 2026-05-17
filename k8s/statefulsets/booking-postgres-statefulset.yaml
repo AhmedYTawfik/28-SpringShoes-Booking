@@ -42,6 +42,12 @@ spec:
           volumeMounts:
             - name: booking-postgres-data
               mountPath: /var/lib/postgresql/data
-      volumes:
-        - name: booking-postgres-data
-          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: booking-postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

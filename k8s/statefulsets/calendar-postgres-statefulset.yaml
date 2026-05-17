@@ -42,6 +42,12 @@ spec:
           volumeMounts:
             - name: calendar-postgres-data
               mountPath: /var/lib/postgresql/data
-      volumes:
-        - name: calendar-postgres-data
-          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: calendar-postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

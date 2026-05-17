@@ -34,6 +34,12 @@ spec:
           volumeMounts:
             - name: redis-data
               mountPath: /data
-      volumes:
-        - name: redis-data
-          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 512Mi
