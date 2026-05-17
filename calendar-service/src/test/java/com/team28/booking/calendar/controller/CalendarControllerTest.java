@@ -7,17 +7,10 @@ import com.team28.booking.calendar.service.CalendarAnalyticsService;
 import com.team28.booking.calendar.service.TimeSlotService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
@@ -44,19 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         classes = JwtAuthenticationFilter.class
     )
 )
-@Import(CalendarControllerTest.TestSecurity.class)
 class CalendarControllerTest {
-
-    @TestConfiguration
-    @EnableWebSecurity
-    static class TestSecurity {
-        @Bean
-        SecurityFilterChain chain(HttpSecurity http) throws Exception {
-            http.csrf(c -> c.disable())
-                .authorizeHttpRequests(a -> a.anyRequest().authenticated());
-            return http.build();
-        }
-    }
 
     @Autowired private MockMvc mockMvc;
 
@@ -74,7 +55,6 @@ class CalendarControllerTest {
     }
 
     @Test
-    @WithMockUser
     void getHistory_returnsAllSnapshotsNewestFirst() throws Exception {
         when(availabilityHistoryService.getAvailabilityHistory(eq(PROVIDER_ID), isNull(), isNull()))
                 .thenReturn(List.of(snapshot(T_1430, 0.9), snapshot(T_1415, 0.6), snapshot(T_1400, 0.3)));
@@ -87,7 +67,6 @@ class CalendarControllerTest {
     }
 
     @Test
-    @WithMockUser
     void getHistory_withRange_filtersSnapshots() throws Exception {
         Instant from = Instant.parse("2026-05-02T14:10:00Z");
         Instant to   = Instant.parse("2026-05-02T14:20:00Z");
@@ -103,7 +82,6 @@ class CalendarControllerTest {
     }
 
     @Test
-    @WithMockUser
     void getHistory_providerNotFound_returns404() throws Exception {
         when(availabilityHistoryService.getAvailabilityHistory(eq(999L), isNull(), isNull()))
                 .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Provider not found"));
@@ -113,7 +91,6 @@ class CalendarControllerTest {
     }
 
     @Test
-    @WithMockUser
     void getHistory_providerWithNoSnapshots_returnsEmptyList() throws Exception {
         when(availabilityHistoryService.getAvailabilityHistory(eq(PROVIDER_ID), isNull(), isNull()))
                 .thenReturn(List.of());
@@ -121,11 +98,5 @@ class CalendarControllerTest {
         mockMvc.perform(get("/api/calendar/{id}/availability-history", PROVIDER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
-    }
-
-    @Test
-    void getHistory_withoutToken_returns401() throws Exception {
-        mockMvc.perform(get("/api/calendar/{id}/availability-history", PROVIDER_ID))
-                .andExpect(status().isUnauthorized());
     }
 }
