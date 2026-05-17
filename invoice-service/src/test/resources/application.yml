@@ -1,6 +1,10 @@
 spring:
   application:
     name: invoice-service
+  rabbitmq:
+    listener:
+      simple:
+        auto-startup: false
   datasource:
     url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     driver-class-name: org.h2.Driver
@@ -16,6 +20,20 @@ spring:
     redis:
       host: localhost
       port: 6379
+  cache:
+    type: simple
 jwt:
   secret: fJ8z2vK6yQ3pX9mR4wT5sN7bE1uI0aH8oL2cD6gV4eK3=
   expiration: 86400000
+
+feign:
+  user-service:
+    url: http://localhost:8081
+  provider-service:
+    url: http://localhost:8082
+  booking-service:
+    url: http://localhost:8083
+  calendar-service:
+    url: http://localhost:8084
+  invoice-service:
+    url: http://localhost:8085

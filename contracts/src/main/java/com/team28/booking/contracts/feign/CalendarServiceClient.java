@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "calendar-service", url = "${feign.calendar-service.url}")
+@FeignClient(name = "calendar-service", url = "${feign.calendar-service.url}", fallback = CalendarServiceClientFallback.class)
 public interface CalendarServiceClient {
     @GetMapping("/api/timeslots/provider/{providerId}/slot")
     TimeSlotDTO getSlotForBooking(

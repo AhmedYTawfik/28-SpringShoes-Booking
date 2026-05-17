@@ -4,6 +4,7 @@ import com.team28.booking.invoice.cache.CacheInvalidator;
 import com.team28.booking.invoice.dto.RetryInvoiceRequest;
 import com.team28.booking.invoice.exception.BadRequestException;
 import com.team28.booking.invoice.exception.ResourceNotFoundException;
+import com.team28.booking.invoice.messaging.PaymentEventPublisher;
 import com.team28.booking.invoice.model.Invoice;
 import com.team28.booking.invoice.repository.InvoiceRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +36,9 @@ class RetryInvoiceServiceTest {
 
     @Mock
     private CacheInvalidator cacheInvalidator;
+
+    @Mock
+    private PaymentEventPublisher eventPublisher;
 
     @InjectMocks
     private InvoiceService invoiceService;
