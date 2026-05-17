@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: calendar-service
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true
   rabbitmq:
     host: ${RABBITMQ_HOST:rabbitmq}
     port: ${RABBITMQ_PORT:5672}
@@ -60,6 +64,8 @@ jwt:
   expiration: 86400000
 
 feign:
+  circuitbreaker:
+    enabled: true
   user-service:
     url: http://${FEIGN_USER_SERVICE_URL:user-service:8080}
   provider-service:
@@ -80,3 +86,12 @@ management:
     distribution:
       percentiles-histogram:
         http.server.requests: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      provider-service:
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 5s
+        permitted-number-of-calls-in-half-open-state: 2

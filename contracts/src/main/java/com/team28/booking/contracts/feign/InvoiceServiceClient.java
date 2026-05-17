@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.math.BigDecimal;
 import java.util.Map;
 
-@FeignClient(name = "invoice-service", url = "${feign.invoice-service.url}")
+@FeignClient(name = "invoice-service", url = "${feign.invoice-service.url}", fallback = InvoiceServiceClientFallback.class)
 public interface InvoiceServiceClient {
     @GetMapping("/api/invoices/user/{userId}/total")
     BigDecimal getUserInvoiceTotal(

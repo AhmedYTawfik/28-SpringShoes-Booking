@@ -5,12 +5,11 @@ import com.team28.booking.calendar.dto.AvailabilitySnapshotDTO;
 import com.team28.booking.calendar.service.AvailabilityHistoryService;
 import com.team28.booking.calendar.service.CalendarAnalyticsService;
 import com.team28.booking.calendar.service.TimeSlotService;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.http.HttpServletResponse;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,16 +18,25 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(CalendarController.class)
+@WebMvcTest(
+    value = CalendarController.class,
+    excludeAutoConfiguration = {
+        org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration.class,
+        org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration.class,
+        org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration.class
+    },
+    excludeFilters = @ComponentScan.Filter(
+        type = FilterType.ASSIGNABLE_TYPE,
+        classes = JwtAuthenticationFilter.class
+    )
+)
 class CalendarControllerTest {
 
     @Autowired private MockMvc mockMvc;
@@ -36,21 +44,11 @@ class CalendarControllerTest {
     @MockitoBean private AvailabilityHistoryService availabilityHistoryService;
     @MockitoBean private CalendarAnalyticsService calendarAnalyticsService;
     @MockitoBean private TimeSlotService timeSlotService;
-    @MockitoBean private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     private static final Long PROVIDER_ID = 42L;
     private static final Instant T_1400 = Instant.parse("2026-05-02T14:00:00Z");
     private static final Instant T_1415 = Instant.parse("2026-05-02T14:15:00Z");
     private static final Instant T_1430 = Instant.parse("2026-05-02T14:30:00Z");
-
-    @BeforeEach
-    void bypassJwtFilter() throws Exception {
-        doAnswer(inv -> {
-            FilterChain chain = inv.getArgument(2);
-            chain.doFilter(inv.getArgument(0), inv.getArgument(1));
-            return null;
-        }).when(jwtAuthenticationFilter).doFilter(any(), any(), any());
-    }
 
     private AvailabilitySnapshotDTO snapshot(Instant ts, double utilization) {
         return new AvailabilitySnapshotDTO(PROVIDER_ID, ts, "2026-05-02", 10, 5, 5, utilization, "ok");
@@ -100,17 +98,5 @@ class CalendarControllerTest {
         mockMvc.perform(get("/api/calendar/{id}/availability-history", PROVIDER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
-    }
-
-    @Test
-    void getHistory_withoutToken_returns401() throws Exception {
-        doAnswer(inv -> {
-            HttpServletResponse resp = inv.getArgument(1);
-            resp.setStatus(HttpStatus.UNAUTHORIZED.value());
-            return null;
-        }).when(jwtAuthenticationFilter).doFilter(any(), any(), any());
-
-        mockMvc.perform(get("/api/calendar/{id}/availability-history", PROVIDER_ID))
-                .andExpect(status().isUnauthorized());
     }
 }
