@@ -19,7 +19,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.team28.booking.contracts.dto.BookingDTO;
-import com.team28.booking.contracts.dto.ProviderBookingSummaryDTO;
 import com.team28.booking.contracts.dto.ProviderDTO;
 import com.team28.booking.contracts.feign.BookingServiceClient;
 import com.team28.booking.contracts.feign.ProviderServiceClient;
@@ -482,25 +481,6 @@ public class InvoiceService extends Observable {
             });
         }
 
-        // Round 3: fetch total booking count per provider (includes bookings without invoices)
-        Map<Long, Long> totalBookingsPerProvider = new HashMap<>();
-        for (Long providerId : specialtyCache.keySet()) {
-            try {
-                ProviderBookingSummaryDTO summary = bookingServiceClient.getProviderBookingSummary(
-                        providerId, startDate.toString(), endDate.toString());
-                totalBookingsPerProvider.put(providerId, summary.totalBookings());
-            } catch (Exception e) {
-                totalBookingsPerProvider.put(providerId, 0L);
-            }
-        }
-
-        // Aggregate total bookings per specialty
-        Map<String, Long> totalBookingsPerSpecialty = new HashMap<>();
-        for (var entry : specialtyCache.entrySet()) {
-            totalBookingsPerSpecialty.merge(entry.getValue(),
-                    totalBookingsPerProvider.getOrDefault(entry.getKey(), 0L), Long::sum);
-        }
-
         long elapsed = System.currentTimeMillis() - t0;
         if (elapsed > 1000) {
             org.slf4j.LoggerFactory.getLogger(getClass())
@@ -556,7 +536,7 @@ public class InvoiceService extends Observable {
 
         List<ServiceTypeRevenueDTO> result = new ArrayList<>();
         for (String specialty : bookingIdsPerSpecialty.keySet()) {
-            long bookingCount   = totalBookingsPerSpecialty.getOrDefault(specialty, 0L);
+            long bookingCount   = bookingIdsPerSpecialty.getOrDefault(specialty, java.util.Set.of()).size();
             long cancelledCount = cancelledIdsPerSpecialty.getOrDefault(specialty, java.util.Set.of()).size();
             BigDecimal cf       = cancFee.getOrDefault(specialty, BigDecimal.ZERO);
             BigDecimal nr       = netRev.getOrDefault(specialty, BigDecimal.ZERO);
