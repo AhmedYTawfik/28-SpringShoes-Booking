@@ -502,18 +502,23 @@ public class InvoiceService extends Observable {
 
             boolean cancelled = booking != null && "CANCELLED".equals(booking.status());
 
+            Map<String, Object> txDetails = inv.getTransactionDetails();
             BigDecimal fee = BigDecimal.ZERO;
-            Object rawFee = inv.getTransactionDetails().get("cancellationFee");
-            if (rawFee != null) {
-                try { fee = new BigDecimal(rawFee.toString()); } catch (Exception ignored) { }
+            if (txDetails != null) {
+                Object rawFee = txDetails.get("cancellationFee");
+                if (rawFee != null) {
+                    try { fee = new BigDecimal(rawFee.toString()); } catch (Exception ignored) { }
+                }
             }
 
             BigDecimal net;
             if (inv.getStatus() == InvoiceStatus.REFUNDED) {
                 BigDecimal refund = BigDecimal.ZERO;
-                Object rawRefund = inv.getTransactionDetails().get("refundAmount");
-                if (rawRefund != null) {
-                    try { refund = new BigDecimal(rawRefund.toString()); } catch (Exception ignored) { }
+                if (txDetails != null) {
+                    Object rawRefund = txDetails.get("refundAmount");
+                    if (rawRefund != null) {
+                        try { refund = new BigDecimal(rawRefund.toString()); } catch (Exception ignored) { }
+                    }
                 }
                 net = inv.getAmount() != null ? inv.getAmount().subtract(refund) : BigDecimal.ZERO;
             } else {
@@ -699,10 +704,8 @@ public class InvoiceService extends Observable {
             RefundResult result = strategy.calculateRefund(invoice.getAmount(), bookingData, reason);
 
             Map<String, Object> denialPayload = invoicePayload(invoice);
-            denialPayload.put("details", Map.of(
-                "strategyName", strategy.strategyName(),
-                "denialReason", result.getReasonCode()
-            ));
+            denialPayload.put("strategyName", strategy.strategyName());
+            denialPayload.put("denialReason", result.getReasonCode());
             notifyObservers("REFUND_DENIED", denialPayload);
 
             cacheInvalidator.wildcardDelete("invoice-service::S5-F10::*");
