@@ -1,4 +1,4 @@
-package com.team28.booking.invoice.auth;
+package com.team28.booking.contracts.auth;
 
 public final class JwtConfigurationManager {
 

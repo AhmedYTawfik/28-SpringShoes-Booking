@@ -1,5 +1,6 @@
 package com.team28.booking.invoice.auth;
 
+import com.team28.booking.contracts.auth.JwtConfigurationManager;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;

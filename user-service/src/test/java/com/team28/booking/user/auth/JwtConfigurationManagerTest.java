@@ -1,5 +1,6 @@
 package com.team28.booking.user.auth;
 
+import com.team28.booking.contracts.auth.JwtConfigurationManager;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;
