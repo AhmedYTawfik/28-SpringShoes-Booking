@@ -1,5 +1,6 @@
 package com.team28.booking.user.auth;
 
+import com.team28.booking.contracts.auth.JwtConfigurationManager;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

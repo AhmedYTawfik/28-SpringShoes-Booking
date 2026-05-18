@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -31,6 +32,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         if (isPublic(request.getServletPath())) { filterChain.doFilter(request, response); return; }
+
+        String xUserId = request.getHeader("X-User-Id");
+        String xUserRole = request.getHeader("X-User-Role");
+        if (xUserId != null && !xUserId.isBlank() && xUserRole != null && !xUserRole.isBlank()) {
+            var auth = new UsernamePasswordAuthenticationToken(
+                Map.of("id", Long.valueOf(xUserId), "role", xUserRole), null,
+                List.of(new SimpleGrantedAuthority("ROLE_" + xUserRole)));
+            SecurityContextHolder.getContext().setAuthentication(auth);
+            try { filterChain.doFilter(request, response); } finally { SecurityContextHolder.clearContext(); }
+            return;
+        }
+
         AuthContext context = new AuthContext(request);
         chainHead.handle(context);
         if (context.hasError()) { response.setStatus(context.getErrorStatus()); return; }
