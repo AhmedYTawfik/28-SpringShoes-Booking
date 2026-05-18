@@ -64,7 +64,8 @@ jobs:
       - name: Build and push images
         run: |
           for service in user-service provider-service booking-service calendar-service invoice-service api-gateway; do
-            image="${REGISTRY}/${IMAGE_PREFIX}/${service}"
+            image_raw="${REGISTRY}/${IMAGE_PREFIX}/${service}"
+            image=$(echo "$image_raw" | tr '[:upper:]' '[:lower:]')
             docker build -t "${image}:${{ github.sha }}" -t "${image}:latest" "./${service}"
             docker push "${image}:${{ github.sha }}"
             docker push "${image}:latest"
