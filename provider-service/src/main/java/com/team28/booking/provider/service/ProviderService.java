@@ -202,13 +202,16 @@ public class ProviderService extends Observable {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "verifier is not an admin");
         }
 
+        if (Boolean.TRUE.equals(providerCertification.getVerified())) {
+            return provider;
+        }
         providerCertification.setVerified(true);
         Map<String, Object> metadata = providerCertification.getMetadata();
         if (metadata == null) {
             metadata = new HashMap<>();
             providerCertification.setMetadata(metadata);
         }
-        metadata.put("verifiedAt", currentDate);
+        metadata.put("verifiedAt", currentDate.toString());
         metadata.put("verifiedBy", verifiedBy.verifier());
         certificationService.updateCertification(certificationId, providerCertification);
 
