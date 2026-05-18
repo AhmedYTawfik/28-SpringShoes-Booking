@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  namespace: booking
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: neo4j
+          image: neo4j:5-community
+          ports:
+            - containerPort: 7474
+              name: http
+            - containerPort: 7687
+              name: bolt
+          env:
+            - name: NEO4J_AUTH
+              value: neo4j/neo4jpass
+            - name: NEO4J_server_memory_heap_initial__size
+              value: 256m
+            - name: NEO4J_server_memory_heap_max__size
+              value: 512m
+            - name: NEO4J_server_memory_pagecache_size
+              value: 256m
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command: ["cypher-shell", "-u", "neo4j", "-p", "neo4jpass", "RETURN 1"]
+            initialDelaySeconds: 45
+            timeoutSeconds: 10
+            periodSeconds: 15
+            failureThreshold: 12
+          volumeMounts:
+            - name: neo4j-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: neo4j-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi

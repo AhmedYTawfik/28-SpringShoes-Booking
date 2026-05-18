@@ -24,7 +24,7 @@ spec:
             - name: MONGO_INITDB_ROOT_USERNAME
               value: root
             - name: MONGO_INITDB_ROOT_PASSWORD
-              value: root
+              value: rootpass
             - name: MONGO_INITDB_DATABASE
               value: bookingmongo
           resources:
@@ -36,7 +36,7 @@ spec:
               cpu: "200m"
           readinessProbe:
             exec:
-              command: ["mongosh", "--quiet", "-u", "root", "-p", "root", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+              command: ["mongosh", "--quiet", "-u", "root", "-p", "rootpass", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
             initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
