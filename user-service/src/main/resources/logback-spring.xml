@@ -7,7 +7,7 @@
 
     <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
         <http>
-            <url>http://${LOKI_HOST:-loki}:3100/loki/api/v1/push</url>
+            <url>${LOKI_URL:-http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push}</url>
         </http>
         <format>
             <label>
@@ -21,12 +21,8 @@
                       "service": "${appName}",
                       "thread": "%thread",
                       "logger": "%logger{36}",
-                      "userId": "%X{userId:-}",
                       "correlationId": "%X{correlationId:-}",
-                      "slotId": "%X{slotId:-}",
-                      "providerId": "%X{providerId:-}",
-                      "bookingId": "%X{bookingId:-}",
-                      "routingKey": "%X{routingKey:-}",
+                      "userId": "%X{userId:-}",
                       "message": "%msg"
                     }
                 </pattern>

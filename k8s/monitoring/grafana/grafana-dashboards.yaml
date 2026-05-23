@@ -1,11 +1,466 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-invoice-dashboard
-  namespace: booking
-  labels:
-    grafana_dashboard: "1"
+  name: grafana-dashboards
+  namespace: monitoring
 data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: booking-dashboards
+        orgId: 1
+        folder: Booking
+        type: file
+        disableDeletion: true
+        editable: false
+        updateIntervalSeconds: 30
+        options:
+          path: /etc/grafana/provisioning/dashboards
+          foldersFromFilesStructure: false
+  user-dashboard.json: |
+    {
+      "title": "User Service Dashboard",
+      "uid": "user-service",
+      "schemaVersion": 38,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "logs",
+          "title": "Error Rate (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate({service=\"user-service\"} |= \"ERROR\" [5m]))",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "logs",
+          "title": "Feign Call Outcomes (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "{service=\"user-service\"} |~ \"Feign (GET|POST)\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "logs",
+          "title": "RabbitMQ Event Audit (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
+          "targets": [
+            {
+              "expr": "{service=\"user-service\"} |~ \"(Published|Consuming|Processed)\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "HTTP Request Rate (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=\"user-service\"}[5m])) by (uri, status)",
+              "legendFormat": "{{uri}} {{status}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "GET /api/users/* Latency P50/P95/P99 (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"user-service\",uri=~\"/api/users/.*\"}[5m])) by (le))",
+              "legendFormat": "P50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"user-service\",uri=~\"/api/users/.*\"}[5m])) by (le))",
+              "legendFormat": "P95",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"user-service\",uri=~\"/api/users/.*\"}[5m])) by (le))",
+              "legendFormat": "P99",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "HikariCP Connection Pool (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+          "targets": [
+            {
+              "expr": "hikaricp_connections_active{job=\"user-service\"}",
+              "legendFormat": "Active",
+              "refId": "A"
+            },
+            {
+              "expr": "hikaricp_connections_pending{job=\"user-service\"}",
+              "legendFormat": "Pending",
+              "refId": "B"
+            },
+            {
+              "expr": "hikaricp_connections{job=\"user-service\"}",
+              "legendFormat": "Total",
+              "refId": "C"
+            }
+          ]
+        }
+      ]
+    }
+  provider-dashboard.json: |
+    {
+      "title": "Provider Service Dashboard",
+      "uid": "provider-service",
+      "schemaVersion": 38,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "logs",
+          "title": "Error Rate (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate({service=\"provider-service\"} |= \"ERROR\" [5m]))",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "logs",
+          "title": "Feign Call Outcomes (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "{service=\"provider-service\"} |~ \"Feign (GET|POST)\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "logs",
+          "title": "RabbitMQ Event Audit (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
+          "targets": [
+            {
+              "expr": "{service=\"provider-service\"} |~ \"(booking\\.(placed|cancelled|completed))\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "HTTP Request Rate (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=\"provider-service\"}[5m])) by (uri, status)",
+              "legendFormat": "{{uri}} {{status}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "GET /api/providers/* Latency P50/P95/P99 (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"provider-service\",uri=~\"/api/providers/.*\"}[5m])) by (le))",
+              "legendFormat": "P50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"provider-service\",uri=~\"/api/providers/.*\"}[5m])) by (le))",
+              "legendFormat": "P95",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"provider-service\",uri=~\"/api/providers/.*\"}[5m])) by (le))",
+              "legendFormat": "P99",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "HikariCP Connection Pool (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+          "targets": [
+            {
+              "expr": "hikaricp_connections_active{job=\"provider-service\"}",
+              "legendFormat": "Active",
+              "refId": "A"
+            },
+            {
+              "expr": "hikaricp_connections_pending{job=\"provider-service\"}",
+              "legendFormat": "Pending",
+              "refId": "B"
+            },
+            {
+              "expr": "hikaricp_connections{job=\"provider-service\"}",
+              "legendFormat": "Total",
+              "refId": "C"
+            }
+          ]
+        }
+      ]
+    }
+  booking-dashboard.json: |
+    {
+      "title": "Booking Service Dashboard",
+      "uid": "booking-service",
+      "schemaVersion": 38,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "logs",
+          "title": "Error Rate (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate({service=\"booking-service\"} |= \"ERROR\" [5m]))",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "logs",
+          "title": "Saga State Transitions (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "{service=\"booking-service\"} |= \"transitioning\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "logs",
+          "title": "RabbitMQ Event Audit (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
+          "targets": [
+            {
+              "expr": "{service=\"booking-service\"} |~ \"(Published|Consuming|Processed)\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "HTTP Request Rate (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=\"booking-service\"}[5m])) by (uri, status)",
+              "legendFormat": "{{uri}} {{status}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "PUT /api/bookings/*/complete Latency P50/P95/P99 (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"booking-service\",uri=~\"/api/bookings/.*/complete\"}[5m])) by (le))",
+              "legendFormat": "P50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"booking-service\",uri=~\"/api/bookings/.*/complete\"}[5m])) by (le))",
+              "legendFormat": "P95",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"booking-service\",uri=~\"/api/bookings/.*/complete\"}[5m])) by (le))",
+              "legendFormat": "P99",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "HikariCP Connection Pool (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+          "targets": [
+            {
+              "expr": "hikaricp_connections_active{job=\"booking-service\"}",
+              "legendFormat": "Active",
+              "refId": "A"
+            },
+            {
+              "expr": "hikaricp_connections_pending{job=\"booking-service\"}",
+              "legendFormat": "Pending",
+              "refId": "B"
+            },
+            {
+              "expr": "hikaricp_connections{job=\"booking-service\"}",
+              "legendFormat": "Total",
+              "refId": "C"
+            }
+          ]
+        }
+      ]
+    }
+  calendar-dashboard.json: |
+    {
+      "title": "Calendar Service Dashboard",
+      "uid": "calendar-service",
+      "schemaVersion": 38,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "logs",
+          "title": "Error Rate (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate({service=\"calendar-service\"} |= \"ERROR\" [5m]))",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "logs",
+          "title": "Feign Call Outcomes (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "{service=\"calendar-service\"} |~ \"Feign (GET|POST)\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "logs",
+          "title": "RabbitMQ Event Audit (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
+          "targets": [
+            {
+              "expr": "{service=\"calendar-service\"} |~ \"(booking\\.(completed|cancelled))\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "HTTP Request Rate (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=\"calendar-service\"}[5m])) by (uri, status)",
+              "legendFormat": "{{uri}} {{status}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "GET /api/timeslots/* Latency P50/P95/P99 (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"calendar-service\",uri=~\"/api/timeslots/.*\"}[5m])) by (le))",
+              "legendFormat": "P50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"calendar-service\",uri=~\"/api/timeslots/.*\"}[5m])) by (le))",
+              "legendFormat": "P95",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"calendar-service\",uri=~\"/api/timeslots/.*\"}[5m])) by (le))",
+              "legendFormat": "P99",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "HikariCP Connection Pool (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+          "targets": [
+            {
+              "expr": "hikaricp_connections_active{job=\"calendar-service\"}",
+              "legendFormat": "Active",
+              "refId": "A"
+            },
+            {
+              "expr": "hikaricp_connections_pending{job=\"calendar-service\"}",
+              "legendFormat": "Pending",
+              "refId": "B"
+            },
+            {
+              "expr": "hikaricp_connections{job=\"calendar-service\"}",
+              "legendFormat": "Total",
+              "refId": "C"
+            }
+          ]
+        }
+      ]
+    }
   invoice-dashboard.json: |
     {
       "title": "Invoice Service Dashboard",
@@ -16,99 +471,102 @@ data:
       "panels": [
         {
           "id": 1,
-          "title": "Error Rate (ERROR logs/min)",
-          "type": "timeseries",
-          "datasource": "Loki",
-          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 6 },
+          "type": "logs",
+          "title": "Error Rate (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
           "targets": [
             {
-              "expr": "sum(rate({service=\"invoice-service\"} |= \"ERROR\" [1m])) by (app)",
-              "legendFormat": "errors/min"
+              "expr": "sum(rate({service=\"invoice-service\"} |= \"ERROR\" [5m]))",
+              "refId": "A"
             }
           ]
         },
         {
           "id": 2,
-          "title": "Feign Call Outcomes (success vs exception)",
-          "type": "timeseries",
-          "datasource": "Loki",
-          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 6 },
+          "type": "logs",
+          "title": "Feign Call Outcomes (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
           "targets": [
             {
-              "expr": "sum(rate({service=\"invoice-service\"} |~ \"Feign .* — after\" [1m]))",
-              "legendFormat": "feign-success/min"
-            },
-            {
-              "expr": "sum(rate({service=\"invoice-service\"} |~ \"Feign .* — exception\" [1m]))",
-              "legendFormat": "feign-error/min"
+              "expr": "{service=\"invoice-service\"} |~ \"Feign (GET|POST)\"",
+              "refId": "A"
             }
           ]
         },
         {
           "id": 3,
-          "title": "RabbitMQ Event Audit (initiated vs consumed)",
-          "type": "timeseries",
-          "datasource": "Loki",
-          "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
+          "type": "logs",
+          "title": "RabbitMQ Event Audit (LogQL)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
           "targets": [
             {
-              "expr": "sum(rate({service=\"invoice-service\"} |= \"Published payment.initiated\" [1m]))",
-              "legendFormat": "payment.initiated published/min"
-            },
-            {
-              "expr": "sum(rate({service=\"invoice-service\"} |= \"Received booking.completed\" [1m]))",
-              "legendFormat": "booking.completed consumed/min"
+              "expr": "{service=\"invoice-service\"} |~ \"(payment\\.(completed|failed|refunded)|booking\\.(completed|cancelled))\"",
+              "refId": "A"
             }
           ]
         },
         {
           "id": 4,
-          "title": "HTTP Request Rate (req/sec per endpoint)",
           "type": "timeseries",
-          "datasource": "Prometheus",
-          "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+          "title": "HTTP Request Rate (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
           "targets": [
             {
-              "expr": "sum(rate(http_server_requests_seconds_count{job=\"invoice-service\"}[1m])) by (uri, method)",
-              "legendFormat": "{{method}} {{uri}}"
+              "expr": "sum(rate(http_server_requests_seconds_count{job=\"invoice-service\"}[5m])) by (uri, status)",
+              "legendFormat": "{{uri}} {{status}}",
+              "refId": "A"
             }
           ]
         },
         {
           "id": 5,
-          "title": "Process Invoice Latency Percentiles (P50/P95/P99)",
           "type": "timeseries",
-          "datasource": "Prometheus",
-          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
+          "title": "POST /api/invoices/booking/* Latency P50/P95/P99 (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
           "targets": [
             {
-              "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\", uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
-              "legendFormat": "P50"
+              "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\",uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
+              "legendFormat": "P50",
+              "refId": "A"
             },
             {
-              "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\", uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
-              "legendFormat": "P95"
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\",uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
+              "legendFormat": "P95",
+              "refId": "B"
             },
             {
-              "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\", uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
-              "legendFormat": "P99"
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"invoice-service\",uri=~\"/api/invoices/booking/.*\"}[5m])) by (le))",
+              "legendFormat": "P99",
+              "refId": "C"
             }
           ]
         },
         {
           "id": 6,
-          "title": "HikariCP Connection Pool (active vs pool size)",
           "type": "timeseries",
-          "datasource": "Prometheus",
-          "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
+          "title": "HikariCP Connection Pool (PromQL)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
           "targets": [
             {
               "expr": "hikaricp_connections_active{job=\"invoice-service\"}",
-              "legendFormat": "active connections"
+              "legendFormat": "Active",
+              "refId": "A"
             },
             {
-              "expr": "hikaricp_connections_max{job=\"invoice-service\"}",
-              "legendFormat": "pool max size"
+              "expr": "hikaricp_connections_pending{job=\"invoice-service\"}",
+              "legendFormat": "Pending",
+              "refId": "B"
+            },
+            {
+              "expr": "hikaricp_connections{job=\"invoice-service\"}",
+              "legendFormat": "Total",
+              "refId": "C"
             }
           ]
         }
