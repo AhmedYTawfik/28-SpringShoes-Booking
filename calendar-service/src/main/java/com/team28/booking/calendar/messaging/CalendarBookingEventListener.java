@@ -57,8 +57,8 @@ public class CalendarBookingEventListener {
             return;
         }
 
-        timeSlotRepository.findByProviderIdAndDateAndStartTime(
-                event.providerId(), booking.appointmentDate(), booking.startTime()
+        timeSlotRepository.findByProviderIdAndDateAndStartTimeLessThanEqualAndEndTimeGreaterThan(
+                event.providerId(), booking.appointmentDate(), booking.startTime(), booking.startTime()
         ).ifPresent(slot -> publisher.publishSlotReserved(slot.getId(), event.providerId(), event.bookingId()));
     }
 
@@ -81,8 +81,8 @@ public class CalendarBookingEventListener {
             return;
         }
 
-        timeSlotRepository.findByProviderIdAndDateAndStartTime(
-                event.providerId(), booking.appointmentDate(), booking.startTime()
+        timeSlotRepository.findByProviderIdAndDateAndStartTimeLessThanEqualAndEndTimeGreaterThan(
+                event.providerId(), booking.appointmentDate(), booking.startTime(), booking.startTime()
         ).ifPresent(slot -> publisher.publishSlotReleased(slot.getId(), event.providerId(), event.bookingId()));
     }
 

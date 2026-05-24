@@ -1,6 +1,10 @@
 package com.team28.booking.calendar.repository;
 
-import com.team28.booking.calendar.model.TimeSlot;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -8,17 +12,14 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.data.rest.core.annotation.RepositoryRestResource;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.util.List;
-import java.util.Optional;
+import com.team28.booking.calendar.model.TimeSlot;
 
 @RepositoryRestResource(exported=false)
 public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
 
     Optional<TimeSlot> findTopByProviderIdOrderByDateDescStartTimeDesc(Long providerId);
 
-    Optional<TimeSlot> findByProviderIdAndDateAndStartTime(Long providerId, LocalDate date, LocalTime startTime);
+    Optional<TimeSlot> findByProviderIdAndDateAndStartTimeLessThanEqualAndEndTimeGreaterThan(Long providerId, LocalDate date, LocalTime startTime, LocalTime endTime);
 
     @Modifying
     @Transactional

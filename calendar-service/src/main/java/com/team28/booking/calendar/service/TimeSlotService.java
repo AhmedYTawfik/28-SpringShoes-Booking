@@ -1,33 +1,5 @@
 package com.team28.booking.calendar.service;
 
-import com.team28.booking.calendar.adapter.ObjectArrayDtoAdapter;
-import com.team28.booking.calendar.cache.CacheInvalidator;
-import com.team28.booking.contracts.dto.TimeSlotDTO;
-import com.team28.booking.calendar.cassandra.CalendarAvailabilityEvent;
-import com.team28.booking.calendar.cassandra.CalendarAvailabilityEventRepository;
-import com.team28.booking.calendar.dto.AvailabilitySnapshotRequest;
-import com.team28.booking.calendar.dto.AvailableProviderDTO;
-import com.team28.booking.calendar.dto.CalendarAnalyticsDTO;
-import com.team28.booking.calendar.dto.IdleProviderDTO;
-import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
-import com.team28.booking.calendar.model.TimeSlot;
-import com.team28.booking.calendar.observer.MongoEventLogger;
-import com.team28.booking.calendar.observer.Observable;
-import com.team28.booking.calendar.repository.TimeSlotRepository;
-import com.team28.booking.contracts.dto.ProviderDTO;
-import com.team28.booking.contracts.feign.ProviderServiceClient;
-import feign.FeignException;
-import jakarta.annotation.PostConstruct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -40,6 +12,36 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.team28.booking.calendar.adapter.ObjectArrayDtoAdapter;
+import com.team28.booking.calendar.cache.CacheInvalidator;
+import com.team28.booking.calendar.cassandra.CalendarAvailabilityEvent;
+import com.team28.booking.calendar.cassandra.CalendarAvailabilityEventRepository;
+import com.team28.booking.calendar.dto.AvailabilitySnapshotRequest;
+import com.team28.booking.calendar.dto.AvailableProviderDTO;
+import com.team28.booking.calendar.dto.CalendarAnalyticsDTO;
+import com.team28.booking.calendar.dto.IdleProviderDTO;
+import com.team28.booking.calendar.dto.ProviderUtilizationDTO;
+import com.team28.booking.calendar.model.TimeSlot;
+import com.team28.booking.calendar.observer.MongoEventLogger;
+import com.team28.booking.calendar.observer.Observable;
+import com.team28.booking.calendar.repository.TimeSlotRepository;
+import com.team28.booking.contracts.dto.ProviderDTO;
+import com.team28.booking.contracts.dto.TimeSlotDTO;
+import com.team28.booking.contracts.feign.ProviderServiceClient;
+
+import feign.FeignException;
+import jakarta.annotation.PostConstruct;
 
 @Service
 public class TimeSlotService extends Observable {
@@ -309,7 +311,7 @@ public class TimeSlotService extends Observable {
 
     @Transactional(readOnly = true)
     public TimeSlotDTO getSlotForBooking(Long providerId, LocalDate date, LocalTime startTime) {
-        TimeSlot slot = timeSlotRepository.findByProviderIdAndDateAndStartTime(providerId, date, startTime)
+        TimeSlot slot = timeSlotRepository.findByProviderIdAndDateAndStartTimeLessThanEqualAndEndTimeGreaterThan(providerId, date, startTime, startTime)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "No slot found for provider " + providerId + " at " + date + " " + startTime));
         return toTimeSlotDTO(slot);
