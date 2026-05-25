@@ -1,4 +1,4 @@
-<![CDATA[<div align="center">
+<div align="center">
 
 <img src="./docs/assets/logo.png" alt="SpringShoes Logo" width="200" style="border-radius: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
 
@@ -577,4 +577,3 @@ mvn failsafe:integration-test failsafe:verify
 **Built with ❤️ by Team 28** · Spring 2026
 
 </div>
-]]>
