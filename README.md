@@ -1,5 +1,7 @@
 <![CDATA[<div align="center">
 
+<img src="./docs/assets/logo.png" alt="SpringShoes Logo" width="200" style="border-radius: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+
 # 👟 SpringShoes Booking Platform
 
 ### A Cloud-Native Microservices Booking System
@@ -324,6 +326,21 @@ CLOSED ─── 50% of last 5 calls fail ──▶ OPEN ─── 5s cooldown �
 | Half-open test calls | `2` |
 
 Each Feign client has a dedicated **fallback class** that returns safe defaults when the target service is unavailable.
+
+---
+
+## 📚 Documentation & Study Guides
+
+The project includes comprehensive documentation to help team members understand the core concepts, prepare for evaluations, and execute advanced features. Make sure to check these out!
+
+| Guide | Location | Description |
+|---|---|---|
+| **M3 Study Guide** | [`docs/MS3_Study_Guide.md`](./docs/MS3_Study_Guide.md) | Deep dive into Microservices, Saga Pattern, Kubernetes, Observability, OpenFeign, and RabbitMQ |
+| **Bonus Features Guide** | [`docs/Bonus_Guide.md`](./docs/Bonus_Guide.md) | Step-by-step for Unit/Integration/E2E testing, GitHub Actions CI/CD, Circuit Breakers, Ingress, and HPA |
+| **S4 INFRA Guide** | [`docs/S4_INFRA_Guide.md`](./docs/S4_INFRA_Guide.md) | Infrastructure setup and configuration for `calendar-service` |
+| **S4 EVENTS Guide** | [`docs/S4_EVENTS_Guide.md`](./docs/S4_EVENTS_Guide.md) | Detailed RabbitMQ event flows for `calendar-service` |
+| **S4 READ DB Guide** | [`docs/S4_READ_DB_Guide.md`](./docs/S4_READ_DB_Guide.md) | Database isolation guide for `calendar-service` |
+| **M3 Implementation Plan** | [`docs/booking-m3.md`](./docs/booking-m3.md) | The original comprehensive milestone 3 specification |
 
 ---
 
