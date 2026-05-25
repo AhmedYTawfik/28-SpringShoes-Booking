@@ -1,0 +1,679 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>S4-EVENTS Deep Dive</title>
+<style>body{font-family:Segoe UI,Arial;max-width:880px;margin:0 auto;padding:20px;font-size:13px;line-height:1.6;color:#1a1a1a}
+h1{color:#1a56db;border-bottom:3px solid #1a56db;padding-bottom:8px;font-size:22px}
+h2{color:#1e40af;border-bottom:2px solid #dbeafe;padding-bottom:5px;font-size:17px;margin-top:25px}
+h3{color:#374151;font-size:14px}h4{color:#4b5563;font-size:13px}
+pre{background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;overflow-x:auto;font-size:11.5px;line-height:1.4}
+code.i{background:#e0e7ff;color:#3730a3;padding:1px 4px;border-radius:3px;font-size:12px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:12px}
+th{background:#1e40af;color:white;padding:6px;text-align:left}
+td{border:1px solid #d1d5db;padding:5px 7px}tr:nth-child(even){background:#f3f4f6}
+hr{border:none;border-top:2px solid #e5e7eb;margin:15px 0}ul{padding-left:18px}li{margin-bottom:3px}
+strong{color:#1e40af}</style></head><body><h1>S4-EVENTS Deep Dive — Ahmed Yasser Tawfik (calendar-service)</h1>
+
+<h2>Your Slice Overview</h2>
+
+<p><strong>Slice #11 — S4-EVENTS</strong> covers:</p>
+<ul>
+<li><code class="i">calendar.events</code> TopicExchange + publishers (<code class="i">slot.reserved</code>, <code class="i">slot.released</code>)</li>
+<li>Consumer queue <code class="i">calendar.booking.saga-listener</code> + DLQ</li>
+<li>Consumers for <code class="i">booking.placed</code> / <code class="i">booking.completed</code> / <code class="i">booking.cancelled</code></li>
+<li>calendar-service K8s Deployment + ClusterIP Service + ConfigMap</li>
+<li>Actuator config (prometheus + health endpoints)</li>
+<li>≥3 PromQL panels in Grafana dashboard</li>
+<li>S4-F3 and S4-F9 Java refactor (Feign replaces SQL JOIN)</li>
+</ul>
+
+<hr>
+
+<h2>1. RABBITMQ TOPOLOGY — What You Built</h2>
+
+<h3>Concept: What is a TopicExchange?</h3>
+<p>A TopicExchange is a RabbitMQ router. When a message is published with a routing key (e.g., <code class="i">booking.placed</code>), the exchange checks all bindings and delivers the message to queues whose binding key matches.</p>
+
+<h3>Concept: What is a Queue?</h3>
+<p>A queue is a mailbox that holds messages until a consumer reads them. Each service has its own queue so messages are delivered independently.</p>
+
+<h3>Concept: What is a Binding?</h3>
+<p>A binding is a RULE that says: &quot;When a message with routing key X arrives at exchange Y, send it to queue Z.&quot;</p>
+
+<h3>Concept: What is a DLQ (Dead Letter Queue)?</h3>
+<p>When a consumer fails to process a message after 3 retries, the message goes to the DLQ instead of being lost. It&#x27;s a &quot;graveyard&quot; for failed messages that you can inspect later.</p>
+
+<h3>Your Topology Diagram</h3>
+
+<pre><code>
+booking-service publishes to:
+  Exchange: booking.events (TopicExchange)
+    ├── routing key: booking.placed    ──→ your queue: calendar.booking.saga-listener
+    ├── routing key: booking.completed ──→ your queue: calendar.booking.saga-listener
+    └── routing key: booking.cancelled ──→ your queue: calendar.booking.saga-listener
+
+Your calendar-service publishes to:
+  Exchange: calendar.events (TopicExchange)
+    ├── routing key: slot.reserved   (observability only)
+    └── routing key: slot.released   (observability only)
+
+If your consumer FAILS 3 times:
+  calendar.booking.saga-listener ──→ DLX: calendar.dlx ──→ DLQ: calendar.booking.saga-listener.dlq
+</code></pre>
+
+<h3>Your Code — CalendarEventConfig.java</h3>
+
+<pre><code>
+@Configuration
+public class CalendarEventConfig {
+
+    // YOUR exchange — for publishing slot events
+    @Bean
+    public TopicExchange calendarEventsExchange() {
+        return new TopicExchange(&quot;calendar.events&quot;);
+    }
+
+    // REFERENCE to booking-service&#x27;s exchange — so you can bind to it
+    @Bean
+    public TopicExchange calendarBookingEventsExchange() {
+        return new TopicExchange(&quot;booking.events&quot;);
+    }
+
+    // YOUR consumer queue — receives booking events
+    @Bean
+    public Queue calendarBookingSagaQueue() {
+        return QueueBuilder.durable(&quot;calendar.booking.saga-listener&quot;)
+            .withArgument(&quot;x-dead-letter-exchange&quot;, &quot;calendar.dlx&quot;)           // Failed → DLX
+            .withArgument(&quot;x-dead-letter-routing-key&quot;, &quot;calendar.booking.saga-listener.dlq&quot;)
+            .build();
+    }
+
+    // Dead letter exchange
+    @Bean
+    public TopicExchange calendarDlx() {
+        return new TopicExchange(&quot;calendar.dlx&quot;);
+    }
+
+    // Dead letter queue
+    @Bean
+    public Queue calendarBookingSagaDlq() {
+        return QueueBuilder.durable(&quot;calendar.booking.saga-listener.dlq&quot;).build();
+    }
+
+    // Bind DLQ to DLX
+    @Bean
+    public Binding calendarDlqBinding() {
+        return BindingBuilder.bind(calendarBookingSagaDlq())
+            .to(calendarDlx()).with(&quot;calendar.booking.saga-listener.dlq&quot;);
+    }
+
+    // Bind YOUR queue to booking.events exchange for 3 routing keys
+    @Bean
+    public Binding calendarBookingPlacedBinding() {
+        return BindingBuilder.bind(calendarBookingSagaQueue())
+            .to(calendarBookingEventsExchange()).with(&quot;booking.placed&quot;);
+    }
+    @Bean
+    public Binding calendarBookingCompletedBinding() {
+        return BindingBuilder.bind(calendarBookingSagaQueue())
+            .to(calendarBookingEventsExchange()).with(&quot;booking.completed&quot;);
+    }
+    @Bean
+    public Binding calendarBookingCancelledBinding() {
+        return BindingBuilder.bind(calendarBookingSagaQueue())
+            .to(calendarBookingEventsExchange()).with(&quot;booking.cancelled&quot;);
+    }
+
+    // JSON serializer — events are sent/received as JSON
+    @Bean
+    public Jackson2JsonMessageConverter messageConverter() {
+        return new Jackson2JsonMessageConverter();
+    }
+}
+</code></pre>
+
+<h3>Why <code class="i">durable(&quot;calendar.booking.saga-listener&quot;)</code>?</h3>
+<p>Durable = survives RabbitMQ restart. Non-durable queues are deleted when RabbitMQ restarts, losing all messages.</p>
+
+<h3>Why Jackson2JsonMessageConverter?</h3>
+<p>Events are Java records (e.g., <code class="i">BookingPlacedEvent</code>). Jackson converts them to JSON when publishing and back to Java when consuming. Without this, RabbitMQ uses Java serialization (ugly and fragile).</p>
+
+<hr>
+
+<h2>2. EVENT CONSUMERS — What Happens When Events Arrive</h2>
+
+<h3>Your Code — CalendarBookingEventListener.java</h3>
+
+<pre><code>
+@Service
+@RabbitListener(queues = &quot;calendar.booking.saga-listener&quot;)  // Listen on this queue
+public class CalendarBookingEventListener {
+</code></pre>
+
+<p><code class="i">@RabbitListener</code> tells Spring: &quot;This class listens on the queue. Route incoming messages to the appropriate <code class="i">@RabbitHandler</code> method based on the message type.&quot;</p>
+
+<h3>Consumer 1: booking.placed → Mark Slot as BOOKED</h3>
+
+<p>When a new booking is placed, reserve the time slot so no one else can book it.</p>
+
+<pre><code>
+@RabbitHandler
+public void handleBookingPlaced(BookingPlacedEvent event) {
+    log.info(&quot;Received booking.placed: bookingId={} providerId={}&quot;, 
+             event.bookingId(), event.providerId());
+
+    // Step 1: Feign call to booking-service to get appointment date/time
+    BookingDTO booking = fetchBooking(event.bookingId());
+    if (booking == null) return;
+
+    // Step 2: Atomic UPDATE — idempotent!
+    int updated = timeSlotRepository.reserveSlot(
+        event.providerId(), booking.appointmentDate(), booking.startTime());
+
+    if (updated == 0) {
+        log.info(&quot;Slot already reserved — idempotent skip&quot;);
+        return;  // Duplicate event → safe no-op
+    }
+
+    // Step 3: Publish slot.reserved (optional, for observability)
+    timeSlotRepository.findByProviderIdAndDateAndStartTime(...)
+        .ifPresent(slot -&gt; publisher.publishSlotReserved(
+            slot.getId(), event.providerId(), event.bookingId()));
+}
+</code></pre>
+
+<p>The SQL behind <code class="i">reserveSlot()</code>:</p>
+<pre><code>
+UPDATE time_slots SET available = false
+WHERE provider_id = :providerId AND date = :date AND start_time = :startTime
+  AND available = true    -- Idempotency guard! Only updates if currently available
+</code></pre>
+
+<h3>Consumer 2: booking.cancelled → FREE the Slot</h3>
+
+<p>When a booking is cancelled, release the time slot so others can book it.</p>
+
+<pre><code>
+@RabbitHandler
+public void handleBookingCancelled(BookingCancelledEvent event) {
+    log.info(&quot;Received booking.cancelled: bookingId={} providerId={}&quot;, 
+             event.bookingId(), event.providerId());
+
+    BookingDTO booking = fetchBooking(event.bookingId());
+    if (booking == null) return;
+
+    // Atomic UPDATE — idempotent!
+    int updated = timeSlotRepository.releaseSlot(
+        event.providerId(), booking.appointmentDate(), booking.startTime());
+
+    if (updated == 0) {
+        log.info(&quot;Slot already available — idempotent skip&quot;);
+        return;
+    }
+
+    // Publish slot.released (optional)
+    publisher.publishSlotReleased(slot.getId(), event.providerId(), event.bookingId());
+}
+</code></pre>
+
+<p>The SQL behind <code class="i">releaseSlot()</code>:</p>
+<pre><code>
+UPDATE time_slots SET available = true
+WHERE provider_id = :providerId AND date = :date AND start_time = :startTime
+  AND available = false   -- Only updates if currently booked
+</code></pre>
+
+<h3>Consumer 3: booking.completed → Audit Log (MongoDB)</h3>
+
+<p>When a booking is completed, just log it for audit purposes. The slot stays booked.</p>
+
+<pre><code>
+@RabbitHandler
+public void handleBookingCompleted(BookingCompletedEvent event) {
+    log.info(&quot;Received booking.completed: bookingId={} providerId={}&quot;, 
+             event.bookingId(), event.providerId());
+
+    Map&lt;String, Object&gt; payload = new HashMap&lt;&gt;();
+    payload.put(&quot;bookingId&quot;, event.bookingId());
+    payload.put(&quot;userId&quot;, event.userId());
+    payload.put(&quot;providerId&quot;, event.providerId());
+    payload.put(&quot;totalPrice&quot;, event.totalPrice());
+    timeSlotService.fireEvent(&quot;TRIP_COMPLETED&quot;, payload);  // → MongoDB Observer
+}
+</code></pre>
+
+<p>No database UPDATE — just fires the Observer pattern to log to MongoDB&#x27;s <code class="i">calendar_events</code> collection.</p>
+
+<h3>Concept: Idempotent Consumers — CRITICAL</h3>
+
+<p>RabbitMQ delivers at-least-once. The same event might arrive TWICE. Your consumers MUST handle duplicates safely:</p>
+
+<pre><code>
+-- reserveSlot: &quot;UPDATE ... WHERE available = true&quot;
+-- If the slot is ALREADY reserved (available=false), the WHERE clause
+-- doesn&#x27;t match → returns 0 → consumer logs &quot;idempotent skip&quot; → no-op
+</code></pre>
+
+<p>This is a STATE-BASED GUARD: the UPDATE only succeeds if the data is in the expected state.</p>
+
+<h3>Error Handling — fetchBooking helper</h3>
+
+<pre><code>
+private BookingDTO fetchBooking(Long bookingId) {
+    try {
+        return bookingServiceClient.getBooking(bookingId);  // Feign call
+    } catch (FeignException.NotFound e) {
+        log.warn(&quot;Booking {} not found — skipping slot update&quot;, bookingId);
+        return null;  // Skip gracefully
+    } catch (FeignException e) {
+        log.error(&quot;booking-service unavailable: {}&quot;, e.getMessage());
+        throw new RuntimeException(&quot;booking-service unavailable&quot;, e);
+        // ↑ Re-throw → Spring AMQP retries 3 times → then sends to DLQ
+    }
+}
+</code></pre>
+
+<p>Key difference:</p>
+<ul>
+<li><strong>404 (NotFound):</strong> Skip the event gracefully — booking doesn&#x27;t exist, nothing to do</li>
+<li><strong>503/timeout (service down):</strong> RE-THROW so Spring retries. After 3 retries → DLQ</li>
+</ul>
+
+<hr>
+
+<h2>3. EVENT PUBLISHERS — slot.reserved / slot.released</h2>
+
+<pre><code>
+@Service
+public class CalendarEventPublisher {
+    private static final String EXCHANGE = &quot;calendar.events&quot;;
+    private final RabbitTemplate rabbitTemplate;
+
+    public void publishSlotReserved(Long slotId, Long providerId, Long bookingId) {
+        SlotReservedEvent event = new SlotReservedEvent(slotId, providerId, bookingId);
+        rabbitTemplate.convertAndSend(EXCHANGE, &quot;slot.reserved&quot;, event);
+        //                            ↑ exchange  ↑ routing key  ↑ payload
+    }
+
+    public void publishSlotReleased(Long slotId, Long providerId, Long bookingId) {
+        SlotReleasedEvent event = new SlotReleasedEvent(slotId, providerId, bookingId);
+        rabbitTemplate.convertAndSend(EXCHANGE, &quot;slot.released&quot;, event);
+    }
+}
+</code></pre>
+
+<p>Event payloads (from contracts module):</p>
+<pre><code>
+public record SlotReservedEvent(Long slotId, Long providerId, Long bookingId) {}
+public record SlotReleasedEvent(Long slotId, Long providerId, Long bookingId) {}
+</code></pre>
+
+<p>These are OPTIONAL — for observability/audit only. No other service consumes them in the current architecture.</p>
+
+<hr>
+
+<h2>4. KUBERNETES — calendar-service Deployment + Service + ConfigMap</h2>
+
+<h3>4a. ConfigMap (non-sensitive config)</h3>
+
+<pre><code>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calendar-service-config
+  namespace: booking
+data:
+  POSTGRES_HOST: calendar-postgres          # DB host (K8s DNS name)
+  POSTGRES_PORT: &quot;5432&quot;
+  POSTGRES_DB: bookingdb-calendar           # Isolated DB name
+  RABBITMQ_HOST: rabbitmq                   # RabbitMQ DNS name
+  RABBITMQ_PORT: &quot;5672&quot;
+  LOKI_HOST: loki.monitoring.svc.cluster.local  # Cross-namespace!
+  FEIGN_USER_SERVICE_URL: user-service:8080     # Feign targets
+  FEIGN_PROVIDER_SERVICE_URL: provider-service:8080
+  FEIGN_BOOKING_SERVICE_URL: booking-service:8080
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: prometheus,health,info
+</code></pre>
+
+<p>Why ConfigMap? Stores non-sensitive config as environment variables. The container reads <code class="i">$POSTGRES_HOST</code> etc. at startup.</p>
+
+<p>Why <code class="i">loki.monitoring.svc.cluster.local</code>? Loki is in the <code class="i">monitoring</code> namespace, not <code class="i">booking</code>. Cross-namespace DNS requires the full name.</p>
+
+<h3>4b. Deployment (runs the app containers)</h3>
+
+<pre><code>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calendar-service
+  namespace: booking
+spec:
+  replicas: 2                 # 2 pods for high availability
+  selector:
+    matchLabels:
+      app: calendar-service
+  template:
+    spec:
+      containers:
+        - name: calendar-service
+          image: team28/calendar-service:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: calendar-service-config    # Load ConfigMap as env vars
+            - secretRef:
+                name: calendar-service-secret    # Load Secret as env vars
+          readinessProbe:
+            httpGet:
+              path: /actuator/health       # K8s checks this
+              port: 8080
+            initialDelaySeconds: 30        # Wait 30s before first check
+            periodSeconds: 10              # Check every 10s
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60        # Wait 60s (Spring takes time to start)
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: &quot;250m&quot;                  # Minimum guaranteed CPU
+              memory: &quot;512Mi&quot;
+            limits:
+              cpu: &quot;1&quot;                     # Maximum allowed CPU
+              memory: &quot;1Gi&quot;
+</code></pre>
+
+<p><strong>replicas: 2</strong> — Always 2 pods running. If one crashes, the other serves traffic.</p>
+
+<p><strong>readinessProbe</strong> — &quot;Am I ready to receive traffic?&quot; K8s won&#x27;t send requests until this passes. Uses <code class="i">/actuator/health</code> (Spring Boot health endpoint).</p>
+
+<p><strong>livenessProbe</strong> — &quot;Am I still alive?&quot; If this fails, K8s RESTARTS the pod. Uses the same <code class="i">/actuator/health</code>.</p>
+
+<p><strong>resources.requests</strong> — Minimum CPU/RAM guaranteed. K8s uses this for scheduling decisions.</p>
+<p><strong>resources.limits</strong> — Maximum CPU/RAM allowed. If exceeded, K8s throttles (CPU) or kills (RAM) the pod.</p>
+
+<h3>4c. ClusterIP Service (internal networking)</h3>
+
+<pre><code>
+apiVersion: v1
+kind: Service
+metadata:
+  name: calendar-service
+  namespace: booking
+spec:
+  selector:
+    app: calendar-service    # Routes to pods with this label
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP            # Only reachable inside the cluster
+</code></pre>
+
+<p>ClusterIP = internal DNS name. Other services call <code class="i">http://calendar-service:8080</code> and K8s load-balances across the 2 pods.</p>
+
+<hr>
+
+<h2>5. ACTUATOR — Exposing Health and Metrics</h2>
+
+<pre><code>
+# In application.yml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: &quot;prometheus,health,info&quot;
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true   # Enable P50/P95/P99 latency
+</code></pre>
+
+<p>This exposes 3 endpoints:</p>
+<ul>
+<li><code class="i">/actuator/health</code> — used by K8s probes + human debugging</li>
+<li><code class="i">/actuator/prometheus</code> — Prometheus scrapes this for metrics</li>
+<li><code class="i">/actuator/info</code> — app info</li>
+</ul>
+
+<p><code class="i">percentiles-histogram: true</code> enables histogram buckets so Prometheus can calculate P50/P95/P99 latency percentiles.</p>
+
+<hr>
+
+<h2>6. PROMQL PANELS — Grafana Dashboard</h2>
+
+<p>Your dashboard has 3 PromQL panels:</p>
+
+<h3>Panel 4: HTTP Request Rate</h3>
+<pre><code>
+sum(rate(http_server_requests_seconds_count{job=&quot;calendar-service&quot;}[5m])) by (uri, status)
+</code></pre>
+<ul>
+<li><code class="i">http_server_requests_seconds_count</code> — Spring Boot auto-metric: total request count</li>
+<li><code class="i">rate(...[5m])</code> — per-second rate over 5-minute windows</li>
+<li><code class="i">by (uri, status)</code> — group by endpoint path and HTTP status code</li>
+<li>Shows: how many requests/second per endpoint (200s vs 404s vs 500s)</li>
+</ul>
+
+<h3>Panel 5: Latency P50/P95/P99</h3>
+<pre><code>
+histogram_quantile(0.95, sum(rate(
+    http_server_requests_seconds_bucket{job=&quot;calendar-service&quot;,uri=~&quot;/api/timeslots/.*&quot;}[5m]
+)) by (le))
+</code></pre>
+<ul>
+<li><code class="i">http_server_requests_seconds_bucket</code> — histogram of request durations</li>
+<li><code class="i">histogram_quantile(0.95, ...)</code> — 95th percentile: &quot;95% of requests complete within X seconds&quot;</li>
+<li>P50 = median, P95 = 95th percentile, P99 = 99th percentile</li>
+<li>Shows: if P99 spikes, you have slow outlier requests</li>
+</ul>
+
+<h3>Panel 6: HikariCP Connection Pool</h3>
+<pre><code>
+hikaricp_connections_active{job=&quot;calendar-service&quot;}
+hikaricp_connections_pending{job=&quot;calendar-service&quot;}
+hikaricp_connections{job=&quot;calendar-service&quot;}
+</code></pre>
+<ul>
+<li>Active = connections currently in use by queries</li>
+<li>Pending = threads waiting for a connection (BAD if high → pool exhaustion)</li>
+<li>Total = all connections in the pool</li>
+<li>Shows: is your database connection pool healthy?</li>
+</ul>
+
+<h3>PromQL Syntax Cheat Sheet</h3>
+<table><tr><th>Function</th><th>What it does</th></tr>
+<tr><td><code class="i">rate(metric[5m])</code></td><td>Per-second increase rate over 5 minutes</td></tr>
+<tr><td><code class="i">sum(...) by (label)</code></td><td>Aggregate and group by label</td></tr>
+<tr><td><code class="i">histogram_quantile(0.95, ...)</code></td><td>Calculate percentile from histogram</td></tr>
+<tr><td><code class="i">{job=&quot;calendar-service&quot;}</code></td><td>Label filter: select only calendar-service metrics</td></tr>
+<tr><td><code class="i">{uri=~&quot;/api/timeslots/.*&quot;}</code></td><td>Regex label filter</td></tr>
+</table>
+
+<hr>
+
+<h2>7. S4-F3 and S4-F9 JAVA REFACTOR</h2>
+
+<h3>What Changed: SQL JOIN → Feign Call</h3>
+
+<p><strong>BEFORE (M1/M2) — S4-F3 Find Available Providers:</strong></p>
+<pre><code>
+-- ONE query across shared database
+SELECT p.id, p.name, p.specialty, p.rating, COUNT(ts.id) AS availableSlots
+FROM time_slots ts
+JOIN providers p ON ts.provider_id = p.id    -- CROSS-SERVICE JOIN!
+WHERE ts.date = :date AND ts.available = true
+  AND (:specialty IS NULL OR p.specialty = :specialty)
+GROUP BY p.id, p.name, p.specialty, p.rating
+ORDER BY p.rating DESC
+</code></pre>
+
+<p><strong>AFTER (M3) — Two-step: local query + Feign calls:</strong></p>
+<pre><code>
+// Step 1: LOCAL query on calendar-postgres only
+List&lt;Object[]&gt; localResults = timeSlotRepository
+    .countAvailableSlotsByProviderAndDate(date);
+// Returns: [(providerId=7, count=3), (providerId=9, count=1)]
+
+// Step 2: For each providerId, FEIGN CALL to provider-service
+for (Object[] row : localResults) {
+    Long providerId = ((Number) row[0]).longValue();
+    try {
+        ProviderDTO provider = providerServiceClient.getProvider(providerId);
+        // Step 3: Filter by specialty if needed
+        if (specialty != null &amp;&amp; !specialty.equals(provider.specialty())) continue;
+        // Step 4: Build the DTO with enriched data
+        results.add(AvailableProviderDTO.builder()
+            .providerId(providerId)
+            .providerName(provider.name())      // From Feign
+            .specialty(provider.specialty())     // From Feign
+            .rating(provider.rating())           // From Feign
+            .availableSlots(availableSlots)       // From local query
+            .build());
+    } catch (FeignException.NotFound e) {
+        log.warn(&quot;Provider {} not found, skipping&quot;, providerId);
+    } catch (FeignException e) {
+        log.warn(&quot;provider-service unavailable: {}&quot;, e.getMessage());
+    }
+}
+// Step 5: Sort by rating descending
+results.sort(Comparator.comparingDouble(p -&gt; p.rating()).reversed());
+</code></pre>
+
+<p><strong>S4-F9 Find Idle Providers — Same pattern:</strong></p>
+<ul>
+<li>Local query: count booked slots per provider → <code class="i">(providerId, bookedCount, totalCount)</code></li>
+<li>Filter by <code class="i">bookedCount &lt;= maxBookedSlots</code></li>
+<li>Feign call per provider for name/specialty/rating enrichment</li>
+<li>Build <code class="i">IdleProviderDTO</code> list</li>
+</ul>
+
+<hr>
+
+<h2>8. EVENT FLOW — How It All Connects</h2>
+
+<h3>Scenario: User Books an Appointment</h3>
+
+<pre><code>
+1. User calls POST /api/bookings → booking-service creates booking (REQUESTED)
+2. booking-service publishes: booking.placed to booking.events exchange
+3. Exchange routes to: calendar.booking.saga-listener queue
+4. YOUR consumer picks it up: handleBookingPlaced()
+5. YOU Feign-call booking-service: GET /api/bookings/{id} → get date/time
+6. YOU run: UPDATE time_slots SET available=false WHERE ... AND available=true
+7. YOU publish: slot.reserved to calendar.events (optional)
+</code></pre>
+
+<h3>Scenario: Booking Completed (Happy Path)</h3>
+
+<pre><code>
+1. Admin calls PUT /api/bookings/{id}/complete → booking-service publishes booking.completed
+2. YOUR consumer: handleBookingCompleted()
+3. YOU fire Observer: TRIP_COMPLETED → logged to MongoDB calendar_events
+4. Time slot stays booked (available=false) — appointment was fulfilled
+</code></pre>
+
+<h3>Scenario: Payment Fails → Booking Cancelled (Compensation)</h3>
+
+<pre><code>
+1. Payment fails → booking-service publishes booking.cancelled
+2. YOUR consumer: handleBookingCancelled()
+3. YOU Feign-call booking-service for date/time
+4. YOU run: UPDATE time_slots SET available=true WHERE ... AND available=false
+5. YOU publish: slot.released to calendar.events (optional)
+6. Slot is now FREE for someone else to book!
+</code></pre>
+
+<hr>
+
+<h2>9. LIKELY EVALUATOR QUESTIONS &amp; ANSWERS (30 Questions)</h2>
+
+<p><strong>Q1: What is a TopicExchange?</strong></p>
+<p>A: A RabbitMQ exchange that routes messages based on routing keys with wildcard support. <code class="i">booking.*</code> matches <code class="i">booking.placed</code>, <code class="i">booking.completed</code>, etc.</p>
+
+<p><strong>Q2: Why do you declare <code class="i">booking.events</code> exchange in your config?</strong></p>
+<p>A: So I can bind my queue to it. The exchange is &quot;owned&quot; by booking-service, but I need a reference to create bindings. RabbitMQ creates exchanges idempotently — if it already exists, the declaration is a no-op.</p>
+
+<p><strong>Q3: What routing keys does your queue listen to?</strong></p>
+<p>A: Three: <code class="i">booking.placed</code>, <code class="i">booking.completed</code>, <code class="i">booking.cancelled</code>. Each has a separate Binding bean.</p>
+
+<p><strong>Q4: What is x-dead-letter-exchange?</strong></p>
+<p>A: A queue argument that tells RabbitMQ: &quot;When a message is rejected (consumer fails after all retries), send it to this exchange instead of dropping it.&quot;</p>
+
+<p><strong>Q5: What happens when your consumer throws an exception?</strong></p>
+<p>A: Spring AMQP retries 3 times (configured in application.yml). If all 3 fail, the message is rejected with <code class="i">default-requeue-rejected: false</code>, which triggers the DLQ routing via <code class="i">x-dead-letter-exchange</code>.</p>
+
+<p><strong>Q6: What does <code class="i">acknowledge-mode: auto</code> mean?</strong></p>
+<p>A: Spring automatically ACKs (acknowledges) the message when the listener method returns normally. If it throws, Spring rejects the message. No manual <code class="i">basicAck</code>/<code class="i">basicNack</code> calls needed.</p>
+
+<p><strong>Q7: What does <code class="i">default-requeue-rejected: false</code> mean?</strong></p>
+<p>A: When a message is rejected (consumer throws after all retries), do NOT put it back in the queue. Instead, route it to the DLQ. Without this, failed messages would loop forever.</p>
+
+<p><strong>Q8: What is Jackson2JsonMessageConverter?</strong></p>
+<p>A: Converts Java objects to JSON when publishing and JSON back to Java when consuming. Without it, Spring uses Java serialization which is fragile and unreadable.</p>
+
+<p><strong>Q9: How does @RabbitHandler know which method to call?</strong></p>
+<p>A: By the MESSAGE TYPE. Spring deserializes the JSON and matches it to the method parameter type. <code class="i">BookingPlacedEvent</code> → <code class="i">handleBookingPlaced()</code>, <code class="i">BookingCompletedEvent</code> → <code class="i">handleBookingCompleted()</code>.</p>
+
+<p><strong>Q10: What makes your consumers idempotent?</strong></p>
+<p>A: State-based guards in SQL. <code class="i">reserveSlot</code> uses <code class="i">WHERE available = true</code>. If the slot is already reserved (duplicate event), the WHERE clause doesn&#x27;t match, UPDATE returns 0, and the consumer skips it safely.</p>
+
+<p><strong>Q11: Why do you Feign-call booking-service inside the consumer?</strong></p>
+<p>A: The event payload (<code class="i">BookingPlacedEvent</code>) only contains <code class="i">bookingId</code>, <code class="i">userId</code>, <code class="i">providerId</code>. You need <code class="i">appointmentDate</code> and <code class="i">startTime</code> to find the correct time slot. Those fields come from booking-service via Feign.</p>
+
+<p><strong>Q12: What happens if booking-service is down when your consumer runs?</strong></p>
+<p>A: The <code class="i">fetchBooking</code> helper re-throws RuntimeException. Spring AMQP catches it, retries up to 3 times. If still down after 3 retries → message goes to DLQ.</p>
+
+<p><strong>Q13: What happens if booking-service returns 404?</strong></p>
+<p>A: <code class="i">fetchBooking</code> catches <code class="i">FeignException.NotFound</code>, logs a warning, returns null. The consumer returns without doing anything. The message is ACKed (consumed successfully — nothing to do).</p>
+
+<p><strong>Q14: What does booking.completed do in calendar-service?</strong></p>
+<p>A: Just fires an Observer event (TRIP_COMPLETED) which logs to MongoDB. NO database update — the time slot stays booked (available=false). The appointment happened, so the slot should remain occupied.</p>
+
+<p><strong>Q15: What does booking.cancelled do in calendar-service?</strong></p>
+<p>A: Releases the time slot by setting <code class="i">available = true</code>. This is COMPENSATION — undoing what <code class="i">booking.placed</code> did. The slot is now free for someone else.</p>
+
+<p><strong>Q16: What is the difference between ClusterIP and NodePort?</strong></p>
+<p>A: ClusterIP = only reachable inside the cluster (used for service-to-service). NodePort = exposes on a specific port on the host machine (used for external access like api-gateway).</p>
+
+<p><strong>Q17: Why replicas: 2 in the Deployment?</strong></p>
+<p>A: High availability. If one pod crashes, the other still serves traffic. K8s automatically restarts the crashed pod.</p>
+
+<p><strong>Q18: What does envFrom: configMapRef do?</strong></p>
+<p>A: Loads ALL key-value pairs from the ConfigMap as environment variables into the container. So <code class="i">POSTGRES_HOST: calendar-postgres</code> becomes <code class="i">$POSTGRES_HOST=calendar-postgres</code> inside the container.</p>
+
+<p><strong>Q19: Why is LOKI_HOST a full DNS name?</strong></p>
+<p>A: Because Loki is in the <code class="i">monitoring</code> namespace, not <code class="i">booking</code>. Cross-namespace DNS requires the full form: <code class="i">loki.monitoring.svc.cluster.local</code>. Within the same namespace, just the service name works.</p>
+
+<p><strong>Q20: What is readinessProbe used for?</strong></p>
+<p>A: K8s checks <code class="i">/actuator/health</code> every 10 seconds. If it fails, K8s removes the pod from the Service&#x27;s endpoint list — no traffic is routed to it. Once it passes again, traffic resumes.</p>
+
+<p><strong>Q21: What is livenessProbe used for?</strong></p>
+<p>A: If <code class="i">/actuator/health</code> fails 5 consecutive times (failureThreshold: 5), K8s KILLS and RESTARTS the pod. It&#x27;s the &quot;are you still alive?&quot; check.</p>
+
+<p><strong>Q22: Why initialDelaySeconds: 60 for liveness?</strong></p>
+<p>A: Spring Boot takes time to start (loading context, connecting to DBs, etc.). If you check too early, the pod isn&#x27;t ready yet and K8s would restart it in a loop.</p>
+
+<p><strong>Q23: What does resources.requests.cpu: 250m mean?</strong></p>
+<p>A: 250 millicores = 0.25 CPU cores. This is the GUARANTEED minimum. K8s won&#x27;t schedule the pod on a node that doesn&#x27;t have at least 250m available.</p>
+
+<p><strong>Q24: What does /actuator/prometheus expose?</strong></p>
+<p>A: Metrics in Prometheus text format. Example: <code class="i">http_server_requests_seconds_count{uri=&quot;/api/timeslots&quot;,status=&quot;200&quot;} 1547</code>. Prometheus scrapes this every 15 seconds.</p>
+
+<p><strong>Q25: What does percentiles-histogram: true enable?</strong></p>
+<p>A: Generates histogram buckets for request durations. This allows Prometheus to calculate P50/P95/P99 latencies using <code class="i">histogram_quantile()</code>.</p>
+
+<p><strong>Q26: What does rate() do in PromQL?</strong></p>
+<p>A: Calculates the per-second increase rate of a counter metric over a time window. <code class="i">rate(metric[5m])</code> = &quot;how many per second, averaged over the last 5 minutes.&quot;</p>
+
+<p><strong>Q27: What does histogram_quantile(0.95, ...) mean?</strong></p>
+<p>A: &quot;95% of requests complete within this many seconds.&quot; P95=0.2s means 95% of requests finish in under 200ms. The remaining 5% are slower.</p>
+
+<p><strong>Q28: Why monitor HikariCP connection pool?</strong></p>
+<p>A: If <code class="i">pending &gt; 0</code>, threads are WAITING for a database connection. This means your pool is too small or queries are too slow. It&#x27;s a critical early warning for performance problems.</p>
+
+<p><strong>Q29: What is the difference between S4-F3 before and after M3?</strong></p>
+<p>A: Before: one SQL JOIN across <code class="i">time_slots</code> and <code class="i">providers</code> tables (shared DB). After: local query on <code class="i">time_slots</code> (calendar-postgres) + Feign call per provider to provider-service for name/specialty/rating.</p>
+
+<p><strong>Q30: Why sort by rating descending in S4-F3?</strong></p>
+<p>A: So the best-rated providers appear first in the list. Users see the highest-quality providers at the top.</p>
+</body></html>

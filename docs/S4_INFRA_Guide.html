@@ -1,0 +1,532 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>S4-INFRA Deep Dive</title>
+<style>body{font-family:Segoe UI,Arial;max-width:880px;margin:0 auto;padding:20px;font-size:13px;line-height:1.6;color:#1a1a1a}
+h1{color:#1a56db;border-bottom:3px solid #1a56db;padding-bottom:8px;font-size:22px}
+h2{color:#1e40af;border-bottom:2px solid #dbeafe;padding-bottom:5px;font-size:17px;margin-top:25px}
+h3{color:#374151;font-size:14px}h4{color:#4b5563;font-size:13px}
+pre{background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;overflow-x:auto;font-size:11.5px;line-height:1.4}
+code.i{background:#e0e7ff;color:#3730a3;padding:1px 4px;border-radius:3px;font-size:12px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:12px}
+th{background:#1e40af;color:white;padding:6px;text-align:left}
+td{border:1px solid #d1d5db;padding:5px 7px}tr:nth-child(even){background:#f3f4f6}
+hr{border:none;border-top:2px solid #e5e7eb;margin:15px 0}ul{padding-left:18px}li{margin-bottom:3px}
+strong{color:#1e40af}</style></head><body><h1>S4-INFRA Deep Dive — Ahmed Yasser Tawfik (calendar-service)</h1>
+
+<h2>Your Slice Overview</h2>
+
+<p><strong>Slice #12 — S4-INFRA</strong> covers:</p>
+<ul>
+<li>calendar-service gateway route in api-gateway</li>
+<li>Prometheus scrape job entry for calendar-service</li>
+<li>Final dashboard JSON (calendar-dashboard.json)</li>
+<li>Grafana K8s (Deployment + datasources ConfigMap + dashboards ConfigMap + PVC + NodePort 30030)</li>
+<li>Cassandra K8s (StatefulSet + Service)</li>
+</ul>
+
+<p>You own the <strong>shared observability infrastructure</strong> — Grafana and Cassandra for the entire team.</p>
+
+<hr>
+
+<h2>1. GATEWAY ROUTE — How Traffic Reaches calendar-service</h2>
+
+<h3>Concept: What is Spring Cloud Gateway?</h3>
+<p>A reverse proxy that sits in front of all services. ALL external HTTP requests go through the gateway. It validates JWT, adds headers (X-User-Id, X-User-Role), then routes to the correct service.</p>
+
+<h3>Your Route in api-gateway/application.yml</h3>
+
+<pre><code>
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: calendar-service
+          uri: ${CALENDAR_SERVICE_URL:http://calendar-service:8080}
+          predicates:
+            - Path=/api/timeslots/**,/api/calendar/**
+</code></pre>
+
+<p><strong>What this means:</strong></p>
+<ul>
+<li>Any request matching <code class="i">/api/timeslots/<strong></code> or <code class="i">/api/calendar/</strong></code> gets forwarded to <code class="i">http://calendar-service:8080</code></li>
+<li>The gateway first runs JwtGatewayFilter (validates JWT token, sets X-User-Id header)</li>
+<li>Then it proxies the request to your calendar-service</li>
+</ul>
+
+<h3>How the URL is set in K8s</h3>
+
+<pre><code>
+# k8s/configmaps/gateway-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: booking
+data:
+  CALENDAR_SERVICE_URL: http://calendar-service:8080  # K8s DNS
+</code></pre>
+
+<p><strong>Flow:</strong></p>
+<pre><code>
+User → curl http://springshoes.local/api/timeslots/available?date=2026-04-15
+  → Ingress → api-gateway pod
+  → JwtGatewayFilter validates JWT
+  → Route match: /api/timeslots/** → forward to calendar-service:8080
+  → calendar-service pod handles the request
+  → Response flows back
+</code></pre>
+
+<hr>
+
+<h2>2. PROMETHEUS SCRAPE JOB — How Metrics Are Collected</h2>
+
+<h3>Concept: What is a Scrape Job?</h3>
+<p>Prometheus doesn&#x27;t receive metrics — it PULLS them. A scrape job tells Prometheus: &quot;Every 15 seconds, call this URL and store the metrics.&quot;</p>
+
+<h3>Your Entry in prometheus-configmap.yaml</h3>
+
+<pre><code>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: booking
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s     # Pull metrics every 15 seconds
+
+    scrape_configs:
+      - job_name: booking-services
+        metrics_path: /actuator/prometheus    # Spring Boot actuator endpoint
+        static_configs:
+          - targets:
+              - user-service.booking.svc.cluster.local:8080
+              - provider-service.booking.svc.cluster.local:8080
+              - booking-service.booking.svc.cluster.local:8080
+              - calendar-service.booking.svc.cluster.local:8080   # ← YOUR ENTRY
+              - api-gateway.booking.svc.cluster.local:8080
+
+      - job_name: invoice-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets:
+              - invoice-service.booking.svc.cluster.local:8080
+</code></pre>
+
+<p><strong>What happens every 15 seconds:</strong></p>
+<pre><code>
+Prometheus pod → GET http://calendar-service.booking.svc.cluster.local:8080/actuator/prometheus
+  → Receives text like:
+    http_server_requests_seconds_count{uri=&quot;/api/timeslots/available&quot;,status=&quot;200&quot;} 1547
+    hikaricp_connections_active{pool=&quot;HikariPool-1&quot;} 3
+  → Stores it in its time-series database
+</code></pre>
+
+<p><strong>Why full DNS name?</strong> <code class="i">calendar-service.booking.svc.cluster.local</code> — if Prometheus is in a different namespace (e.g., <code class="i">monitoring</code>), it needs the full K8s DNS. Within the same namespace, <code class="i">calendar-service:8080</code> would suffice.</p>
+
+<hr>
+
+<h2>3. FINAL DASHBOARD JSON</h2>
+
+<h3>File: k8s/monitoring/grafana/dashboards/calendar-dashboard.json</h3>
+
+<p>This file defines your calendar-service Grafana dashboard with 6 panels:</p>
+
+<table><tr><th>Panel</th><th>Type</th><th>Datasource</th><th>What It Shows</th></tr>
+<tr><td>1</td><td>logs</td><td>Loki (LogQL)</td><td>Error rate — counts ERROR log lines per 5 min</td></tr>
+<tr><td>2</td><td>logs</td><td>Loki (LogQL)</td><td>Feign call outcomes — shows Feign HTTP calls</td></tr>
+<tr><td>3</td><td>logs</td><td>Loki (LogQL)</td><td>RabbitMQ events — booking.completed/cancelled</td></tr>
+<tr><td>4</td><td>timeseries</td><td>Prometheus (PromQL)</td><td>HTTP request rate per endpoint per status code</td></tr>
+<tr><td>5</td><td>timeseries</td><td>Prometheus (PromQL)</td><td>Latency P50/P95/P99 for /api/timeslots/*</td></tr>
+<tr><td>6</td><td>timeseries</td><td>Prometheus (PromQL)</td><td>HikariCP connection pool (active/pending/total)</td></tr>
+</table>
+
+<p>This JSON gets embedded into the dashboards ConfigMap (see Section 4 below).</p>
+
+<hr>
+
+<h2>4. GRAFANA K8s — The Complete Stack</h2>
+
+<h3>What You Built: 5 Resources</h3>
+
+<p>You deployed Grafana to Kubernetes. This required creating multiple resources that work together:</p>
+
+<pre><code>
+Datasources ConfigMap → tells Grafana where Prometheus and Loki are
+Dashboards ConfigMap  → contains ALL 5 service dashboard JSONs
+PVC                   → persistent storage for Grafana settings
+Deployment            → runs the Grafana container
+NodePort Service      → exposes Grafana on port 30030
+</code></pre>
+
+<h3>4a. Dashboards ConfigMap (ALL 5 Dashboards)</h3>
+
+<p><strong>File:</strong> <code class="i">k8s/monitoring/grafana/grafana-dashboards-configmap.yaml</code></p>
+
+<pre><code>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: &quot;1&quot;
+data:
+  user-dashboard.json: |
+    { &quot;title&quot;: &quot;User Service Dashboard&quot;, &quot;uid&quot;: &quot;user-service&quot;, ... }
+  provider-dashboard.json: |
+    { &quot;title&quot;: &quot;Provider Service Dashboard&quot;, &quot;uid&quot;: &quot;provider-service&quot;, ... }
+  booking-dashboard.json: |
+    { &quot;title&quot;: &quot;Booking Service Dashboard&quot;, &quot;uid&quot;: &quot;booking-service&quot;, ... }
+  calendar-dashboard.json: |
+    { &quot;title&quot;: &quot;Calendar Service Dashboard&quot;, &quot;uid&quot;: &quot;calendar-service&quot;, ... }
+  invoice-dashboard.json: |
+    { &quot;title&quot;: &quot;Invoice Service Dashboard&quot;, &quot;uid&quot;: &quot;invoice-service&quot;, ... }
+</code></pre>
+
+<p><strong>Why a ConfigMap for dashboards?</strong></p>
+<p>Instead of manually importing dashboards through the Grafana UI, you embed them in a ConfigMap. Grafana&#x27;s dashboard provisioning sidecar reads this ConfigMap and auto-loads all 5 dashboards on startup. If the pod restarts, all dashboards are still there.</p>
+
+<p><strong>Why all 5 in one ConfigMap?</strong></p>
+<p>Your slice (S4-INFRA) owns the Grafana infrastructure. You embed ALL team dashboards so the complete observability stack is deployed in one <code class="i">kubectl apply</code>.</p>
+
+<h3>4b. Datasources — Pointing at Loki &amp; Prometheus</h3>
+
+<p>Grafana needs to know WHERE Prometheus and Loki are. This is configured via a datasources provisioning file mounted as a ConfigMap:</p>
+
+<pre><code>
+# Datasource provisioning (embedded in Grafana deployment or separate ConfigMap)
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    url: http://prometheus.monitoring.svc.cluster.local:9090
+    isDefault: true
+    access: proxy
+  - name: Loki
+    type: loki
+    url: http://loki.monitoring.svc.cluster.local:3100
+    access: proxy
+</code></pre>
+
+<p><strong>Key:</strong> Grafana runs in the <code class="i">monitoring</code> namespace. Prometheus and Loki are in the same namespace, so short DNS names work. But from the <code class="i">booking</code> namespace, you&#x27;d need the full names.</p>
+
+<h3>4c. PVC — Persistent Storage</h3>
+
+<pre><code>
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  namespace: monitoring
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+</code></pre>
+
+<p><strong>Why PVC?</strong> Without it, Grafana loses all its settings, alert rules, and custom dashboards every time the pod restarts. PVC stores Grafana&#x27;s SQLite database persistently.</p>
+
+<h3>4d. Deployment — Running Grafana</h3>
+
+<pre><code>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana         # Grafana data directory
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+      volumes:
+        - name: grafana-storage
+          persistentVolumeClaim:
+            claimName: grafana-pvc
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards              # The 5-dashboard ConfigMap
+        - name: datasources
+          configMap:
+            name: grafana-datasources             # Prometheus + Loki URLs
+</code></pre>
+
+<p><strong>How provisioning works:</strong></p>
+<p>Grafana looks at <code class="i">/etc/grafana/provisioning/dashboards/</code> on startup. The ConfigMap is mounted there. Grafana reads the JSON files and creates the dashboards automatically.</p>
+
+<h3>4e. NodePort Service — External Access</h3>
+
+<pre><code>
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30030        # ← Access via http://$(minikube ip):30030
+</code></pre>
+
+<p><strong>Why NodePort 30030?</strong> Grafana is the UI that evaluators/developers access. NodePort exposes it on a fixed port so you can open <code class="i">http://192.168.49.2:30030</code> in a browser. ClusterIP wouldn&#x27;t work because it&#x27;s only accessible inside the cluster.</p>
+
+<hr>
+
+<h2>5. CASSANDRA K8s — Shared Infrastructure</h2>
+
+<h3>Concept: What is Cassandra?</h3>
+<p>A NoSQL database optimized for TIME-SERIES data and high write throughput. In your project, calendar-service uses it for the Availability Snapshot feature (S4-F11) — recording provider availability over time.</p>
+
+<h3>5a. StatefulSet</h3>
+
+<pre><code>
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cassandra
+  namespace: booking
+spec:
+  serviceName: cassandra
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: cassandra
+          image: cassandra:4.1
+          ports:
+            - containerPort: 9042       # CQL port
+              name: cql
+          env:
+            - name: CASSANDRA_CLUSTER_NAME
+              value: booking-cluster
+            - name: CASSANDRA_DC
+              value: datacenter1
+            - name: CASSANDRA_ENDPOINT_SNITCH
+              value: SimpleSnitch
+            - name: JVM_OPTS
+              value: &quot;-Xms256m -Xmx512m&quot;
+          resources:
+            requests:
+              memory: &quot;512Mi&quot;
+              cpu: &quot;200m&quot;
+            limits:
+              memory: &quot;1Gi&quot;
+              cpu: &quot;500m&quot;
+          readinessProbe:
+            exec:
+              command: [&quot;cqlsh&quot;, &quot;-e&quot;, &quot;describe cluster&quot;]
+            initialDelaySeconds: 60     # Cassandra is SLOW to start
+            periodSeconds: 15
+            failureThreshold: 10        # Give it 10 chances (2.5 min total)
+          volumeMounts:
+            - name: cassandra-data
+              mountPath: /var/lib/cassandra
+  volumeClaimTemplates:
+    - metadata:
+        name: cassandra-data
+      spec:
+        accessModes: [&quot;ReadWriteOnce&quot;]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi
+</code></pre>
+
+<p><strong>Why StatefulSet?</strong> Same as PostgreSQL — Cassandra is stateful. Needs persistent storage and stable pod names.</p>
+
+<p><strong>Why initialDelaySeconds: 60?</strong> Cassandra takes 60+ seconds to fully start (JVM warmup, gossip protocol, schema loading). Checking too early would cause K8s to think it&#x27;s broken.</p>
+
+<p><strong>Why failureThreshold: 10?</strong> Combined with periodSeconds: 15, this gives Cassandra 60 + (10 × 15) = 210 seconds (3.5 minutes) to become ready. Cassandra genuinely needs this much time.</p>
+
+<p><strong>Why JVM_OPTS: &quot;-Xms256m -Xmx512m&quot;?</strong> Cassandra runs on the JVM. These set minimum (256MB) and maximum (512MB) heap size. In MiniKube with limited resources, you constrain Cassandra&#x27;s memory appetite.</p>
+
+<p><strong>readinessProbe:</strong> <code class="i">cqlsh -e &quot;describe cluster&quot;</code> — connects to Cassandra&#x27;s CQL interface and runs a query. If it succeeds, Cassandra is ready.</p>
+
+<h3>5b. ClusterIP Service</h3>
+
+<pre><code>
+apiVersion: v1
+kind: Service
+metadata:
+  name: cassandra
+  namespace: booking
+spec:
+  selector:
+    app: cassandra
+  ports:
+    - port: 9042
+      targetPort: 9042
+  type: ClusterIP
+</code></pre>
+
+<p><strong>How calendar-service connects:</strong></p>
+<pre><code>
+# calendar-service application.yml
+spring:
+  cassandra:
+    contact-points: ${CASSANDRA_CONTACT_POINTS:cassandra}  # K8s DNS name
+    port: 9042
+    keyspace-name: bookingks
+</code></pre>
+
+<hr>
+
+<h2>6. HOW IT ALL CONNECTS — The Full Observability Pipeline</h2>
+
+<pre><code>
+1. calendar-service handles HTTP requests
+   └→ Spring Actuator auto-generates metrics (request counts, latency histograms, connection pool stats)
+   └→ Loki4J pushes JSON logs to Loki
+
+2. /actuator/prometheus endpoint exposes raw metrics text
+   └→ Prometheus scrapes every 15s (configured in prometheus-configmap.yaml)
+
+3. logback-spring.xml pushes structured JSON logs
+   └→ Loki stores them (label-indexed)
+
+4. Grafana reads from both:
+   └→ PromQL panels query Prometheus (Panels 4, 5, 6)
+   └→ LogQL panels query Loki (Panels 1, 2, 3)
+
+5. You access Grafana at http://$(minikube ip):30030
+   └→ Select &quot;Calendar Service Dashboard&quot;
+   └→ See all 6 panels live
+</code></pre>
+
+<hr>
+
+<h2>7. DEPLOYMENT ORDER — CRITICAL</h2>
+
+<p>When applying K8s manifests, ORDER MATTERS:</p>
+
+<pre><code>
+# 1. Namespaces first
+kubectl create namespace booking
+kubectl create namespace monitoring
+
+# 2. Secrets (credentials needed by everything)
+kubectl apply -f k8s/secrets/
+
+# 3. PVCs (storage needed by databases)
+kubectl apply -f k8s/pvcs/
+
+# 4. Shared databases (StatefulSets — these take time to start)
+kubectl apply -f k8s/statefulsets/cassandra-statefulset.yaml
+kubectl apply -f k8s/statefulsets/calendar-postgres-statefulset.yaml
+
+# 5. Database services (DNS names for databases)
+kubectl apply -f k8s/services/cassandra-svc.yaml
+kubectl apply -f k8s/services/calendar-postgres-svc.yaml
+
+# 6. ConfigMaps (environment variables for app services)
+kubectl apply -f k8s/configmaps/
+
+# 7. Prometheus config
+kubectl apply -f k8s/monitoring/prometheus/
+
+# 8. Grafana (datasources + dashboards + deployment)
+kubectl apply -f k8s/monitoring/grafana/
+
+# 9. Application Deployments + Services
+kubectl apply -f k8s/deployments/
+kubectl apply -f k8s/services/
+
+# 10. Gateway + Ingress (last — needs all services to be ready)
+kubectl apply -f k8s/api-gateway/
+</code></pre>
+
+<hr>
+
+<h2>8. EVALUATOR QUESTIONS &amp; ANSWERS (25 Questions)</h2>
+
+<p><strong>Q1: What is the calendar-service gateway route?</strong></p>
+<p>A: In api-gateway&#x27;s application.yml, any request matching <code class="i">/api/timeslots/<strong></code> or <code class="i">/api/calendar/</strong></code> is forwarded to <code class="i">http://calendar-service:8080</code>.</p>
+
+<p><strong>Q2: How does the gateway know calendar-service&#x27;s URL in K8s?</strong></p>
+<p>A: The ConfigMap <code class="i">gateway-config</code> sets <code class="i">CALENDAR_SERVICE_URL: http://calendar-service:8080</code>. K8s DNS resolves <code class="i">calendar-service</code> to the ClusterIP Service.</p>
+
+<p><strong>Q3: What is a Prometheus scrape job?</strong></p>
+<p>A: A config entry that tells Prometheus: &quot;Every N seconds, pull metrics from this URL.&quot; Calendar-service is scraped at <code class="i">/actuator/prometheus</code> every 15 seconds.</p>
+
+<p><strong>Q4: Where is the calendar-service scrape entry?</strong></p>
+<p>A: In <code class="i">k8s/monitoring/prometheus/prometheus-configmap.yaml</code>, under <code class="i">scrape_configs → job_name: booking-services → targets → calendar-service.booking.svc.cluster.local:8080</code>.</p>
+
+<p><strong>Q5: Why is the full DNS name used in the scrape target?</strong></p>
+<p>A: Because Prometheus may run in a different namespace (monitoring). Cross-namespace communication requires the full DNS: <code class="i">service.namespace.svc.cluster.local</code>.</p>
+
+<p><strong>Q6: What does the dashboards ConfigMap contain?</strong></p>
+<p>A: All 5 service dashboard JSONs: user, provider, booking, calendar, invoice. Each contains 6 panels (3 LogQL + 3 PromQL).</p>
+
+<p><strong>Q7: Why embed dashboards in a ConfigMap instead of importing manually?</strong></p>
+<p>A: Automation. ConfigMap-based provisioning means dashboards are automatically loaded on Grafana startup. If the pod restarts, all dashboards are intact. No manual import needed.</p>
+
+<p><strong>Q8: What does Grafana&#x27;s dashboard provisioning do?</strong></p>
+<p>A: Grafana reads JSON files from <code class="i">/etc/grafana/provisioning/dashboards/</code> on startup. The ConfigMap is mounted at that path, so dashboards appear automatically.</p>
+
+<p><strong>Q9: What datasources does Grafana connect to?</strong></p>
+<p>A: Two: Prometheus (for PromQL metrics at <code class="i">http://prometheus:9090</code>) and Loki (for LogQL logs at <code class="i">http://loki:3100</code>).</p>
+
+<p><strong>Q10: Why is Grafana exposed as NodePort 30030?</strong></p>
+<p>A: Grafana is a UI that users access via browser. NodePort exposes it externally at <code class="i">http://$(minikube ip):30030</code>. ClusterIP only works inside the cluster.</p>
+
+<p><strong>Q11: What is the difference between NodePort and ClusterIP?</strong></p>
+<p>A: ClusterIP = only reachable inside the cluster (for service-to-service). NodePort = reachable from outside on a specific port (30000-32767).</p>
+
+<p><strong>Q12: Why does Grafana need a PVC?</strong></p>
+<p>A: Grafana stores settings, user preferences, and alert rules in a SQLite database at <code class="i">/var/lib/grafana</code>. Without PVC, everything is lost on pod restart.</p>
+
+<p><strong>Q13: Why is Cassandra a StatefulSet?</strong></p>
+<p>A: Cassandra stores data persistently. StatefulSet provides stable pod names and persistent volumes. A Deployment would lose data on restart.</p>
+
+<p><strong>Q14: Why does Cassandra have initialDelaySeconds: 60?</strong></p>
+<p>A: Cassandra takes 60+ seconds to start (JVM warmup, gossip protocol, schema loading). Without this delay, K8s would think the pod is broken and restart it in a loop.</p>
+
+<p><strong>Q15: What does <code class="i">cqlsh -e &quot;describe cluster&quot;</code> do?</strong></p>
+<p>A: It&#x27;s the readiness probe command. It connects to Cassandra&#x27;s CQL shell and runs a query. If it succeeds, Cassandra is ready to accept connections.</p>
+
+<p><strong>Q16: Why failureThreshold: 10 for Cassandra?</strong></p>
+<p>A: Combined with periodSeconds: 15, this gives Cassandra 60 + (10 × 15) = 210 seconds to become ready. Cassandra genuinely needs this time in resource-constrained environments.</p>
+
+<p><strong>Q17: How does calendar-service connect to Cassandra?</strong></p>
+<p>A: Via Spring Data Cassandra. In application.yml: <code class="i">spring.cassandra.contact-points: cassandra</code> → K8s DNS resolves to Cassandra&#x27;s ClusterIP Service → port 9042.</p>
+
+<p><strong>Q18: What does Cassandra store in this project?</strong></p>
+<p>A: Time-series availability snapshots (S4-F11). Each record has (providerId, timestamp, totalSlots, availableSlots, bookedSlots, utilizationRate).</p>
+
+<p><strong>Q19: What is the deployment order and why?</strong></p>
+<p>A: Secrets → PVCs → StatefulSets → Services → ConfigMaps → Prometheus → Grafana → Deployments → Gateway. Databases must be ready before apps, and apps must be ready before the gateway routes to them.</p>
+
+<p><strong>Q20: What happens if you apply the deployment before the database?</strong></p>
+<p>A: Calendar-service starts, tries to connect to calendar-postgres, fails, and enters CrashLoopBackOff. It keeps restarting until the database is available.</p>
+
+<p><strong>Q21: What is <code class="i">scrape_interval: 15s</code>?</strong></p>
+<p>A: Prometheus pulls metrics from all targets every 15 seconds. Lower = more data points but more resource usage. 15s is the standard.</p>
+
+<p><strong>Q22: What are the two scrape jobs in prometheus-configmap?</strong></p>
+<p>A: (1) <code class="i">booking-services</code> — scrapes user, provider, booking, calendar, and api-gateway. (2) <code class="i">invoice-service</code> — scrapes invoice-service separately (could be combined, but kept separate for clarity).</p>
+
+<p><strong>Q23: What does <code class="i">storageClassName: local-path</code> mean?</strong></p>
+<p>A: Uses MiniKube&#x27;s local-path provisioner to create storage on the host machine&#x27;s filesystem. In production, you&#x27;d use cloud storage classes like <code class="i">gp2</code> (AWS) or <code class="i">pd-ssd</code> (GCP).</p>
+
+<p><strong>Q24: How many namespaces are used?</strong></p>
+<p>A: Two: <code class="i">booking</code> (all application services + databases) and <code class="i">monitoring</code> (Grafana + Prometheus + Loki).</p>
+
+<p><strong>Q25: What is the <code class="i">grafana_dashboard: &quot;1&quot;</code> label?</strong></p>
+<p>A: A label selector used by Grafana&#x27;s sidecar or provisioner to auto-discover ConfigMaps that contain dashboards. Only ConfigMaps with this label are picked up.</p>
+</body></html>

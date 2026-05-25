@@ -1,0 +1,586 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>S4-READ-DB Deep Dive — Ahmed Yasser Tawfik</title>
+<style>
+@media print { h1,h2 { page-break-before: auto; } }
+body { font-family: 'Segoe UI',Arial,sans-serif; max-width: 850px; margin: 0 auto; padding: 20px; font-size: 13px; line-height: 1.6; color: #1a1a1a; }
+h1 { color: #1a56db; border-bottom: 3px solid #1a56db; padding-bottom: 8px; font-size: 22px; }
+h2 { color: #1e40af; border-bottom: 2px solid #dbeafe; padding-bottom: 5px; font-size: 17px; margin-top: 25px; }
+h3 { color: #374151; font-size: 14px; }
+h4 { color: #4b5563; font-size: 13px; }
+pre { background: #1e293b; color: #e2e8f0; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 11.5px; line-height:1.4; }
+code.i { background: #e0e7ff; color: #3730a3; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 12px; }
+th { background: #1e40af; color: white; padding: 6px; text-align: left; }
+td { border: 1px solid #d1d5db; padding: 5px 7px; }
+tr:nth-child(even) { background: #f3f4f6; }
+hr { border: none; border-top: 2px solid #e5e7eb; margin: 15px 0; }
+ul { padding-left: 18px; } li { margin-bottom: 3px; }
+strong { color: #1e40af; }
+</style></head><body><h1>S4-READ-DB Deep Dive — Ahmed Yasser Tawfik (calendar-service)</h1>
+
+<h2>Your Slice Overview</h2>
+
+<p><strong>Slice #10 — S4-READ-DB</strong> covers:</p>
+<ul>
+<li>Database Isolation (datasource → bookingdb-calendar)</li>
+<li>New saga pre-check endpoint: <code class="i">GET /api/timeslots/provider/{providerId}/slot</code></li>
+<li>ProviderServiceClient Feign interface with error handling</li>
+<li>Kubernetes: calendar-postgres StatefulSet + PVC + Secret + headless Service</li>
+<li>logback-spring.xml with Loki4J appender</li>
+<li>≥3 LogQL panels for Grafana dashboard</li>
+</ul>
+
+<hr>
+
+<h2>1. DATABASE ISOLATION</h2>
+
+<h3>What Changed (M1/M2 → M3)</h3>
+
+<p><strong>Before:</strong> All services shared ONE PostgreSQL:</p>
+<pre><code>
+jdbc:postgresql://postgres:5432/bookingdb
+</code></pre>
+<p>calendar-service could SQL JOIN against provider&#x27;s tables directly.</p>
+
+<p><strong>After (M3):</strong> calendar-service has its OWN PostgreSQL:</p>
+<pre><code>
+# application.yml
+spring:
+  datasource:
+    url: jdbc:postgresql://calendar-postgres:5432/bookingdb-calendar
+    username: user
+    password: password
+</code></pre>
+
+<h3>Why This Matters</h3>
+<ul>
+<li><strong>No cross-service JDBC</strong> — calendar-service CANNOT read from provider-service&#x27;s database</li>
+<li>When calendar-service needs provider info (name, specialty, rating), it calls provider-service via <strong>OpenFeign HTTP call</strong> instead of SQL JOIN</li>
+<li>The <code class="i">providerId</code> column in <code class="i">time_slots</code> table is a <strong>plain Long</strong> — no JPA <code class="i">@ManyToOne</code> to a Provider entity</li>
+</ul>
+
+<h3>Your TimeSlot Entity</h3>
+<pre><code>
+@Entity
+@Table(name = &quot;time_slots&quot;)
+public class TimeSlot {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private Long providerId;     // Plain Long — NOT @ManyToOne!
+    private LocalDate date;
+    private LocalTime startTime;
+    private LocalTime endTime;
+    private Boolean available;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = &quot;jsonb&quot;)
+    private Map&lt;String, Object&gt; metadata;   // PostgreSQL JSONB
+    private LocalDateTime createdAt;
+}
+</code></pre>
+
+<p><strong>Key point for evaluator:</strong> <code class="i">providerId</code> is a plain <code class="i">Long</code> field. In M1 it might have been <code class="i">@ManyToOne Provider provider</code> — that&#x27;s impossible in M3 because Provider lives in a separate database. We store just the ID and look up provider details via Feign when needed.</p>
+
+<h3>How Environment Variables Work</h3>
+<pre><code>
+# application.yml uses ${ENV_VAR:default_value} pattern
+url: jdbc:postgresql://${POSTGRES_HOST:calendar-postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:bookingdb-calendar}
+</code></pre>
+<ul>
+<li>In Docker Compose: env vars set in docker-compose.yaml</li>
+<li>In Kubernetes: env vars come from ConfigMap + Secret</li>
+</ul>
+
+<hr>
+
+<h2>2. THE SAGA PRE-CHECK ENDPOINT</h2>
+
+<h3>What It Does</h3>
+<p>When booking-service triggers <code class="i">PUT /api/bookings/{id}/complete</code> (the saga), it needs to verify a covering time slot exists in the calendar. It calls YOUR endpoint:</p>
+
+<pre><code>
+GET /api/timeslots/provider/{providerId}/slot?date=2026-04-22&amp;startTime=10:00
+</code></pre>
+
+<p>If the slot exists → returns 200 + TimeSlotDTO → saga continues</p>
+<p>If no slot → returns 404 → booking-service aborts the saga (returns 400)</p>
+
+<h3>Your Controller Code</h3>
+<pre><code>
+@GetMapping(&quot;/provider/{providerId}/slot&quot;)
+public TimeSlotDTO getSlotForBooking(
+        @PathVariable Long providerId,
+        @RequestParam String date,
+        @RequestParam String startTime) {
+    return timeSlotService.getSlotForBooking(
+        providerId, LocalDate.parse(date), LocalTime.parse(startTime));
+}
+</code></pre>
+
+<h3>Your Service Code</h3>
+<pre><code>
+@Transactional(readOnly = true)
+public TimeSlotDTO getSlotForBooking(Long providerId, LocalDate date, LocalTime startTime) {
+    TimeSlot slot = timeSlotRepository
+        .findByProviderIdAndDateAndStartTime(providerId, date, startTime)
+        .orElseThrow(() -&gt; new ResponseStatusException(HttpStatus.NOT_FOUND,
+            &quot;No slot found for provider &quot; + providerId + &quot; at &quot; + date + &quot; &quot; + startTime));
+    return toTimeSlotDTO(slot);
+}
+</code></pre>
+
+<h3>Your Repository Method</h3>
+<pre><code>
+Optional&lt;TimeSlot&gt; findByProviderIdAndDateAndStartTime(
+    Long providerId, LocalDate date, LocalTime startTime);
+</code></pre>
+<p>Spring Data JPA auto-generates the SQL from the method name! No <code class="i">@Query</code> needed.</p>
+
+<h3>The DTO returned (from contracts module)</h3>
+<pre><code>
+public record TimeSlotDTO(
+    Long id, Long providerId, LocalDate date,
+    LocalTime startTime, LocalTime endTime,
+    boolean available, Map&lt;String, Object&gt; metadata
+) {}
+</code></pre>
+
+<h3>Why This Endpoint Exists</h3>
+<p>The saga&#x27;s 3 pre-checks before publishing <code class="i">booking.completed</code>:</p>
+<ul>
+<li>Feign → user-service: Is user ACTIVE? ✓</li>
+<li>Feign → provider-service: Is provider BUSY? ✓</li>
+<li><strong>Feign → calendar-service: Does covering time slot exist? ✓</strong> ← YOUR ENDPOINT</li>
+</ul>
+
+<p>This proves the appointment was actually scheduled in the calendar.</p>
+
+<hr>
+
+<h2>3. OPENFEIGN — CALLING PROVIDER-SERVICE</h2>
+
+<h3>What is OpenFeign?</h3>
+<p>A declarative HTTP client. You define a Java interface → Spring generates the HTTP client automatically.</p>
+
+<h3>The CalendarServiceClient (YOUR service exposes to others)</h3>
+<pre><code>
+@FeignClient(name = &quot;calendar-service&quot;, url = &quot;${feign.calendar-service.url}&quot;,
+             fallback = CalendarServiceClientFallback.class)
+public interface CalendarServiceClient {
+    @GetMapping(&quot;/api/timeslots/provider/{providerId}/slot&quot;)
+    TimeSlotDTO getSlotForBooking(@PathVariable Long providerId,
+                                   @RequestParam String date,
+                                   @RequestParam String startTime);
+
+    @GetMapping(&quot;/api/timeslots/provider/{providerId}/utilization&quot;)
+    ProviderUtilizationDTO getProviderUtilization(@PathVariable Long providerId,
+                                                   @RequestParam String startDate,
+                                                   @RequestParam String endDate);
+}
+</code></pre>
+
+<h3>The ProviderServiceClient (YOUR service CALLS this)</h3>
+<p>Your calendar-service calls provider-service to enrich provider details in S4-F3 and S4-F9:</p>
+<pre><code>
+@FeignClient(name = &quot;provider-service&quot;, url = &quot;${feign.provider-service.url}&quot;)
+public interface ProviderServiceClient {
+    @GetMapping(&quot;/api/providers/{id}&quot;)
+    ProviderDTO getProvider(@PathVariable Long id);
+}
+</code></pre>
+
+<h3>How You Use It — S4-F3 (Find Available Providers)</h3>
+<pre><code>
+public List&lt;AvailableProviderDTO&gt; findAvailableProviders(LocalDate date, String specialty) {
+    // Step 1: LOCAL query on calendar-postgres (no cross-service SQL!)
+    List&lt;Object[]&gt; localResults = timeSlotRepository
+        .countAvailableSlotsByProviderAndDate(date);
+
+    List&lt;AvailableProviderDTO&gt; results = new ArrayList&lt;&gt;();
+    for (Object[] row : localResults) {
+        Long providerId = ((Number) row[0]).longValue();
+        Long availableSlots = ((Number) row[1]).longValue();
+
+        try {
+            // Step 2: FEIGN CALL to provider-service for enrichment
+            ProviderDTO provider = providerServiceClient.getProvider(providerId);
+
+            // Step 3: Filter by specialty if provided
+            if (specialty != null &amp;&amp; !specialty.equals(provider.specialty())) {
+                continue;
+            }
+
+            results.add(AvailableProviderDTO.builder()
+                .providerId(providerId)
+                .providerName(provider.name())
+                .specialty(provider.specialty())
+                .rating(provider.rating())
+                .availableSlots(availableSlots)
+                .build());
+        } catch (FeignException.NotFound e) {
+            log.warn(&quot;Provider {} not found via Feign, skipping&quot;, providerId);
+        } catch (FeignException e) {
+            log.warn(&quot;provider-service unavailable for {}: {}&quot;, providerId, e.getMessage());
+        }
+    }
+    // Step 4: Sort by rating descending
+    results.sort(Comparator.comparingDouble(p -&gt; p.rating()).reversed());
+    return results;
+}
+</code></pre>
+
+<h3>Error Handling Pattern (IMPORTANT!)</h3>
+<pre><code>
+try {
+    ProviderDTO provider = providerServiceClient.getProvider(providerId);
+    // use it...
+} catch (FeignException.NotFound e) {
+    // Provider doesn&#x27;t exist — skip gracefully
+    log.warn(&quot;Provider {} not found via Feign, skipping&quot;, providerId);
+} catch (FeignException e) {
+    // provider-service is down — skip gracefully
+    log.warn(&quot;provider-service unavailable: {}&quot;, e.getMessage());
+}
+</code></pre>
+<p><strong>NEVER let a Feign failure crash your service!</strong></p>
+
+<h3>Feign URL Configuration</h3>
+<pre><code>
+feign:
+  provider-service:
+    url: http://${FEIGN_PROVIDER_SERVICE_URL:provider-service:8080}
+</code></pre>
+<p>In K8s, <code class="i">provider-service</code> resolves via DNS to the ClusterIP Service.</p>
+
+<h3>Correlation ID Propagation</h3>
+<p>Every outgoing Feign call forwards <code class="i">X-Correlation-ID</code>:</p>
+<pre><code>
+@Configuration
+public class FeignCorrelationConfig {
+    @Bean
+    public RequestInterceptor correlationIdInterceptor() {
+        return template -&gt; {
+            String correlationId = MDC.get(&quot;correlationId&quot;);
+            if (correlationId != null) {
+                template.header(&quot;X-Correlation-ID&quot;, correlationId);
+            }
+        };
+    }
+}
+</code></pre>
+
+<h3>@EnableFeignClients</h3>
+<p>In your main application class:</p>
+<pre><code>
+@SpringBootApplication(scanBasePackages = {
+    &quot;com.team28.booking.calendar&quot;,
+    &quot;com.team28.booking.contracts.feign&quot;
+})
+@EnableFeignClients(basePackages = &quot;com.team28.booking.contracts.feign&quot;)
+public class CalendarServiceApplication { }
+</code></pre>
+<p>This tells Spring to scan the contracts module and create proxy implementations for all <code class="i">@FeignClient</code> interfaces.</p>
+
+<hr>
+
+<h2>4. KUBERNETES — CALENDAR-POSTGRES INFRASTRUCTURE</h2>
+
+<h3>What You Deployed</h3>
+
+<p>4 YAML files for the calendar-postgres database:</p>
+
+<h4>4a. Secret (stores credentials)</h4>
+<pre><code>
+apiVersion: v1
+kind: Secret
+metadata:
+  name: calendar-postgres-secret
+  namespace: booking
+type: Opaque
+stringData:
+  POSTGRES_DB: bookingdb-calendar
+  POSTGRES_USER: user
+  POSTGRES_PASSWORD: password
+</code></pre>
+<p><strong>Why Secret not ConfigMap?</strong> Passwords are sensitive. Secrets are base64-encoded and can be restricted by RBAC.</p>
+
+<h4>4b. PersistentVolumeClaim (disk storage)</h4>
+<pre><code>
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: calendar-postgres-pvc
+  namespace: booking
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+</code></pre>
+<p><strong>Why PVC?</strong> Without persistent storage, all data is lost when the pod restarts. PVC ensures PostgreSQL data survives pod restarts.</p>
+
+<h4>4c. StatefulSet (the database pod)</h4>
+<pre><code>
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: calendar-postgres
+  namespace: booking
+spec:
+  serviceName: calendar-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: calendar-postgres
+  template:
+    spec:
+      containers:
+        - name: calendar-postgres
+          image: postgres:17          # PostgreSQL 17, NOT 18!
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: calendar-postgres-secret
+          readinessProbe:
+            exec:
+              command: [&quot;pg_isready&quot;, &quot;-U&quot;, &quot;user&quot;]
+          livenessProbe:
+            exec:
+              command: [&quot;pg_isready&quot;, &quot;-U&quot;, &quot;user&quot;]
+          volumeMounts:
+            - name: calendar-postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: calendar-postgres-data
+      spec:
+        accessModes: [&quot;ReadWriteOnce&quot;]
+        resources:
+          requests:
+            storage: 1Gi
+</code></pre>
+
+<p><strong>Why StatefulSet (not Deployment)?</strong></p>
+<ul>
+<li>Databases are <strong>stateful</strong> — they need stable network identity and persistent storage</li>
+<li>StatefulSet provides stable pod names (<code class="i">calendar-postgres-0</code>)</li>
+<li>VolumeClaimTemplates automatically create a PVC per replica</li>
+</ul>
+
+<p><strong>Why postgres:17?</strong></p>
+<p>PostgreSQL 18 breaks Hibernate native query implicit cast operator resolution. Critical rule #5.</p>
+
+<p><strong>Readiness/Liveness probes:</strong></p>
+<ul>
+<li><code class="i">pg_isready -U user</code> checks if PostgreSQL is accepting connections</li>
+<li>Readiness: &quot;Can I receive traffic?&quot; — K8s won&#x27;t route to it until ready</li>
+<li>Liveness: &quot;Am I still alive?&quot; — K8s restarts the pod if this fails</li>
+</ul>
+
+<h4>4d. Headless Service (DNS resolution)</h4>
+<pre><code>
+apiVersion: v1
+kind: Service
+metadata:
+  name: calendar-postgres
+  namespace: booking
+spec:
+  clusterIP: None        # ← Makes it &quot;headless&quot;
+  selector:
+    app: calendar-postgres
+  ports:
+    - port: 5432
+</code></pre>
+<p><strong>Why headless (clusterIP: None)?</strong></p>
+<p>For StatefulSets, headless services provide direct DNS resolution to specific pods. <code class="i">calendar-postgres</code> resolves to the StatefulSet pod IP directly.</p>
+
+<p><strong>How calendar-service finds it:</strong></p>
+<p>In <code class="i">application.yml</code>: <code class="i">url: jdbc:postgresql://calendar-postgres:5432/bookingdb-calendar</code></p>
+<p>K8s DNS resolves <code class="i">calendar-postgres</code> → the headless service → the postgres pod.</p>
+
+<hr>
+
+<h2>5. LOGBACK-SPRING.XML — STRUCTURED LOGGING TO LOKI</h2>
+
+<h3>Your Configuration</h3>
+<pre><code>
+&lt;configuration&gt;
+    &lt;appender name=&quot;LOKI&quot; class=&quot;com.github.loki4j.logback.Loki4jAppender&quot;&gt;
+        &lt;http&gt;
+            &lt;url&gt;http://${LOKI_HOST:-loki.monitoring.svc.cluster.local}:3100/loki/api/v1/push&lt;/url&gt;
+        &lt;/http&gt;
+        &lt;format&gt;
+            &lt;label&gt;
+                &lt;pattern&gt;app=booking,service=${appName},level=%level,env=k8s&lt;/pattern&gt;
+            &lt;/label&gt;
+            &lt;message&gt;
+                &lt;pattern&gt;{&quot;timestamp&quot;:&quot;%d{ISO8601}&quot;,&quot;level&quot;:&quot;%level&quot;,&quot;service&quot;:&quot;${appName}&quot;,
+                &quot;correlationId&quot;:&quot;%X{correlationId:-}&quot;,&quot;slotId&quot;:&quot;%X{slotId:-}&quot;,
+                &quot;providerId&quot;:&quot;%X{providerId:-}&quot;,&quot;bookingId&quot;:&quot;%X{bookingId:-}&quot;,
+                &quot;routingKey&quot;:&quot;%X{routingKey:-}&quot;,&quot;message&quot;:&quot;%msg&quot;}&lt;/pattern&gt;
+            &lt;/message&gt;
+        &lt;/format&gt;
+    &lt;/appender&gt;
+&lt;/configuration&gt;
+</code></pre>
+
+<h3>How It Works</h3>
+<ul>
+<li><strong>Loki4J appender</strong> — pushes JSON logs over HTTP to Loki</li>
+<li><strong>Labels</strong> — <code class="i">app=booking, service=calendar-service, level=INFO</code> — Loki indexes these for fast queries</li>
+<li><strong>Message</strong> — JSON with MDC fields: <code class="i">correlationId</code>, <code class="i">slotId</code>, <code class="i">providerId</code>, <code class="i">bookingId</code>, <code class="i">routingKey</code></li>
+<li><strong>MDC (Mapped Diagnostic Context)</strong> — thread-local key-value store. Your <code class="i">CorrelationIdFilter</code> puts the correlation ID into MDC:</li>
+</ul>
+
+<pre><code>
+@Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class CorrelationIdFilter extends OncePerRequestFilter {
+    protected void doFilterInternal(HttpServletRequest request, ...) {
+        String correlationId = request.getHeader(&quot;X-Correlation-ID&quot;);
+        if (correlationId == null) correlationId = UUID.randomUUID().toString();
+        MDC.put(&quot;correlationId&quot;, correlationId);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            MDC.remove(&quot;correlationId&quot;);  // Prevent leaking to next request!
+        }
+    }
+}
+</code></pre>
+
+<h3>Data Flow</h3>
+<pre><code>
+calendar-service logs → Loki4J appender → HTTP POST → Loki (monitoring namespace)
+                                                        ↓
+                                                    Grafana queries Loki with LogQL
+</code></pre>
+
+<hr>
+
+<h2>6. GRAFANA DASHBOARD — LogQL PANELS</h2>
+
+<p>Your dashboard has 3 LogQL panels:</p>
+
+<h3>Panel 1: Error Rate</h3>
+<pre><code>
+sum(rate({service=&quot;calendar-service&quot;} |= &quot;ERROR&quot; [5m]))
+</code></pre>
+<ul>
+<li><code class="i">{service=&quot;calendar-service&quot;}</code> — label filter: select calendar-service logs</li>
+<li><code class="i">|= &quot;ERROR&quot;</code> — line filter: only lines containing &quot;ERROR&quot;</li>
+<li><code class="i">rate(...[5m])</code> — calculate the per-second rate over 5-minute windows</li>
+<li><code class="i">sum(...)</code> — aggregate all streams</li>
+</ul>
+
+<h3>Panel 2: Feign Call Outcomes</h3>
+<pre><code>
+{service=&quot;calendar-service&quot;} |~ &quot;Feign (GET|POST)&quot;
+</code></pre>
+<ul>
+<li><code class="i">|~</code> — regex line filter</li>
+<li>Shows all Feign call logs — both successes and failures</li>
+</ul>
+
+<h3>Panel 3: RabbitMQ Event Audit</h3>
+<pre><code>
+{service=&quot;calendar-service&quot;} |~ &quot;(booking\\.(completed|cancelled))&quot;
+</code></pre>
+<ul>
+<li>Shows logs related to consuming booking events</li>
+<li>Helps verify the saga is flowing correctly through calendar-service</li>
+</ul>
+
+<h3>LogQL 3-Layer Structure (KNOW THIS!)</h3>
+<ul>
+<li><strong>Label selector:</strong> <code class="i">{app=&quot;booking&quot;, service=&quot;calendar-service&quot;, level=&quot;ERROR&quot;}</code></li>
+<li><strong>Line filter:</strong> <code class="i">|= &quot;text&quot;</code> (exact) or <code class="i">|~</code> (regex) or <code class="i">| json</code> (parse JSON)</li>
+<li><strong>Aggregation:</strong> <code class="i">count_over_time(... [1m])</code>, <code class="i">rate(... [5m])</code>, <code class="i">sum by (service) (...)</code></li>
+</ul>
+
+<hr>
+
+<h2>7. ADDITIONAL CONCEPTS YOU MUST KNOW</h2>
+
+<h3>Actuator + Prometheus Metrics</h3>
+<pre><code>
+management:
+  endpoints:
+    web:
+      exposure:
+        include: &quot;prometheus,health,info&quot;
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+</code></pre>
+<ul>
+<li>Exposes <code class="i">/actuator/prometheus</code> — Prometheus scrapes this every 15s</li>
+<li><code class="i">percentiles-histogram: true</code> — enables P50/P95/P99 latency calculation</li>
+</ul>
+
+<h3>Circuit Breaker (Bonus)</h3>
+<pre><code>
+resilience4j:
+  circuitbreaker:
+    instances:
+      provider-service:
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 5s
+</code></pre>
+<p>If 50% of the last 5 calls to provider-service fail, the circuit <strong>opens</strong> — subsequent calls immediately return the fallback without even trying. After 5 seconds, it enters <strong>half-open</strong> state and tries 2 calls to see if the service recovered.</p>
+
+<h3>RabbitMQ Configuration</h3>
+<pre><code>
+spring:
+  rabbitmq:
+    host: rabbitmq
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+</code></pre>
+<ul>
+<li><code class="i">auto</code> ACK: Spring acknowledges messages when listener returns successfully</li>
+<li><code class="i">default-requeue-rejected: false</code>: Failed messages go to DLQ, not back in the queue</li>
+<li><code class="i">max-attempts: 3</code>: Retry 3 times before sending to DLQ</li>
+</ul>
+
+<hr>
+
+<h2>8. LIKELY EVALUATOR QUESTIONS & ANSWERS</h2>
+
+<p><strong>Q: Why does calendar-service need its own PostgreSQL?</strong></p>
+<p>A: Database isolation — true microservices principle. Each service owns its data. calendar-service can&#x27;t SQL JOIN against provider-service&#x27;s tables. This enables independent deployment and scaling.</p>
+
+<p><strong>Q: How does your saga pre-check endpoint work?</strong></p>
+<p>A: When booking-service calls <code class="i">PUT /api/bookings/{id}/complete</code>, it Feign-calls my endpoint <code class="i">GET /api/timeslots/provider/{providerId}/slot?date=...&amp;startTime=...</code>. I query my local calendar-postgres for a matching time slot. If found → 200 + TimeSlotDTO. If not → 404. This proves the appointment was actually scheduled.</p>
+
+<p><strong>Q: What happens if provider-service is down when you call it?</strong></p>
+<p>A: Feign throws FeignException. I wrap every call in try-catch. On FeignException.NotFound → skip that provider. On general FeignException → log a warning and skip. The service never crashes.</p>
+
+<p><strong>Q: Why StatefulSet and not Deployment for PostgreSQL?</strong></p>
+<p>A: Databases are stateful — they need stable pod identity and persistent storage. StatefulSet provides both. A Deployment&#x27;s pods are interchangeable; StatefulSet pods have stable names (calendar-postgres-0) and their own PVCs.</p>
+
+<p><strong>Q: What is a headless Service?</strong></p>
+<p>A: A Service with <code class="i">clusterIP: None</code>. Instead of load-balancing, it returns the pod IPs directly via DNS. Used with StatefulSets so the application can connect directly to a specific database pod.</p>
+
+<p><strong>Q: Explain your logback-spring.xml.</strong></p>
+<p>A: It configures the Loki4J appender to push JSON-structured logs to Loki at <code class="i">loki.monitoring.svc.cluster.local:3100</code>. Each log line includes MDC fields (correlationId, slotId, providerId, bookingId, routingKey) so I can filter and trace requests across services in Grafana.</p>
+
+<p><strong>Q: What is MDC and why do you clear it in finally?</strong></p>
+<p>A: MDC (Mapped Diagnostic Context) is a thread-local Map that attaches context to log lines. CorrelationIdFilter puts the correlation ID into MDC. I clear it in <code class="i">finally</code> to prevent the ID from leaking to the next HTTP request that reuses the same thread.</p>
+
+<p><strong>Q: What are your 3 LogQL panels?</strong></p>
+<p>A: (1) Error rate — counts ERROR logs per 5 minutes to detect spikes. (2) Feign call outcomes — shows successful vs failed Feign calls to provider-service. (3) RabbitMQ event audit — shows booking.completed and booking.cancelled events consumed by calendar-service.</p>
+
+<p><strong>Q: How does Feign know the URL of provider-service?</strong></p>
+<p>A: <code class="i">@FeignClient(url = &quot;${feign.provider-service.url}&quot;)</code> reads from application.yml. In K8s, this resolves to <code class="i">http://provider-service:8080</code> via Kubernetes DNS. The ConfigMap sets the env var.</p>
+
+<p><strong>Q: What is @EnableFeignClients?</strong></p>
+<p>A: It tells Spring to scan for interfaces annotated with <code class="i">@FeignClient</code> and create proxy implementations. At runtime, calling a method on the interface triggers an HTTP request to the target service.</p>
+</body></html>

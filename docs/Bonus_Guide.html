@@ -1,0 +1,630 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bonus Features Guide</title>
+<style>body{font-family:Segoe UI,Arial;max-width:880px;margin:0 auto;padding:20px;font-size:13px;line-height:1.6;color:#1a1a1a}
+h1{color:#1a56db;border-bottom:3px solid #1a56db;padding-bottom:8px;font-size:22px}
+h2{color:#1e40af;border-bottom:2px solid #dbeafe;padding-bottom:5px;font-size:17px;margin-top:25px}
+h3{color:#374151;font-size:14px}h4{color:#4b5563;font-size:13px}
+pre{background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;overflow-x:auto;font-size:11.5px;line-height:1.4}
+code.i{background:#e0e7ff;color:#3730a3;padding:1px 4px;border-radius:3px;font-size:12px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:12px}
+th{background:#1e40af;color:white;padding:6px;text-align:left}
+td{border:1px solid #d1d5db;padding:5px 7px}tr:nth-child(even){background:#f3f4f6}
+hr{border:none;border-top:2px solid #e5e7eb;margin:15px 0}ul{padding-left:18px}li{margin-bottom:3px}
+strong{color:#1e40af}</style></head><body><h1>Bonus Features — Complete Study Guide</h1>
+
+<hr>
+
+<h2>BONUS 1: Full Testing Suite</h2>
+
+<h3>1A — Unit Tests with @Mock on Feign Clients</h3>
+
+<p><strong>Concept: What is a Unit Test?</strong></p>
+<p>A unit test checks ONE piece of logic in ISOLATION. You don&#x27;t start the app, no database, no RabbitMQ, no other services. You FAKE all dependencies using Mockito.</p>
+
+<p><strong>Concept: What is Mockito?</strong></p>
+<p>A Java library that creates fake objects. You tell the fake: &quot;When someone calls method X, return Y.&quot; Then you test that YOUR code does the right thing with Y.</p>
+
+<p><strong>Concept: @Mock vs @MockBean</strong></p>
+<ul>
+<li><code class="i">@Mock</code> — plain Mockito. Creates a fake object manually. Used in pure unit tests.</li>
+<li><code class="i">@MockBean</code> — Spring&#x27;s version. Replaces a real Spring bean with a fake inside the Spring context. Used when you need Spring to wire things up.</li>
+</ul>
+
+<p><strong>Your code — TimeSlotServiceIdleProvidersTest.java:</strong></p>
+
+<pre><code>
+@ExtendWith(MockitoExtension.class)  // Enable Mockito
+class TimeSlotServiceIdleProvidersTest {
+
+    @Mock private TimeSlotRepository timeSlotRepository;        // Fake DB
+    @Mock private ProviderServiceClient providerServiceClient;  // Fake Feign
+
+    private TimeSlotService timeSlotService;  // THE REAL CLASS being tested
+
+    @BeforeEach
+    void setUp() {
+        // Inject the fakes into the real service
+        timeSlotService = new TimeSlotService(
+            timeSlotRepository, null, null, null, null, providerServiceClient);
+    }
+</code></pre>
+
+<p><strong>Test 1: Happy path — Feign returns provider details, DTO is built correctly</strong></p>
+<pre><code>
+@Test
+void findIdleProviders_enrichesLocalAggregateWithProviderDetails() {
+    // ARRANGE: Tell the fake DB what to return
+    when(timeSlotRepository.findIdleProviderIds(eq(2), any(LocalDate.class)))
+        .thenReturn(List.of(row(7L, 1L, 5L), row(9L, 0L, 3L)));
+    // ARRANGE: Tell the fake Feign what to return
+    when(providerServiceClient.getProvider(7L))
+        .thenReturn(provider(7L, &quot;Ahmed Plumbing&quot;, &quot;Plumbing&quot;, 4.8));
+    when(providerServiceClient.getProvider(9L))
+        .thenReturn(provider(9L, &quot;Cairo Cleaning&quot;, &quot;Cleaning&quot;, 4.4));
+
+    // ACT: Call the real method
+    List&lt;IdleProviderDTO&gt; result = timeSlotService.findIdleProviders(2, 30);
+
+    // ASSERT: Check the output is correct
+    assertThat(result).containsExactly(
+        new IdleProviderDTO(7L, &quot;Ahmed Plumbing&quot;, &quot;Plumbing&quot;, 4.8, 1L, 5L),
+        new IdleProviderDTO(9L, &quot;Cairo Cleaning&quot;, &quot;Cleaning&quot;, 4.4, 0L, 3L)
+    );
+}
+</code></pre>
+
+<p><strong>Test 2: Feign returns 404 — service skips that provider</strong></p>
+<pre><code>
+@Test
+void findIdleProviders_skipsProviderWhenFeignReturns404() {
+    when(providerServiceClient.getProvider(99L))
+        .thenThrow(new FeignException.NotFound(...));  // Simulate 404
+
+    List&lt;IdleProviderDTO&gt; result = timeSlotService.findIdleProviders(2, 30);
+    // Provider 99 is skipped, only provider 7 returned
+    assertThat(result).hasSize(1);
+}
+</code></pre>
+
+<p><strong>Test 3: Feign throws 503 — service returns partial results</strong></p>
+<pre><code>
+@Test
+void findIdleProviders_returnsPartialResultsWhenProviderServiceFails() {
+    when(providerServiceClient.getProvider(9L))
+        .thenThrow(FeignException.errorStatus(&quot;getProvider&quot;, response(503)));
+    // Provider 9 is skipped due to 503, only provider 7 returned
+}
+</code></pre>
+
+<p><strong>Test 4: Invalid input — service rejects negative values</strong></p>
+<pre><code>
+@Test
+void findIdleProviders_rejectsNegativeInputs() {
+    assertThatThrownBy(() -&gt; timeSlotService.findIdleProviders(-1, 30))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining(&quot;maxBookedSlots&quot;);
+}
+</code></pre>
+
+<p><strong>The testing pattern is always: ARRANGE → ACT → ASSERT</strong></p>
+
+<hr>
+
+<h3>1B — RabbitMQ Integration Test with Testcontainers</h3>
+
+<p><strong>Concept: What is Testcontainers?</strong></p>
+<p>A Java library that starts REAL Docker containers during your test. You get a real RabbitMQ, real PostgreSQL, etc. — not a fake. When the test ends, the container is destroyed.</p>
+
+<p><strong>Concept: Why not just use @Mock for RabbitMQ?</strong></p>
+<p>Unit tests with mocks prove your logic is correct. Integration tests prove your WIRING is correct — that your consumer actually connects to the queue, deserializes the message correctly, and processes it. Mocks can&#x27;t test that.</p>
+
+<p><strong>Your code — BookingPaymentEventListenerRabbitIT.java:</strong></p>
+
+<pre><code>
+@Testcontainers(disabledWithoutDocker = true)  // Skip if Docker isn&#x27;t available
+class BookingPaymentEventListenerRabbitIT {
+
+    @Container  // Start a REAL RabbitMQ Docker container
+    static RabbitMQContainer rabbit = new RabbitMQContainer(&quot;rabbitmq:3.13-management&quot;);
+</code></pre>
+
+<p><strong>The test flow:</strong></p>
+
+<p>Step 1 — Connect to the real RabbitMQ container:</p>
+<pre><code>
+CachingConnectionFactory cf = new CachingConnectionFactory(rabbit.getHost(), rabbit.getAmqpPort());
+</code></pre>
+
+<p>Step 2 — Declare queues and exchanges (just like Spring @Bean config does):</p>
+<pre><code>
+Queue feedbackQueue = new Queue(&quot;booking.saga-feedback.test&quot;);
+DirectExchange paymentExchange = new DirectExchange(&quot;payment.events.test&quot;);
+admin.declareQueue(feedbackQueue);
+admin.declareExchange(paymentExchange);
+admin.declareBinding(BindingBuilder.bind(feedbackQueue).to(paymentExchange).with(&quot;payment.failed&quot;));
+</code></pre>
+
+<p>Step 3 — Wire up the consumer (BookingPaymentEventListener):</p>
+<pre><code>
+MessageListenerAdapter adapter = new MessageListenerAdapter(
+    new BookingPaymentEventListener(repository, publisher), &quot;handlePaymentFailed&quot;);
+container.setQueueNames(feedbackQueue.getName());
+container.setMessageListener(adapter);
+container.start();
+</code></pre>
+
+<p>Step 4 — Publish a real event:</p>
+<pre><code>
+template.convertAndSend(&quot;payment.events.test&quot;, &quot;payment.failed&quot;,
+    new PaymentFailedEvent(100L, 55L, &quot;card declined&quot;));
+</code></pre>
+
+<p>Step 5 — Wait and assert the consumer processed it:</p>
+<pre><code>
+await().atMost(Duration.ofSeconds(10)).untilAsserted(() -&gt;
+    assertThat(localStatus.get()).isEqualTo(Booking.Status.PAYMENT_FAILED));
+</code></pre>
+
+<p>Step 6 — Assert the compensation event was published:</p>
+<pre><code>
+BookingCancelledEvent compensation = (BookingCancelledEvent) template.receiveAndConvert(...);
+assertThat(compensation.bookingId()).isEqualTo(55L);
+assertThat(compensation.reason()).isEqualTo(&quot;card declined&quot;);
+</code></pre>
+
+<p><strong>What this proves:</strong> The ENTIRE chain works with real RabbitMQ: event arrives → consumer deserializes it → updates DB → publishes compensation event.</p>
+
+<hr>
+
+<h3>1C — Saga End-to-End Test</h3>
+
+<p><strong>Concept: What is an E2E test?</strong></p>
+<p>Tests the ENTIRE system. All services must be running. You make real HTTP calls and verify the saga flows correctly across services.</p>
+
+<p><strong>Your code — SagaScenarioAIT.java (Happy Path):</strong></p>
+
+<pre><code>
+Step 1: POST /api/users/register       → Create user (201)
+Step 2: POST /api/providers             → Create provider (201)
+Step 3: POST /api/bookings              → Create booking (201) → status: REQUESTED
+Step 4: PUT /api/bookings/{id}/confirm  → Confirm (200) → status: CONFIRMED
+Step 5: PUT /api/bookings/{id}/complete → Complete (200) → status: COMPLETING
+    ↓ (booking.completed event published via RabbitMQ)
+Step 6: POLL invoice-service until invoice status = PENDING (async!)
+Step 7: POST /api/invoices/process      → Pay (201)
+Step 8: POLL invoice-service until invoice status = COMPLETED
+</code></pre>
+
+<p><strong>SagaScenarioBIT.java (Payment Failure):</strong></p>
+<p>Same steps 1-6, but at step 7 inject <code class="i">?simulateFailure=true</code> → payment fails → assert compensation runs → booking ends up REFUNDED.</p>
+
+<p><strong>SagaScenarioCIT.java (Pre-check Failure):</strong></p>
+<p>Tests what happens when the saga pre-checks fail (e.g., no time slot exists in calendar-service).</p>
+
+<hr>
+
+<h2>BONUS 2: CI/CD Pipeline (GitHub Actions)</h2>
+
+<p><strong>Concept: What is CI/CD?</strong></p>
+<ul>
+<li><strong>CI (Continuous Integration):</strong> Every time code is pushed, automatically build and test it. Catch bugs early.</li>
+<li><strong>CD (Continuous Delivery):</strong> After tests pass, automatically push Docker images to a registry so they can be deployed.</li>
+</ul>
+
+<p><strong>Concept: What is GitHub Actions?</strong></p>
+<p>GitHub&#x27;s built-in automation platform. You write a YAML file in <code class="i">.github/workflows/</code> and GitHub runs it on every push/PR.</p>
+
+<p><strong>Concept: What is GHCR?</strong></p>
+<p>GitHub Container Registry — a place to store Docker images, like Docker Hub but hosted by GitHub.</p>
+
+<p><strong>Your code — .github/workflows/ci.yml:</strong></p>
+
+<p><strong>Two jobs:</strong></p>
+
+<p><strong>Job 1: <code class="i">build-test-docker</code> (runs on <code class="i">feat/*</code> branches only)</strong></p>
+<pre><code>
+if: startsWith(github.ref_name, &#x27;feat/&#x27;)  # Only feature branches
+steps:
+  - uses: actions/checkout@v4              # Clone the repo
+  - uses: actions/setup-java@v4            # Install Java 25
+  - run: mvn -B clean verify              # Build + run ALL JUnit tests
+  - run: docker build -t ... ./user-service  # Build Docker images (but DON&#x27;T push)
+</code></pre>
+<p>Purpose: Verify your code compiles and tests pass before merging.</p>
+
+<p><strong>Job 2: <code class="i">publish-images</code> (runs on <code class="i">main</code> branch only)</strong></p>
+<pre><code>
+if: github.ref_name == &#x27;main&#x27;
+steps:
+  - run: mvn -B clean verify              # Build + test again
+  - uses: docker/login-action@v3           # Login to GitHub Container Registry
+  - run: |                                 # Build AND PUSH images
+      for service in user-service provider-service ...; do
+        docker build -t &quot;${image}:${SHA}&quot; -t &quot;${image}:latest&quot; &quot;./${service}&quot;
+        docker push &quot;${image}:${SHA}&quot;      # Tag with commit hash
+        docker push &quot;${image}:latest&quot;      # Tag with &quot;latest&quot;
+      done
+</code></pre>
+<p>Purpose: After merging to main, push images so K8s can pull and deploy them.</p>
+
+<p><strong>The flow:</strong></p>
+<pre><code>
+Developer pushes to feat/M3/calendar/S4-READ-DB/55-8947
+  → GitHub Actions: mvn build + test + docker build (no push)
+  → Tests pass ✓
+
+Developer merges PR to main
+  → GitHub Actions: mvn build + test + docker build + docker push to GHCR
+  → Images available at ghcr.io/team28/springshoes-booking/calendar-service:latest
+</code></pre>
+
+<hr>
+
+<h2>BONUS 3: Circuit Breaker (Resilience4j)</h2>
+
+<p><strong>Concept: What problem does it solve?</strong></p>
+<p>If provider-service is DOWN, every Feign call waits for a timeout (e.g., 5 seconds) then fails. With 100 requests, that&#x27;s 500 seconds of wasted waiting. A circuit breaker STOPS calling after detecting failures and returns a fallback INSTANTLY.</p>
+
+<p><strong>Concept: The 3 States</strong></p>
+
+<pre><code>
+CLOSED (normal operation)
+  │  Calls go through normally
+  │  Tracking: last 5 calls (sliding window)
+  │
+  ▼  If 50% of last 5 calls FAIL...
+OPEN (circuit tripped)
+  │  ALL calls immediately return FALLBACK
+  │  No HTTP request is even attempted
+  │  Timer: wait 5 seconds
+  │
+  ▼  After 5 seconds...
+HALF-OPEN (testing)
+  │  Allow 2 test calls through
+  │  If they succeed → go back to CLOSED
+  │  If they fail → go back to OPEN
+</code></pre>
+
+<p><strong>Your config — application.yml:</strong></p>
+<pre><code>
+resilience4j:
+  circuitbreaker:
+    instances:
+      provider-service:
+        sliding-window-size: 5                           # Track last 5 calls
+        failure-rate-threshold: 50                       # 50% failure = trip
+        wait-duration-in-open-state: 5s                  # Wait 5s before retry
+        permitted-number-of-calls-in-half-open-state: 2  # 2 test calls
+</code></pre>
+
+<p><strong>Your Feign client with fallback:</strong></p>
+<pre><code>
+@FeignClient(name = &quot;calendar-service&quot;, url = &quot;...&quot;,
+             fallback = CalendarServiceClientFallback.class)  // ← Fallback class
+public interface CalendarServiceClient { ... }
+</code></pre>
+
+<p><strong>Your fallback class:</strong></p>
+<pre><code>
+@Component
+public class CalendarServiceClientFallback implements CalendarServiceClient {
+    @Override
+    public TimeSlotDTO getSlotForBooking(Long providerId, String date, String startTime) {
+        // Return a safe default instead of crashing
+        return new TimeSlotDTO(null, providerId, parsedDate, parsedStart, null, false,
+                               Map.of(&quot;fallback&quot;, true));  // Mark as fallback
+    }
+}
+</code></pre>
+
+<p><strong>Enable in application.yml:</strong></p>
+<pre><code>
+spring:
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true   # Enable circuit breaker for ALL Feign clients
+</code></pre>
+
+<p><strong>Real-world analogy:</strong> Electric fuse. Too much current → fuse blows → protects the house. After you fix the problem, you reset the fuse. Circuit breaker = automatic fuse that resets itself after a cooldown.</p>
+
+<hr>
+
+<h2>BONUS 4: Kubernetes Ingress</h2>
+
+<p><strong>Concept: What is the problem with NodePort?</strong></p>
+<pre><code>
+# NodePort = ugly:
+curl http://192.168.49.2:30080/api/bookings
+# What is 192.168.49.2? What is 30080? Nobody remembers this.
+
+# Ingress = clean:
+curl http://springshoes.local/api/bookings
+# Human-readable domain name
+</code></pre>
+
+<p><strong>Concept: What is an Ingress?</strong></p>
+<p>An Ingress is a K8s resource that acts as a REVERSE PROXY. It sits at the edge of your cluster and routes HTTP traffic to internal services based on hostname and path.</p>
+
+<p><strong>Concept: What is an Ingress Controller?</strong></p>
+<p>The Ingress YAML just defines rules. The Ingress Controller (nginx) is the software that actually reads those rules and does the routing. You enable it with: <code class="i">minikube addons enable ingress</code>.</p>
+
+<p><strong>Your code — gateway-ingress.yaml:</strong></p>
+<pre><code>
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-gateway
+  namespace: booking
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2  # Strip path prefix
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: springshoes.local          # Match this hostname
+      http:
+        paths:
+          - path: /api(/|$)(.*)        # Anything starting with /api
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: api-gateway      # Forward to api-gateway service
+                port:
+                  number: 8080
+          - path: /actuator(/|$)(.*)   # Health check endpoints
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+</code></pre>
+
+<p><strong>Setup steps:</strong></p>
+<pre><code>
+# 1. Enable ingress controller in minikube
+minikube addons enable ingress
+
+# 2. Add hostname to /etc/hosts
+echo &quot;$(minikube ip) springshoes.local&quot; | sudo tee -a /etc/hosts
+
+# 3. Apply the ingress
+kubectl apply -f k8s/api-gateway/gateway-ingress.yaml
+
+# 4. Now access via clean URL
+curl http://springshoes.local/api/bookings
+</code></pre>
+
+<p><strong>The rewrite-target annotation:</strong></p>
+<p><code class="i">/api(/|$)(.*)</code> captures everything after <code class="i">/api</code> into <code class="i">$2</code>. Then <code class="i">rewrite-target: /$2</code> forwards it. So <code class="i">http://springshoes.local/api/bookings/1</code> becomes <code class="i">http://api-gateway:8080/api/bookings/1</code>.</p>
+
+<hr>
+
+<h2>BONUS 5: Horizontal Pod Autoscaler (HPA)</h2>
+
+<p><strong>Concept: What is the problem?</strong></p>
+<p>If booking-service gets flooded with requests, ONE pod can&#x27;t handle it all. CPU goes to 100%, responses slow down, timeouts happen.</p>
+
+<p><strong>Concept: What does HPA do?</strong></p>
+<p>Watches CPU usage. If it&#x27;s too high → creates more pods. If it&#x27;s low → removes pods. Automatic horizontal scaling.</p>
+
+<p><strong>Your code — booking-service-hpa.yaml:</strong></p>
+<pre><code>
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: booking-service
+  namespace: booking
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: booking-service     # Watch THIS deployment
+  minReplicas: 2              # Never go below 2 pods
+  maxReplicas: 6              # Never go above 6 pods
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50   # Target 50% CPU
+</code></pre>
+
+<p><strong>How the math works:</strong></p>
+<pre><code>
+Current: 2 pods, each at 80% CPU → average = 80%
+Target: 50%
+Formula: desiredReplicas = ceil(currentReplicas × (currentUtil / targetUtil))
+         = ceil(2 × (80/50)) = ceil(3.2) = 4 pods
+
+K8s creates 2 more pods → now 4 pods → CPU drops to ~40% each → stable
+</code></pre>
+
+<p><strong>Setup:</strong></p>
+<pre><code>
+# 1. Enable metrics-server (required for HPA to read CPU)
+minikube addons enable metrics-server
+
+# 2. Apply HPA
+kubectl apply -f k8s/deployments/booking-service-hpa.yaml
+
+# 3. Watch it
+kubectl get hpa -n booking -w
+
+# 4. Simulate load (in another terminal)
+kubectl run load-gen --image=busybox -- /bin/sh -c \
+  &quot;while true; do wget -q -O- http://booking-service:8080/api/bookings; done&quot;
+
+# 5. Watch pods scale up
+kubectl get pods -n booking -w
+</code></pre>
+
+<p><strong>Requirements:</strong></p>
+<ul>
+<li><code class="i">metrics-server</code> must be running (provides CPU/memory data)</li>
+<li>booking-service Deployment must have <code class="i">resources.requests.cpu</code> set (so K8s knows what 100% means)</li>
+</ul>
+
+<hr>
+
+<h2>50 EVALUATION QUESTIONS & ANSWERS</h2>
+
+<h3>Testing (Q1-Q15)</h3>
+
+<p><strong>Q1: What is the difference between a unit test and an integration test?</strong></p>
+<p>A: Unit test = test ONE class in isolation with mocked dependencies. Integration test = test multiple components working together with real infrastructure (real RabbitMQ, real DB).</p>
+
+<p><strong>Q2: What does @Mock do?</strong></p>
+<p>A: Creates a fake implementation of an interface/class. You program it with <code class="i">when().thenReturn()</code> to return specific values when specific methods are called.</p>
+
+<p><strong>Q3: Why do you mock ProviderServiceClient in unit tests?</strong></p>
+<p>A: Because provider-service isn&#x27;t running during unit tests. We fake its responses so we can test our calendar-service logic in isolation.</p>
+
+<p><strong>Q4: What does <code class="i">when(repo.findIdleProviderIds(...)).thenReturn(...)</code> do?</strong></p>
+<p>A: It tells the fake repository: &quot;When someone calls findIdleProviderIds with these parameters, return this fake list instead of querying a real database.&quot;</p>
+
+<p><strong>Q5: What is the Arrange-Act-Assert pattern?</strong></p>
+<p>A: Arrange = set up fakes and data. Act = call the method being tested. Assert = verify the output is correct.</p>
+
+<p><strong>Q6: What is Testcontainers?</strong></p>
+<p>A: A Java library that starts real Docker containers (RabbitMQ, PostgreSQL, etc.) during tests. The container is created before the test and destroyed after.</p>
+
+<p><strong>Q7: Why use Testcontainers instead of mocking RabbitMQ?</strong></p>
+<p>A: Mocks test logic but not wiring. Testcontainers proves the actual message serialization, queue binding, routing key matching, and consumer processing all work together.</p>
+
+<p><strong>Q8: What does @Container do?</strong></p>
+<p>A: Marks a field as a Testcontainers-managed Docker container. The container starts before any test in the class runs and stops after all tests finish.</p>
+
+<p><strong>Q9: What does <code class="i">await().atMost(Duration.ofSeconds(10)).untilAsserted(...)</code> do?</strong></p>
+<p>A: Polls repeatedly (every 100ms by default) for up to 10 seconds until the assertion passes. This is needed because RabbitMQ processing is async — the consumer might not have processed the message instantly.</p>
+
+<p><strong>Q10: What does the RabbitMQ integration test actually prove?</strong></p>
+<p>A: That when a PaymentFailedEvent arrives on the queue, the BookingPaymentEventListener (1) deserializes it correctly, (2) updates booking status to PAYMENT_FAILED, and (3) publishes a BookingCancelledEvent as compensation.</p>
+
+<p><strong>Q11: What is a Saga E2E test?</strong></p>
+<p>A: A test that exercises the entire booking lifecycle across ALL running services via real HTTP calls. It verifies the complete event chain: booking completed → invoice created → payment processed → booking paid.</p>
+
+<p><strong>Q12: Why does the E2E test use polling?</strong></p>
+<p>A: Because the saga is asynchronous. After calling PUT /complete, invoice-service creates the invoice via a RabbitMQ event. The test polls until the invoice appears because there&#x27;s no way to know exactly when the async event will be processed.</p>
+
+<p><strong>Q13: What are the 3 saga test scenarios?</strong></p>
+<p>A: Scenario A = happy path (booking → paid). Scenario B = payment failure (booking → payment failed → compensation → refunded). Scenario C = pre-check failure (saga aborts before publishing booking.completed).</p>
+
+<p><strong>Q14: What does <code class="i">assertThat(result).containsExactly(...)</code> do?</strong></p>
+<p>A: AssertJ assertion that checks the list contains exactly the specified elements in exactly the specified order. Fails if there are extra elements, missing elements, or wrong order.</p>
+
+<p><strong>Q15: What assertion library do you use?</strong></p>
+<p>A: AssertJ (<code class="i">assertThat(...).isEqualTo(...)</code>) for fluent assertions, and JUnit 5 (<code class="i">assertEquals(...)</code>) for simple ones.</p>
+
+<h3>CI/CD (Q16-Q25)</h3>
+
+<p><strong>Q16: What is CI/CD?</strong></p>
+<p>A: CI = Continuous Integration: auto-build and test on every push. CD = Continuous Delivery: auto-push Docker images to a registry after tests pass.</p>
+
+<p><strong>Q17: What is GitHub Actions?</strong></p>
+<p>A: GitHub&#x27;s built-in CI/CD platform. You define workflows in <code class="i">.github/workflows/*.yml</code> and GitHub runs them automatically on triggers (push, PR, etc.).</p>
+
+<p><strong>Q18: What triggers the build-test-docker job?</strong></p>
+<p>A: Pushing to any <code class="i">feat/<em></code> or <code class="i">feat/</em>*</code> branch. The <code class="i">if: startsWith(github.ref_name, &#x27;feat/&#x27;)</code> condition ensures it only runs on feature branches.</p>
+
+<p><strong>Q19: What triggers the publish-images job?</strong></p>
+<p>A: Pushing to the <code class="i">main</code> branch. The <code class="i">if: github.ref_name == &#x27;main&#x27;</code> condition ensures it only runs on main.</p>
+
+<p><strong>Q20: What is <code class="i">mvn -B clean verify</code>?</strong></p>
+<p>A: <code class="i">-B</code> = batch mode (no interactive prompts). <code class="i">clean</code> = delete old build files. <code class="i">verify</code> = compile + run all tests + package. If any test fails, the build fails and the pipeline stops.</p>
+
+<p><strong>Q21: What does GHCR stand for?</strong></p>
+<p>A: GitHub Container Registry. It&#x27;s where Docker images are stored, similar to Docker Hub. Each image is tied to your GitHub repo.</p>
+
+<p><strong>Q22: Why tag images with both <code class="i">${SHA}</code> and <code class="i">latest</code>?</strong></p>
+<p>A: SHA tag = specific version tied to a commit (for rollbacks). Latest tag = always points to the newest version (for convenience). You push both for flexibility.</p>
+
+<p><strong>Q23: What is <code class="i">${{ secrets.GITHUB_TOKEN }}</code>?</strong></p>
+<p>A: An automatically generated token by GitHub Actions that allows the workflow to push images to GHCR. No manual secret setup needed.</p>
+
+<p><strong>Q24: Why doesn&#x27;t the feat/* job push images?</strong></p>
+<p>A: Feature branches are work-in-progress. You only push to the registry when code is merged to main (reviewed and approved). Publishing broken images from feature branches would be bad.</p>
+
+<p><strong>Q25: What happens if <code class="i">mvn verify</code> fails?</strong></p>
+<p>A: The entire pipeline stops. Docker images are NOT built or pushed. The developer gets a notification that the build failed.</p>
+
+<h3>Circuit Breaker (Q26-Q35)</h3>
+
+<p><strong>Q26: What problem does a circuit breaker solve?</strong></p>
+<p>A: Prevents cascading failures. If provider-service is down, without a circuit breaker every request waits for timeout (slow). With a circuit breaker, after detecting failures it immediately returns a fallback (fast).</p>
+
+<p><strong>Q27: What are the 3 states of a circuit breaker?</strong></p>
+<p>A: CLOSED (normal — calls go through), OPEN (tripped — all calls return fallback immediately), HALF-OPEN (testing — allows a few calls through to check if the service recovered).</p>
+
+<p><strong>Q28: What is <code class="i">sliding-window-size: 5</code>?</strong></p>
+<p>A: The circuit breaker tracks the last 5 calls. It calculates the failure rate based on these 5 calls.</p>
+
+<p><strong>Q29: What is <code class="i">failure-rate-threshold: 50</code>?</strong></p>
+<p>A: If 50% or more of the last 5 calls fail (i.e., 3 out of 5), the circuit trips from CLOSED to OPEN.</p>
+
+<p><strong>Q30: What is <code class="i">wait-duration-in-open-state: 5s</code>?</strong></p>
+<p>A: When the circuit is OPEN, it stays open for 5 seconds. During this time ALL calls return the fallback. After 5 seconds it transitions to HALF-OPEN.</p>
+
+<p><strong>Q31: What is <code class="i">permitted-number-of-calls-in-half-open-state: 2</code>?</strong></p>
+<p>A: In HALF-OPEN state, allow 2 test calls through. If both succeed → CLOSED. If either fails → back to OPEN for another 5 seconds.</p>
+
+<p><strong>Q32: What is a fallback class?</strong></p>
+<p>A: A class that implements the same Feign interface but returns safe default values. It&#x27;s used when the circuit is open or the service is unreachable.</p>
+
+<p><strong>Q33: What does <code class="i">Map.of(&quot;fallback&quot;, true)</code> in the fallback response indicate?</strong></p>
+<p>A: It signals to the caller that this response is degraded/fallback data, not real data from the service. The caller can check this flag and display a warning to the user.</p>
+
+<p><strong>Q34: What dependency enables circuit breakers?</strong></p>
+<p>A: <code class="i">spring-cloud-starter-circuitbreaker-resilience4j</code> in pom.xml, plus <code class="i">spring.cloud.openfeign.circuitbreaker.enabled: true</code> in application.yml.</p>
+
+<p><strong>Q35: How do you demonstrate the circuit breaker working?</strong></p>
+<p>A: (1) Stop provider-service. (2) Make 5 calls to calendar-service that use Feign → provider-service. (3) First 5 calls fail with timeout. (4) 6th call returns fallback INSTANTLY (circuit is now OPEN). (5) Wait 5 seconds, restart provider-service. (6) Next call succeeds (HALF-OPEN → CLOSED).</p>
+
+<h3>Ingress (Q36-Q42)</h3>
+
+<p><strong>Q36: What is a Kubernetes Ingress?</strong></p>
+<p>A: A K8s resource that defines HTTP routing rules. It maps external URLs (hostname + path) to internal services.</p>
+
+<p><strong>Q37: What is an Ingress Controller?</strong></p>
+<p>A: The actual software (nginx) that reads Ingress rules and performs the routing. The Ingress YAML is just config; the controller does the work.</p>
+
+<p><strong>Q38: Why Ingress instead of NodePort?</strong></p>
+<p>A: NodePort exposes random high ports (30000-32767) — ugly and hard to remember. Ingress provides clean domain names, path-based routing, optional SSL, and rate limiting.</p>
+
+<p><strong>Q39: What does <code class="i">minikube addons enable ingress</code> do?</strong></p>
+<p>A: Deploys an nginx Ingress Controller pod in your MiniKube cluster. Without this, Ingress YAML rules do nothing.</p>
+
+<p><strong>Q40: What does <code class="i">rewrite-target: /$2</code> do?</strong></p>
+<p>A: Strips the matched path prefix. The regex <code class="i">/api(/|$)(.*)</code> captures everything after <code class="i">/api</code> into <code class="i">$2</code>. So <code class="i">/api/bookings/1</code> gets rewritten to <code class="i">/bookings/1</code>... wait no — in your case the path IS <code class="i">/api/bookings/1</code> and <code class="i">$2</code> = <code class="i">bookings/1</code>, so rewrite-target <code class="i">/$2</code> = <code class="i">/bookings/1</code>. But your gateway already expects <code class="i">/api/...</code>, so the annotation preserves the full path.</p>
+
+<p><strong>Q41: What does <code class="i">pathType: ImplementationSpecific</code> mean?</strong></p>
+<p>A: The path matching behavior is delegated to the Ingress Controller (nginx). Different from <code class="i">Exact</code> (exact match only) or <code class="i">Prefix</code> (prefix match).</p>
+
+<p><strong>Q42: How do you test the Ingress?</strong></p>
+<p>A: Add <code class="i">$(minikube ip) springshoes.local</code> to <code class="i">/etc/hosts</code>, then <code class="i">curl http://springshoes.local/api/bookings</code> — it should route through the Ingress to the api-gateway.</p>
+
+<h3>HPA (Q43-Q50)</h3>
+
+<p><strong>Q43: What is HPA?</strong></p>
+<p>A: Horizontal Pod Autoscaler — automatically scales the number of pod replicas up or down based on CPU (or custom metrics).</p>
+
+<p><strong>Q44: Why is HPA on booking-service specifically?</strong></p>
+<p>A: Booking-service has the highest traffic — it&#x27;s the saga orchestrator. More bookings = more CPU = needs more pods.</p>
+
+<p><strong>Q45: What does <code class="i">minReplicas: 2</code> mean?</strong></p>
+<p>A: K8s will ALWAYS keep at least 2 booking-service pods running, even if CPU is at 0%. This provides high availability — if one pod crashes, the other still serves traffic.</p>
+
+<p><strong>Q46: What does <code class="i">averageUtilization: 50</code> mean?</strong></p>
+<p>A: The target is 50% average CPU across all pods. If average goes above 50% → scale up. Below 50% → scale down (to minimum 2).</p>
+
+<p><strong>Q47: What is metrics-server?</strong></p>
+<p>A: A K8s component that collects CPU and memory metrics from all pods. HPA reads these metrics to make scaling decisions. Without it, HPA can&#x27;t see CPU usage.</p>
+
+<p><strong>Q48: How does HPA calculate desired replicas?</strong></p>
+<p>A: Formula: <code class="i">desired = ceil(current × (currentCPU / targetCPU))</code>. Example: 2 pods at 80% CPU, target 50% → <code class="i">ceil(2 × 80/50) = ceil(3.2) = 4</code> pods.</p>
+
+<p><strong>Q49: What is &quot;horizontal&quot; vs &quot;vertical&quot; scaling?</strong></p>
+<p>A: Horizontal = add MORE pods (scale OUT). Vertical = give existing pods MORE CPU/RAM (scale UP). HPA does horizontal.</p>
+
+<p><strong>Q50: How do you demonstrate HPA?</strong></p>
+<p>A: (1) <code class="i">minikube addons enable metrics-server</code> (2) Apply HPA yaml (3) Run a load generator: <code class="i">kubectl run load --image=busybox -- sh -c &quot;while true; do wget -q -O- http://booking-service:8080/api/bookings; done&quot;</code> (4) Watch: <code class="i">kubectl get hpa -n booking -w</code> — see TARGETS column rise and REPLICAS increase.</p>
+</body></html>
