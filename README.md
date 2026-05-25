@@ -563,7 +563,6 @@ mvn failsafe:integration-test failsafe:verify
 | **Invoice Service** | Ziad Sherif Ibrahim | [@zeyadalaaser](https://github.com/zeyadalaaser) |
 | **Provider Service** | Abdelrahman Atef Saad | [@abdlrhman08](https://github.com/abdlrhman08) |
 | **Provider Service** | Yaseen Ashraf | [@zoatel](https://github.com/zoatel) |
-| **Provider Service** | Mohamed Youssef | [@M-aboelsafa](https://github.com/M-aboelsafa) |
 | **Booking Service** | Ahmed Mohamed El-Gohary | [@AhmedEl-Gohary](https://github.com/AhmedEl-Gohary) |
 | **Booking Service** | Rofaeil Samuel Fayez | [@Rofaeil478](https://github.com/Rofaeil478) |
 | **Booking Service** | Ahmed Kamal | [@AhmedKamal18](https://github.com/AhmedKamal18) |
